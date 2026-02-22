@@ -42,9 +42,10 @@ logs/
 WiPhoto_release/
 releases/
 
-# Markdown files (except README.md and ROADMAP.md)
+# Markdown files (except README.md, README_RU.md and ROADMAP.md)
 *.md
 !README.md
+!README_RU.md
 !ROADMAP.md
 
 # Thumbnails cache
