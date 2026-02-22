@@ -1,0 +1,172 @@
+/* liquid_glass.qss */
+
+/* Общие настройки */
+QWidget {
+    background-color: #1e232d;
+    color: #e0e0e0;
+    font-family: "Segoe UI", "Arial", sans-serif;
+    font-size: 14px;
+}
+
+/* Исключаем фон для специфичных виджетов, чтобы не перекрывать кастомную отрисовку */
+QMainWindow, QDockWidget {
+    background-color: #1e232d;
+}
+
+/* Поля ввода, Списки, Таблицы */
+QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QListWidget, QTableWidget, QTreeWidget {
+    background-color: #252935;
+    border: 1px solid #3a4050;
+    border-radius: 4px;
+    padding: 4px;
+    color: #ffffff;
+    selection-background-color: #3d8ec9;
+    selection-color: #ffffff;
+}
+
+/* Специфика для списков и таблиц */
+QListWidget::item:selected, QTableWidget::item:selected, QTreeWidget::item:selected {
+    background-color: #3d8ec9;
+    color: white;
+    border: none;
+}
+QListWidget::item:hover, QTableWidget::item:hover, QTreeWidget::item:hover {
+    background-color: #323846;
+}
+
+/* Заголовки таблиц */
+QHeaderView::section {
+    background-color: #2d3240;
+    color: #e0e0e0;
+    padding: 4px;
+    border: 1px solid #3a4050;
+}
+
+/* Кнопки */
+QPushButton {
+    background-color: #3a4050;
+    border: 1px solid #4a5060;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #ffffff;
+}
+QPushButton:hover {
+    background-color: #4a5060;
+    border-color: #5a6070;
+}
+QPushButton:pressed {
+    background-color: #2d3240;
+}
+QPushButton:disabled {
+    background-color: #252935;
+    color: #707070;
+    border-color: #303030;
+}
+
+/* Выпадающие списки */
+QComboBox::drop-down {
+    border: none;
+    background: transparent;
+}
+QComboBox QAbstractItemView {
+    background-color: #252935;
+    border: 1px solid #3a4050;
+    color: #ffffff;
+    selection-background-color: #3d8ec9;
+}
+
+/* Меню */
+QMenuBar {
+    background-color: #1e232d;
+    color: #e0e0e0;
+}
+QMenuBar::item:selected {
+    background-color: #3a4050;
+}
+QMenu {
+    background-color: #252935;
+    border: 1px solid #3a4050;
+    color: #e0e0e0;
+}
+QMenu::item:selected {
+    background-color: #3d8ec9;
+    color: #ffffff;
+}
+
+/* Ползунки */
+QSlider::groove:horizontal {
+    border: 1px solid #3a4050;
+    height: 6px;
+    background: #252935;
+    margin: 2px 0;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #3d8ec9;
+    border: 1px solid #3d8ec9;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+
+/* Скроллбары */
+QScrollBar:vertical {
+    border: none;
+    background: #1e232d;
+    width: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:vertical {
+    background: #4a5060;
+    min-height: 20px;
+    border-radius: 5px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* Вкладки */
+QTabWidget::pane {
+    border: 1px solid #3a4050;
+    background-color: #1e232d;
+}
+QTabBar::tab {
+    background: #252935;
+    border: 1px solid #3a4050;
+    color: #a0a0a0;
+    padding: 6px 12px;
+    margin-right: 2px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+QTabBar::tab:selected {
+    background: #3a4050;
+    color: #ffffff;
+    border-bottom-color: #3a4050;
+}
+
+/* Группы */
+QGroupBox {
+    border: 1px solid #3a4050;
+    border-radius: 4px;
+    margin-top: 20px;
+    padding-top: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top center;
+    padding: 0 5px;
+    color: #3d8ec9;
+}
+
+/* Диалоги прогресса */
+QProgressBar {
+    border: 1px solid #3a4050;
+    border-radius: 4px;
+    text-align: center;
+    background-color: #252935;
+}
+QProgressBar::chunk {
+    background-color: #3d8ec9;
+}

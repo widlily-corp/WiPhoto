@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# WiPhoto specific
+.wiphoto/
+
+# Build artifacts
+*.exe
+*.msi
+*.zip
+*.tar.gz
+*.tar.bz2
+*.deb
+*.rpm
+WiPhoto_release/
+releases/
+
+# Markdown files (except README.md and ROADMAP.md)
+*.md
+!README.md
+!ROADMAP.md
+
+# Thumbnails cache
+.thumbnails/
+thumbnails/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS specific
+Thumbs.db
+desktop.ini
+
+# ExifTool files (include in releases only)
+exiftool.exe
+exiftool_files/
+
+# ExifTool temporary files
+*.exiftool_tmp
