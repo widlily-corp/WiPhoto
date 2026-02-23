@@ -28,11 +28,6 @@ build_exe_options = {
         # Ресурсы приложения
         ("assets", "assets"),
         ("liquid_glass.qss", "liquid_glass.qss"),
-
-        # ExifTool и его файлы
-        ("exiftool.exe", "exiftool.exe"),
-        # Если у вас есть папка exiftool_files, раскомментируйте следующую строку
-        # ("exiftool_files", "exiftool_files"),
     ],
     "include_msvcr": True,
 }

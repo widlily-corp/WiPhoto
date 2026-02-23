@@ -32,7 +32,7 @@ if errorlevel 1 (
 echo.
 echo Step 4: Creating release archive...
 set BUILD_DIR=build\exe.win-amd64-3.11
-set RELEASE_DIR=WiPhoto_v1.4.7_Windows
+set RELEASE_DIR=WiPhoto_v1.5.0_Windows
 
 if exist %RELEASE_DIR% rmdir /s /q %RELEASE_DIR%
 mkdir %RELEASE_DIR%

@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 echo ""
 echo "Step 4: Creating release directory..."
-RELEASE_DIR="WiPhoto_v1.4.7_Linux"
+RELEASE_DIR="WiPhoto_v1.5.0_Linux"
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
