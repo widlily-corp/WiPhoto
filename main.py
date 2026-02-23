@@ -214,6 +214,17 @@ def main():
     # Логируем системную информацию
     log_system_info()
 
+    # Проверяем и скачиваем ExifTool если нужно
+    logging.info("\nПроверка ExifTool...")
+    try:
+        from core.exiftool_downloader import ensure_exiftool_available
+        if ensure_exiftool_available(show_ui=False):
+            logging.info("ExifTool доступен")
+        else:
+            logging.warning("ExifTool не установлен - метаданные EXIF будут недоступны")
+    except Exception as e:
+        logging.error(f"Ошибка проверки ExifTool: {e}")
+
     # Устанавливаем глобальный обработчик исключений
     sys.excepthook = exception_hook
 

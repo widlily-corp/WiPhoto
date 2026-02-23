@@ -11,32 +11,39 @@ def get_exiftool_path():
     if sys.platform.startswith('win'):
         exiftool_name = 'exiftool.exe'
     else:
-        # На Linux/Mac сначала ищем bundled версию, затем системную
         exiftool_name = 'exiftool'
 
     if getattr(sys, 'frozen', False):
-        # Запущено из exe - PyInstaller распаковывает файлы
+        # Запущено из exe
         if hasattr(sys, '_MEIPASS'):
-            # Временная папка PyInstaller (ONE-FILE или ONE-DIR)
             base_path = sys._MEIPASS
         else:
-            # Папка с exe (если что-то пошло не так)
             base_path = os.path.dirname(sys.executable)
     else:
-        # Запущено из исходников - корневая папка проекта
+        # Запущено из исходников
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    exiftool_path = os.path.join(base_path, exiftool_name)
+    # Сначала ищем в exiftool_files
+    exiftool_dir = os.path.join(base_path, 'exiftool_files')
+    exiftool_path = os.path.join(exiftool_dir, exiftool_name)
 
-    # На Linux/Mac проверяем системный exiftool если bundled версия не найдена
-    if not sys.platform.startswith('win') and not os.path.exists(exiftool_path):
-        # Пробуем системную версию
+    if os.path.exists(exiftool_path):
+        return exiftool_path
+
+    # Потом в корне (старая версия)
+    exiftool_path = os.path.join(base_path, exiftool_name)
+    if os.path.exists(exiftool_path):
+        return exiftool_path
+
+    # На Linux/Mac проверяем системный exiftool
+    if not sys.platform.startswith('win'):
         import shutil
         system_exiftool = shutil.which('exiftool')
         if system_exiftool:
             return system_exiftool
 
-    return exiftool_path
+    # Возвращаем путь где должен быть (для downloader)
+    return os.path.join(exiftool_dir, exiftool_name)
 
 
 EXIFTOOL_PATH = get_exiftool_path()
