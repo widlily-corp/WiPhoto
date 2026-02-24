@@ -1,6 +1,7 @@
 # views/comparison_view.py
 
 import os
+import logging
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
                              QSlider, QGraphicsView, QGraphicsScene, QGraphicsPixmapItem,
                              QSplitter, QToolBar, QFrame)
@@ -299,6 +300,7 @@ class ComparisonView(QWidget):
             return QPixmap.fromImage(q_image)
 
         except Exception as e:
+            logging.error(f"Ошибка загрузки изображения {image_path}: {e}")
             return None
 
     def _update_info_labels(self):

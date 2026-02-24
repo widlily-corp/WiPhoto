@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import logging
 from collections import defaultdict
 
 from PIL import Image
@@ -105,6 +106,7 @@ class MainController(QObject):
             print(f"Открытие изображения из умной коллекции: {info.path}")
             self.request_editor_display.emit(info)
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def handle_dropped_files(self, file_paths: list):
         """Обработка перетащенных файлов - ПОЛНАЯ РЕАЛИЗАЦИЯ"""
@@ -186,6 +188,7 @@ class MainController(QObject):
                         self.view.add_thumbnails_batch([info])
                         added_count += 1
                 except Exception as e:
+                    logging.error(f"Ошибка добавления файла: {e}")
 
             self.view.statusBar().showMessage(f"Добавлено: {added_count} из {len(file_paths)}")
 
@@ -252,6 +255,7 @@ class MainController(QObject):
                 if (idx + 1) % 10 == 0:
                     self.view.statusBar().showMessage(f"Обработано: {idx + 1}/{total}")
             except Exception as e:
+                logging.error(f"Ошибка обработки файла: {e}")
 
         self.add_thumbnail_timer.stop()
         self._process_thumbnail_buffer()
@@ -282,6 +286,7 @@ class MainController(QObject):
                 self.image_data.append(info)
                 self.thumbnail_buffer.append(info)
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def _process_thumbnail_buffer(self):
         """Обрабатывает буфер миниатюр пакетами"""
@@ -293,6 +298,7 @@ class MainController(QObject):
             self.thumbnail_buffer = self.thumbnail_buffer[100:]
             self.view.add_thumbnails_batch(batch)
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def _on_scan_finished_logic(self):
         """Вызывается при завершении сканирования"""
@@ -507,6 +513,7 @@ class MainController(QObject):
             self.view.status_bar.showMessage(f"Показано: {total_visible} из {len(self.image_data)}")
 
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def _on_edit_requested(self, info: ImageInfo):
         """Обрабатывает запрос на редактирование"""
@@ -514,6 +521,7 @@ class MainController(QObject):
             print(f"Контроллер: Получен запрос на редактирование файла {info.path}")
             self.request_editor_display.emit(info)
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def _on_thumbnail_selected(self, item):
         """Обрабатывает выбор миниатюры"""
@@ -531,6 +539,7 @@ class MainController(QObject):
                 self.view.update_metadata(metadata)
 
         except Exception as e:
+            logging.error(f"Ошибка: {e}")
 
     def handle_style_request(self):
         """Обрабатывает запрос на копирование стиля"""
@@ -552,6 +561,7 @@ class MainController(QObject):
             )
 
         except Exception as e:
+            logging.error(f"Ошибка при запросе копирования стиля: {e}")
             self.is_in_style_mode = False
             self.style_target_info = None
             self.view.enter_style_copy_mode(False)
@@ -752,3 +762,4 @@ class MainController(QObject):
             print("Контроллер: Поток сканера завершен.")
 
         except Exception as e:
+            logging.error(f"Ошибка при остановке сканера: {e}")

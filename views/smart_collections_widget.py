@@ -1,5 +1,6 @@
 # views/smart_collections_widget.py - ФИНАЛЬНАЯ ВЕРСИЯ
 
+import logging
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                              QPushButton, QLabel, QListWidgetItem, QAbstractItemView,
                              QMenu, QMessageBox)
@@ -178,8 +179,8 @@ class SmartCollectionsWidget(QWidget):
                 file_date = datetime.fromtimestamp(mtime)
                 if date_condition(file_date):
                     result.append(img)
-            except:
-                pass
+            except Exception as e:
+                logging.error(f"Ошибка фильтрации по дате для {img.path}: {e}")
         return result
 
     def _display_images(self, images: list[ImageInfo]):
@@ -197,6 +198,7 @@ class SmartCollectionsWidget(QWidget):
                         item.setSizeHint(QSize(220, 220))
                         self.images_grid.addItem(item)
                 except Exception as e:
+                    logging.error(f"Ошибка загрузки изображения в коллекцию: {e}")
 
     def _on_image_double_clicked(self, item: QListWidgetItem):
         """Обработка двойного клика по изображению"""

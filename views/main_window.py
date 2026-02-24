@@ -1,6 +1,7 @@
 # views/main_window.py
 
 import os
+import logging
 import rawpy
 from PIL import Image
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
@@ -114,7 +115,7 @@ class MainWindow(QMainWindow):
             shadow.setOffset(0, 0)
             self.tab_widget.setGraphicsEffect(shadow)
         except Exception as e:
-            print(f"Не удалось применить эффект тени: {e}")
+            logging.error(f"Не удалось применить эффект тени: {e}")
 
         self.tab_widget.addTab(self.gallery_widget, "Галерея")
         self.tab_widget.addTab(self.smart_collections, "Умные коллекции")
@@ -176,6 +177,7 @@ class MainWindow(QMainWindow):
             self.tab_widget.setCurrentWidget(self.editor_widget)
             self.editor_widget.load_image(image_info)
         except Exception as e:
+            self.statusBar().showMessage(f"Ошибка загрузки в редактор: {e}")
 
     def _create_actions(self):
         """Создает действия для меню и панели инструментов"""
@@ -249,6 +251,7 @@ class MainWindow(QMainWindow):
                 self.prev_image_action, self.refresh_action
             ])
         except Exception as e:
+            logging.error(f"Ошибка создания действий: {e}")
 
     def _create_menu_bar(self):
         """Создает верхнее меню приложения"""
@@ -357,6 +360,7 @@ class MainWindow(QMainWindow):
             size_slider.valueChanged.connect(self.thumbnail_size_changed.emit)
             toolbar.addWidget(size_slider)
         except Exception as e:
+            logging.error(f"Ошибка создания тулбара: {e}")
 
     # ========== НОВЫЕ МЕТОДЫ HOTKEYS ==========
     def _on_compare_triggered(self):
@@ -405,6 +409,7 @@ class MainWindow(QMainWindow):
             dialog = AboutDialog(self)
             dialog.exec()
         except Exception as e:
+            logging.error(f"Ошибка открытия диалога О программе: {e}")
 
     def _create_status_bar(self):
         """Создает строку состояния"""
@@ -422,6 +427,7 @@ class MainWindow(QMainWindow):
             dialog = SettingsDialog(self)
             dialog.exec()
         except Exception as e:
+            logging.error(f"Ошибка открытия настроек: {e}")
 
     def add_thumbnails_batch(self, image_infos: list[ImageInfo]):
         """Добавляет миниатюры пакетом"""
@@ -439,6 +445,7 @@ class MainWindow(QMainWindow):
                             item.setSizeHint(QSize(276, 276))
                             view.addItem(item)
                     except Exception as e:
+                        logging.error(f"Ошибка добавления миниатюры: {e}")
         finally:
             view.setUpdatesEnabled(True)
 
@@ -469,7 +476,9 @@ class MainWindow(QMainWindow):
                         painter.end()
                         item.setIcon(QIcon(pixmap))
                     except Exception as e:
+                        logging.error(f"Ошибка обновления иконки: {e}")
         except Exception as e:
+            logging.error(f"Ошибка обновления выделения: {e}")
 
     def clear_thumbnails(self):
         """Очищает все миниатюры"""
@@ -496,6 +505,7 @@ class MainWindow(QMainWindow):
                     )
                 )
             except Exception as e:
+                logging.error(f"Ошибка изменения размера превью: {e}")
 
     def set_thumbnail_size(self, size: int):
         """Устанавливает размер миниатюр"""
@@ -504,6 +514,7 @@ class MainWindow(QMainWindow):
             view.setIconSize(QSize(size, size))
             view.setGridSize(QSize(size + 20, size + 20))
         except Exception as e:
+            logging.error(f"Ошибка установки размера миниатюр: {e}")
 
     def _get_selected_image_infos(self) -> list[ImageInfo]:
         """Получает список выбранных ImageInfo"""
@@ -536,6 +547,7 @@ class MainWindow(QMainWindow):
             selected = len(self.gallery_widget.thumbnail_view.selectedItems())
             self.status_bar.showMessage(f"Всего: {total} | Выбрано: {selected}")
         except Exception as e:
+            logging.error(f"Ошибка обновления счетчика: {e}")
 
     def remove_thumbnails(self, infos_to_remove: list[ImageInfo]):
         """Удаляет миниатюры из списка"""
@@ -550,6 +562,7 @@ class MainWindow(QMainWindow):
 
             self._update_status_bar()
         except Exception as e:
+            logging.error(f"Ошибка удаления миниатюр: {e}")
 
     def show_preview(self, image_path: str):
         """Показывает превью изображения"""
@@ -601,6 +614,7 @@ class MainWindow(QMainWindow):
                 view.setItem(row, 0, QTableWidgetItem(key))
                 view.setItem(row, 1, QTableWidgetItem(str(value)))
         except Exception as e:
+            logging.error(f"Ошибка отображения метаданных: {e}")
 
     def clear_preview_and_metadata(self):
         """Очищает превью и метаданные"""
@@ -615,4 +629,5 @@ class MainWindow(QMainWindow):
                 self.editor_widget.close()
             event.accept()
         except Exception as e:
+            logging.error(f"Ошибка при закрытии окна: {e}")
             event.accept()

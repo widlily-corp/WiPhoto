@@ -103,8 +103,8 @@ def exception_hook(exc_type, exc_value, exc_traceback):
             f"Произошла непредвиденная ошибка:\n\n{error_msg}\n\n"
             f"Подробности сохранены в лог-файле."
         )
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Ошибка показа диалога с ошибкой: {e}")
 
 
 def check_critical_files():

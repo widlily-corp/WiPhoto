@@ -1,5 +1,6 @@
 # views/welcome_window.py
 
+import logging
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton,
                              QCheckBox, QProgressBar)
@@ -16,7 +17,7 @@ class WelcomeWindow(QWidget):
         try:
             self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
         except Exception as e:
-            print(f"Не удалось загрузить иконку окна: {e}")
+            logging.error(f"Не удалось загрузить иконку окна: {e}")
 
         self.setGeometry(300,300, 500, 250)
 
@@ -66,4 +67,5 @@ class WelcomeWindow(QWidget):
         try:
             event.accept()
         except Exception as e:
+            logging.error(f"Ошибка при закрытии окна: {e}")
             event.accept()

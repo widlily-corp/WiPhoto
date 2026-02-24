@@ -73,8 +73,10 @@ def _load_image_optimized(file_path: str, for_thumbnail: bool = False) -> Image.
                     return img.copy()
 
     except UnidentifiedImageError:
+        print(f"[ERROR] Невозможно определить формат изображения: {file_path}")
         return None
     except Exception as e:
+        print(f"[ERROR] Ошибка загрузки изображения {file_path}: {e}")
         return None
 
 def _load_image(file_path: str) -> Image.Image:
@@ -108,6 +110,7 @@ def _create_thumbnail(pil_image: Image.Image, file_path: str) -> str:
         thumb_img.save(cached_thumb_path, "JPEG", quality=90, optimize=True)
         return cached_thumb_path
     except Exception as e:
+        print(f"[ERROR] Ошибка создания миниатюры для {file_path}: {e}")
         return None
 
 
@@ -148,6 +151,7 @@ def process_single_file(file_path: str) -> dict:
             "sharpness": sharpness, "thumbnail_path": thumbnail_path
         }
     except Exception as e:
+        print(f"[ERROR] Ошибка обработки файла {file_path}: {e}")
         return None
 
 
@@ -163,5 +167,6 @@ def transfer_style(source_image: Image.Image, target_image: Image.Image) -> Imag
         matched_np = match_histograms(target_np, source_np, channel_axis=-1)
         return Image.fromarray(matched_np.astype('uint8'), 'RGB')
     except Exception as e:
+        print(f"[ERROR] Ошибка переноса стиля: {e}")
         return None
 # --- END OF FILE core/analyzer.py ---

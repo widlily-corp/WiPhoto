@@ -51,6 +51,7 @@ class Scanner(QObject):
                         else:
                             print(f"Пропущен файл (нет результата): {file_path}")
                     except Exception as e:
+                        print(f"Ошибка обработки файла {file_path}: {e}")
 
                     processed_count += 1
                     self.progress_updated.emit(processed_count, total_files)
@@ -87,5 +88,6 @@ class Scanner(QObject):
                         # <<< ИСПРАВЛЕНИЕ: Нормализуем путь
                         files.append(os.path.normpath(path))
         except Exception as e:
+            print(f"Ошибка сбора файлов: {e}")
         return files
 # --- END OF FILE core/file_scanner.py ---

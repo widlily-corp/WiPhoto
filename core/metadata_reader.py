@@ -141,6 +141,7 @@ def read_exif(image_path: str) -> dict:
         print(f"[ERROR] Таймаут при чтении EXIF для '{normalized_path}'")
         return {"Error": "Превышено время ожидания"}
     except Exception as e:
+        print(f"[ERROR] Ошибка чтения EXIF: {e}")
         return {"Error": "Не удалось обработать ответ ExifTool."}
 
     if not filtered_metadata:
