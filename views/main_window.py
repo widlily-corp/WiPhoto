@@ -51,8 +51,12 @@ class BackgroundWidget(QWidget):
             y = (self.height() - scaled_pixmap.height()) / 2
             painter.drawPixmap(int(x), int(y), scaled_pixmap)
         else:
-            # Используем основной цвет темы из liquid_glass.qss
-            painter.fillRect(self.rect(), QColor("#1e232d"))
+            # Современный градиентный фон
+            from PyQt6.QtGui import QLinearGradient
+            gradient = QLinearGradient(0, 0, 0, self.height())
+            gradient.setColorAt(0, QColor("#0d1117"))
+            gradient.setColorAt(1, QColor("#161b22"))
+            painter.fillRect(self.rect(), gradient)
 
 
 class MainWindow(QMainWindow):
@@ -203,6 +207,11 @@ class MainWindow(QMainWindow):
             self.deselect_all_action = QAction("Снять выделение", self)
             self.refresh_action = QAction("Обновить", self)
 
+            # Действия для анализа
+            self.detect_faces_action = QAction(QIcon(resource_path("assets/icon.ico")), "Обнаружить лица", self)
+            self.detect_animals_action = QAction(QIcon(resource_path("assets/icon.ico")), "Найти животных", self)
+            self.scan_document_action = QAction(QIcon(resource_path("assets/icon.ico")), "Сканировать документ", self)
+
             # Горячие клавиши
             self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
             self.delete_action.setShortcut(QKeySequence.StandardKey.Delete)
@@ -241,6 +250,11 @@ class MainWindow(QMainWindow):
             self.next_image_action.triggered.connect(self._next_image)
             self.prev_image_action.triggered.connect(self._prev_image)
             self.refresh_action.triggered.connect(self._refresh_gallery)
+
+            # Подключение действий анализа
+            self.detect_faces_action.triggered.connect(self._on_detect_faces)
+            self.detect_animals_action.triggered.connect(self._on_detect_animals)
+            self.scan_document_action.triggered.connect(self._on_scan_document)
 
             # Добавляем действия в окно
             self.addActions([
@@ -292,6 +306,12 @@ class MainWindow(QMainWindow):
         tools_menu = menu_bar.addMenu("Инструменты")
         tools_menu.addAction(self.compare_action)
         tools_menu.addAction(self.style_action)
+
+        # Меню "Анализ"
+        analysis_menu = menu_bar.addMenu("Анализ")
+        analysis_menu.addAction(self.detect_faces_action)
+        analysis_menu.addAction(self.detect_animals_action)
+        analysis_menu.addAction(self.scan_document_action)
 
         # Меню "Справка"
         help_menu = menu_bar.addMenu("Справка")
@@ -621,6 +641,125 @@ class MainWindow(QMainWindow):
         self.gallery_widget.preview_area.setText("Выберите изображение для предпросмотра")
         self.gallery_widget.preview_area.setPixmap(QPixmap())
         self.gallery_widget.metadata_view.setRowCount(0)
+
+    def _on_detect_faces(self):
+        """Обработка запроса обнаружения лиц"""
+        selected = self._get_selected_image_infos()
+        if not selected:
+            self.statusBar().showMessage("Выберите изображение для анализа")
+            return
+
+        try:
+            from core.face_detector import FaceDetector
+            from PyQt6.QtWidgets import QMessageBox
+
+            detector = FaceDetector()
+            if not detector.available:
+                QMessageBox.warning(self, "Ошибка", "Детектор лиц недоступен")
+                return
+
+            total_faces = 0
+            results = []
+            for info in selected:
+                faces = detector.detect_faces(info.path)
+                total_faces += len(faces)
+                if faces:
+                    results.append(f"{os.path.basename(info.path)}: {len(faces)} лиц(а)")
+
+            if results:
+                msg = f"Обнаружено лиц: {total_faces}\n\n" + "\n".join(results[:10])
+                if len(results) > 10:
+                    msg += f"\n... и еще {len(results) - 10}"
+                QMessageBox.information(self, "Результаты обнаружения лиц", msg)
+            else:
+                QMessageBox.information(self, "Результаты", "Лица не обнаружены")
+
+            self.statusBar().showMessage(f"Обнаружено лиц: {total_faces}")
+        except Exception as e:
+            logging.error(f"Ошибка обнаружения лиц: {e}")
+            self.statusBar().showMessage(f"Ошибка: {e}")
+
+    def _on_detect_animals(self):
+        """Обработка запроса обнаружения животных"""
+        selected = self._get_selected_image_infos()
+        if not selected:
+            self.statusBar().showMessage("Выберите изображение для анализа")
+            return
+
+        try:
+            from core.animal_detector import AnimalDetector
+            from PyQt6.QtWidgets import QMessageBox
+
+            detector = AnimalDetector()
+            if not detector.available:
+                QMessageBox.warning(self, "Ошибка", "Детектор животных недоступен")
+                return
+
+            total_animals = 0
+            results = []
+            for info in selected:
+                animals = detector.detect_animals(info.path)
+                total_animals += len(animals)
+                if animals:
+                    species_count = {}
+                    for animal in animals:
+                        species_count[animal.species] = species_count.get(animal.species, 0) + 1
+                    species_str = ", ".join([f"{count} {species}" for species, count in species_count.items()])
+                    results.append(f"{os.path.basename(info.path)}: {species_str}")
+
+            if results:
+                msg = f"Обнаружено животных: {total_animals}\n\n" + "\n".join(results[:10])
+                if len(results) > 10:
+                    msg += f"\n... и еще {len(results) - 10}"
+                QMessageBox.information(self, "Результаты обнаружения животных", msg)
+            else:
+                QMessageBox.information(self, "Результаты", "Животные не обнаружены")
+
+            self.statusBar().showMessage(f"Обнаружено животных: {total_animals}")
+        except Exception as e:
+            logging.error(f"Ошибка обнаружения животных: {e}")
+            self.statusBar().showMessage(f"Ошибка: {e}")
+
+    def _on_scan_document(self):
+        """Обработка запроса сканирования документа"""
+        selected = self._get_selected_image_infos()
+        if len(selected) != 1:
+            self.statusBar().showMessage("Выберите одно изображение для сканирования")
+            return
+
+        try:
+            from core.document_scanner import DocumentScanner
+            from PyQt6.QtWidgets import QMessageBox, QFileDialog
+
+            scanner = DocumentScanner()
+            info = selected[0]
+
+            # Обнаруживаем документ
+            corners = scanner.detect_document(info.path)
+            if not corners:
+                QMessageBox.information(self, "Результаты", "Документ не обнаружен на изображении")
+                return
+
+            # Предлагаем сохранить
+            output_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Сохранить отсканированный документ",
+                os.path.splitext(info.path)[0] + "_scanned.jpg",
+                "JPEG (*.jpg);;PNG (*.png)"
+            )
+
+            if output_path:
+                if scanner.scan_document(info.path, output_path):
+                    QMessageBox.information(self, "Успех", f"Документ сохранен: {output_path}")
+                    self.statusBar().showMessage(f"Документ сохранен: {output_path}")
+                else:
+                    QMessageBox.warning(self, "Ошибка", "Не удалось обработать документ")
+            else:
+                self.statusBar().showMessage("Отменено")
+
+        except Exception as e:
+            logging.error(f"Ошибка сканирования документа: {e}")
+            self.statusBar().showMessage(f"Ошибка: {e}")
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""

@@ -61,19 +61,33 @@ class EditorWidget(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Верхняя панель инструментов
+        # Верхняя панель инструментов - более компактная
         self.toolbar = QToolBar("Панель редактирования")
+        self.toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: rgba(22, 27, 34, 0.8);
+                border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+                padding: 4px;
+                spacing: 6px;
+            }
+        """)
         main_layout.addWidget(self.toolbar)
 
         # Основная область с тремя панелями
         content_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # --- ЛЕВАЯ ПАНЕЛЬ: Контролы ---
+        # --- ЛЕВАЯ ПАНЕЛЬ: Вертикальная панель инструментов ---
         left_panel = QWidget()
-        # Устанавливаем прозрачный фон для левой панели
-        left_panel.setStyleSheet("QWidget { background-color: transparent; }")
+        left_panel.setStyleSheet("""
+            QWidget {
+                background-color: rgba(22, 27, 34, 0.7);
+                border-right: 1px solid rgba(48, 54, 61, 0.5);
+                border-radius: 0px;
+            }
+        """)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setSpacing(8)
 
         # Компактная история сверху
         self.compact_history = CompactHistoryWidget()
@@ -83,30 +97,50 @@ class EditorWidget(QWidget):
 
         # Панель контролов
         self.control_panel = ControlPanelWidget(self)
+        self.control_panel.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
+            }
+        """)
         left_layout.addWidget(self.control_panel)
+        left_panel.setMaximumWidth(320)  # Фиксированная ширина для вертикальной панели
 
-        # --- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ: Холст ---
+        # --- ЦЕНТРАЛЬНАЯ ПАНЕЛЬ: Холст (большая область редактирования) ---
         self.scene = QGraphicsScene(self)
         self.view = ZoomableView(editor=self)
         self.view.setScene(self.scene)
-        # Устанавливаем фон для области редактирования
-        self.view.setStyleSheet("QGraphicsView { background-color: #23283a; border-radius: 8px; }")
+        # Современный стиль для области редактирования
+        self.view.setStyleSheet("""
+            QGraphicsView {
+                background-color: rgba(13, 17, 23, 0.9);
+                border: 1px solid rgba(48, 54, 61, 0.5);
+                border-radius: 12px;
+            }
+        """)
 
-        # --- ПРАВАЯ ПАНЕЛЬ: Детальная история ---
+        # --- ПРАВАЯ ПАНЕЛЬ: Детальная история (компактная) ---
         right_panel = QTabWidget()
-        # Устанавливаем прозрачный фон для правой панели
-        right_panel.setStyleSheet(
-            "QTabWidget { background-color: transparent; } QTabWidget::pane { background-color: rgba(30, 35, 45, 0.6); border-radius: 8px; }")
+        right_panel.setStyleSheet("""
+            QTabWidget {
+                background-color: transparent;
+            }
+            QTabWidget::pane {
+                background-color: rgba(22, 27, 34, 0.7);
+                border: 1px solid rgba(48, 54, 61, 0.5);
+                border-radius: 10px;
+            }
+        """)
 
         self.history_tree = HistoryTreeWidget()
         self.history_tree.jump_to_state.connect(self._jump_to_history_state)
-        right_panel.addTab(self.history_tree, "📜 История")
+        right_panel.addTab(self.history_tree, "История")
+        right_panel.setMaximumWidth(280)
 
-        # Добавляем панели в splitter
+        # Добавляем панели в splitter с акцентом на большую область редактирования
         content_splitter.addWidget(left_panel)
         content_splitter.addWidget(self.view)
         content_splitter.addWidget(right_panel)
-        content_splitter.setSizes([300, 1000, 250])
+        content_splitter.setSizes([320, 1200, 280])  # Больше места для холста
 
         main_layout.addWidget(content_splitter)
 
@@ -115,9 +149,25 @@ class EditorWidget(QWidget):
 
     def _populate_ui_with_tools(self):
         button_style = """
-            QToolButton { padding: 4px; border: 1px solid transparent; border-radius: 4px; }
-            QToolButton:hover { border: 1px solid rgba(255, 255, 255, 50); background-color: rgba(255, 255, 255, 20); }
-            QToolButton:checked { background-color: rgba(85, 170, 255, 70); border: 1px solid rgba(85, 170, 255, 150); }
+            QToolButton {
+                padding: 8px;
+                border: 1px solid rgba(240, 246, 252, 0.1);
+                border-radius: 8px;
+                background-color: rgba(22, 27, 34, 0.6);
+                color: #c9d1d9;
+            }
+            QToolButton:hover {
+                border: 1px solid rgba(88, 166, 255, 0.5);
+                background-color: rgba(56, 139, 253, 0.15);
+            }
+            QToolButton:checked {
+                background-color: rgba(88, 166, 255, 0.3);
+                border: 1px solid rgba(88, 166, 255, 0.8);
+                color: #ffffff;
+            }
+            QToolButton:pressed {
+                background-color: rgba(31, 111, 235, 0.4);
+            }
         """
         actions_to_style = []
 

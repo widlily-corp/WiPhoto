@@ -536,6 +536,15 @@ class MainController(QObject):
             else:
                 self.view.show_preview(info.path)
                 metadata = read_exif(info.path)
+
+                # Добавляем GPS данные к метаданным
+                from core.geotag_manager import get_geolocation
+                geolocation = get_geolocation(info.path)
+                if geolocation:
+                    metadata['GPS Координаты'] = f"{geolocation.latitude:.6f}, {geolocation.longitude:.6f}"
+                    if geolocation.altitude:
+                        metadata['GPS Высота'] = f"{geolocation.altitude:.2f} м"
+
                 self.view.update_metadata(metadata)
 
         except Exception as e:
