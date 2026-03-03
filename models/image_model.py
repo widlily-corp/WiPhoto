@@ -5,6 +5,10 @@ from typing import Optional
 from PyQt6.QtGui import QPixmap
 
 
+VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+                    '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts')
+
+
 @dataclass
 class ImageInfo:
     """
@@ -23,3 +27,7 @@ class ImageInfo:
     animals_count: int = 0
     gps_location: Optional[tuple] = None  # (latitude, longitude)
     aspect_ratio: float = 0.0  # Для определения документов
+
+    def is_video(self) -> bool:
+        """Проверяет, является ли файл видео"""
+        return self.path.lower().endswith(VIDEO_EXTENSIONS)

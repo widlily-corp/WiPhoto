@@ -5,8 +5,24 @@ from models.image_model import ImageInfo
 from core.analyzer import process_single_file
 from core.settings_manager import settings
 
-SUPPORTED_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp',
-                        '.arw', '.cr2', '.nef', '.dng', '.raw')
+SUPPORTED_IMAGE_EXTENSIONS = (
+    # Common raster formats
+    '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp',
+    '.ico', '.ppm', '.pgm', '.pbm', '.pnm',
+    # Additional formats
+    '.heic', '.heif', '.avif', '.jp2', '.j2k', '.jpx', '.jpm',
+    # RAW formats
+    '.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
+    '.raf', '.srw', '.x3f', '.3fr', '.ari', '.bay', '.cap', '.iiq', '.eip', '.fff',
+    '.mef', '.mos', '.mrw', '.nrw', '.rwl', '.rwz', '.sr2', '.srf', '.sti'
+)
+
+SUPPORTED_VIDEO_EXTENSIONS = (
+    '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+    '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts'
+)
+
+SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS + SUPPORTED_VIDEO_EXTENSIONS
 
 
 class Scanner(QObject):

@@ -3,11 +3,35 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QSplitter, QListWidget, QLabel, QVBoxLayout,
                              QTableWidget, QAbstractItemView, QHeaderView, QMenu)
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QIcon, QAction, QWheelEvent
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 
 from models.image_model import ImageInfo
 from utils import resource_path,apply_shadow_effect
+
+
+class ThumbnailListWidget(QListWidget):
+    """Custom QListWidget with mouse wheel zoom support"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.icon_sizes = [128, 160, 200, 256, 320, 400, 512]
+        self.current_size_index = 4  # 320 по умолчанию
+
+    def wheelEvent(self, event: QWheelEvent):
+        """Handle mouse wheel to resize thumbnails"""
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0 and self.current_size_index < len(self.icon_sizes) - 1:
+                self.current_size_index += 1
+            elif delta < 0 and self.current_size_index > 0:
+                self.current_size_index -= 1
+
+            new_size = self.icon_sizes[self.current_size_index]
+            self.setIconSize(QSize(new_size, new_size))
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
 
 class GalleryWidget(QWidget):
@@ -37,8 +61,8 @@ class GalleryWidget(QWidget):
 
         self._create_actions()
 
-    def _create_thumbnail_view(self) -> QListWidget:
-        list_widget = QListWidget()
+    def _create_thumbnail_view(self) -> ThumbnailListWidget:
+        list_widget = ThumbnailListWidget()
         list_widget.setViewMode(QListWidget.ViewMode.IconMode)
         list_widget.setIconSize(QSize(320, 320))  # Увеличенный размер превью
         list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)

@@ -14,7 +14,11 @@ import hashlib
 
 # --- Константы ---
 THUMBNAIL_SIZE = (256, 256)
-RAW_FORMATS = ('.arw', '.cr2', '.nef', '.dng', '.raw')
+RAW_FORMATS = ('.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
+               '.raf', '.srw', '.x3f', '.3fr', '.ari', '.bay', '.cap', '.iiq', '.eip', '.fff',
+               '.mef', '.mos', '.mrw', '.nrw', '.rwl', '.rwz', '.sr2', '.srf', '.sti')
+VIDEO_FORMATS = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+                 '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts')
 
 
 def calculate_phash(image: Image.Image) -> str:
@@ -35,15 +39,36 @@ def calculate_sharpness(image: Image.Image) -> float:
         return 0.0
 
 
+def _extract_video_frame(file_path: str) -> Image.Image:
+    """Извлекает первый кадр из видео для миниатюры"""
+    try:
+        cap = cv2.VideoCapture(file_path)
+        ret, frame = cap.read()
+        cap.release()
+
+        if ret and frame is not None:
+            # Конвертируем BGR в RGB
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            return Image.fromarray(rgb_frame)
+        return None
+    except Exception as e:
+        print(f"[ERROR] Ошибка извлечения кадра из видео {file_path}: {e}")
+        return None
+
+
 def _load_image_optimized(file_path: str, for_thumbnail: bool = False) -> Image.Image:
     """
     Оптимизированная загрузка изображения.
     Для RAW файлов пытается извлечь встроенное превью, если это нужно только для миниатюры/хеша.
+    Для видео извлекает первый кадр.
     """
     is_raw = file_path.lower().endswith(RAW_FORMATS)
+    is_video = file_path.lower().endswith(VIDEO_FORMATS)
 
     try:
-        if is_raw:
+        if is_video:
+            return _extract_video_frame(file_path)
+        elif is_raw:
             with rawpy.imread(file_path) as raw:
                 # ОПТИМИЗАЦИЯ: Пытаемся извлечь встроенный thumbnail
                 if for_thumbnail:

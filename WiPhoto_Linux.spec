@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+# Linux build specification for WiPhoto
 
 import os
 import sys
@@ -67,7 +68,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets\\icon.ico'],
 )
 coll = COLLECT(
     exe,

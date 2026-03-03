@@ -522,12 +522,25 @@ class MainController(QObject):
             logging.error(f"Ошибка: {e}")
 
     def _on_edit_requested(self, info: ImageInfo):
-        """Обрабатывает запрос на редактирование"""
+        """Обрабатывает запрос на редактирование или воспроизведение"""
         try:
             print(f"Контроллер: Получен запрос на редактирование файла {info.path}")
-            self.request_editor_display.emit(info)
+
+            # Если это видео - открываем видеоплеер
+            if info.is_video():
+                from views.video_player_widget import VideoPlayerWidget
+                print(f"Открытие видео: {info.path}")
+
+                # Создаем и показываем видеоплеер
+                self.video_player = VideoPlayerWidget(info.path)
+                self.video_player.setWindowTitle(f"Видео - {os.path.basename(info.path)}")
+                self.video_player.resize(1280, 720)
+                self.video_player.show()
+            else:
+                # Для изображений - открываем редактор
+                self.request_editor_display.emit(info)
         except Exception as e:
-            logging.error(f"Ошибка: {e}")
+            logging.error(f"Ошибка открытия файла: {e}")
 
     def _on_thumbnail_selected(self, item):
         """Обрабатывает выбор миниатюры"""
