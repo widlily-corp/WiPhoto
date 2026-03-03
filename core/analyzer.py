@@ -116,12 +116,10 @@ def _create_thumbnail(pil_image: Image.Image, file_path: str) -> str:
 
 def process_single_file(file_path: str) -> dict:
     """
-    Обрабатывает один файл с оптимизациями.
+    Обрабатывает один файл с оптимизациями и автоматическим анализом.
     """
     try:
         # 1. Загружаем изображение (оптимизировано для анализа)
-        # Мы используем режим for_thumbnail=True, так как для хеша и миниатюры
-        # нам не нужно полноразмерное 24MP+ изображение.
         pil_image = _load_image_optimized(file_path, for_thumbnail=True)
 
         if not pil_image:
@@ -136,10 +134,42 @@ def process_single_file(file_path: str) -> dict:
         # 4. Считаем резкость
         sharpness = 0.0
         if settings.get_calculate_sharpness():
-            # Для резкости лучше уменьшить картинку до разумных пределов, если она огромная,
-            # но не слишком сильно, чтобы не потерять детали.
-            # Встроенное превью RAW обычно достаточно большое.
             sharpness = calculate_sharpness(pil_image)
+
+        # 5. АВТОАНАЛИЗ: Определяем лица
+        faces_count = 0
+        try:
+            from core.face_detector import FaceDetector
+            detector = FaceDetector()
+            if detector.available:
+                faces_count = detector.count_faces(file_path)
+        except Exception as e:
+            print(f"[WARN] Ошибка детекции лиц для {file_path}: {e}")
+
+        # 6. АВТОАНАЛИЗ: Определяем животных
+        animals_count = 0
+        try:
+            from core.animal_detector import AnimalDetector
+            detector = AnimalDetector()
+            if detector.available:
+                animals_count = detector.count_animals(file_path)
+        except Exception as e:
+            print(f"[WARN] Ошибка детекции животных для {file_path}: {e}")
+
+        # 7. АВТОАНАЛИЗ: Получаем GPS координаты
+        gps_location = None
+        try:
+            from core.geotag_manager import get_geolocation
+            geolocation = get_geolocation(file_path)
+            if geolocation:
+                gps_location = (geolocation.latitude, geolocation.longitude)
+        except Exception as e:
+            print(f"[WARN] Ошибка получения GPS для {file_path}: {e}")
+
+        # 8. АВТОАНАЛИЗ: Вычисляем aspect ratio (для детекции документов)
+        aspect_ratio = 0.0
+        if pil_image.width > 0 and pil_image.height > 0:
+            aspect_ratio = pil_image.width / pil_image.height
 
         pil_image.close()
 
@@ -147,8 +177,14 @@ def process_single_file(file_path: str) -> dict:
             return None
 
         return {
-            "path": file_path, "phash": phash,
-            "sharpness": sharpness, "thumbnail_path": thumbnail_path
+            "path": file_path,
+            "phash": phash,
+            "sharpness": sharpness,
+            "thumbnail_path": thumbnail_path,
+            "faces_count": faces_count,
+            "animals_count": animals_count,
+            "gps_location": gps_location,
+            "aspect_ratio": aspect_ratio
         }
     except Exception as e:
         print(f"[ERROR] Ошибка обработки файла {file_path}: {e}")

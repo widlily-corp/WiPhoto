@@ -13,12 +13,12 @@ QMainWindow, QDockWidget {
     background-color: #0d1117;
 }
 
-/* Поля ввода, Списки, Таблицы - с эффектом стекла */
+/* Поля ввода, Списки, Таблицы - упрощенные */
 QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QListWidget, QTableWidget, QTreeWidget {
-    background-color: rgba(22, 27, 34, 0.8);
-    border: 1px solid rgba(240, 246, 252, 0.1);
-    border-radius: 8px;
-    padding: 8px;
+    background-color: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 6px;
     color: #c9d1d9;
     selection-background-color: #58a6ff;
     selection-color: #ffffff;
@@ -26,19 +26,19 @@ QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QList
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
     border: 1px solid #58a6ff;
-    background-color: rgba(22, 27, 34, 0.95);
+    background-color: #0d1117;
 }
 
-/* Специфика для списков и таблиц - с анимацией */
+/* Специфика для списков и таблиц - упрощенные */
 QListWidget::item:selected, QTableWidget::item:selected, QTreeWidget::item:selected {
-    background-color: rgba(88, 166, 255, 0.3);
+    background-color: #1f6feb;
     color: #ffffff;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
 }
 QListWidget::item:hover, QTableWidget::item:hover, QTreeWidget::item:hover {
-    background-color: rgba(56, 139, 253, 0.15);
-    border-radius: 6px;
+    background-color: #21262d;
+    border-radius: 4px;
 }
 
 /* Заголовки таблиц */
@@ -51,32 +51,27 @@ QHeaderView::section {
     font-weight: 600;
 }
 
-/* Кнопки - современный дизайн с градиентом */
+/* Кнопки - упрощенный дизайн без градиентов */
 QPushButton {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(33, 38, 45, 0.9),
-                                stop:1 rgba(22, 27, 34, 0.9));
-    border: 1px solid rgba(240, 246, 252, 0.1);
-    border-radius: 8px;
-    padding: 10px 16px;
+    background-color: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 14px;
     color: #c9d1d9;
-    font-weight: 500;
 }
 QPushButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(48, 54, 61, 0.95),
-                                stop:1 rgba(33, 38, 45, 0.95));
-    border-color: rgba(88, 166, 255, 0.5);
+    background-color: #30363d;
+    border-color: #58a6ff;
     color: #ffffff;
 }
 QPushButton:pressed {
-    background-color: rgba(22, 27, 34, 1);
+    background-color: #161b22;
     border-color: #58a6ff;
 }
 QPushButton:disabled {
-    background-color: rgba(22, 27, 34, 0.5);
+    background-color: #161b22;
     color: #484f58;
-    border-color: rgba(240, 246, 252, 0.05);
+    border-color: #21262d;
 }
 
 /* Выпадающие списки */
@@ -136,27 +131,24 @@ QMenu::separator {
     margin: 6px 12px;
 }
 
-/* Ползунки - современный стиль */
+/* Ползунки - упрощенный стиль */
 QSlider::groove:horizontal {
     border: none;
     height: 4px;
-    background: rgba(48, 54, 61, 0.6);
+    background: #30363d;
     margin: 2px 0;
     border-radius: 2px;
 }
 QSlider::handle:horizontal {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 #58a6ff,
-                                stop:1 #1f6feb);
+    background-color: #58a6ff;
     border: 2px solid #0d1117;
-    width: 16px;
-    height: 16px;
-    margin: -6px 0;
-    border-radius: 8px;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
 }
 QSlider::handle:horizontal:hover {
-    background: #58a6ff;
-    border-color: #ffffff;
+    background-color: #79c0ff;
 }
 
 /* Скроллбары - тонкие и элегантные */
@@ -194,33 +186,30 @@ QScrollBar::handle:horizontal:hover {
     background: rgba(88, 166, 255, 0.5);
 }
 
-/* Вкладки - современный дизайн */
+/* Вкладки - упрощенный дизайн */
 QTabWidget::pane {
-    border: 1px solid rgba(48, 54, 61, 0.5);
-    border-radius: 10px;
-    background-color: rgba(13, 17, 23, 0.8);
-    padding: 4px;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    background-color: #0d1117;
+    padding: 2px;
 }
 QTabBar::tab {
-    background: rgba(22, 27, 34, 0.6);
-    border: 1px solid rgba(240, 246, 252, 0.05);
+    background-color: #161b22;
+    border: 1px solid #30363d;
     color: #8b949e;
-    padding: 10px 20px;
-    margin-right: 4px;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    font-weight: 500;
+    padding: 8px 16px;
+    margin-right: 2px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
 }
 QTabBar::tab:selected {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                stop:0 rgba(88, 166, 255, 0.2),
-                                stop:1 rgba(33, 38, 45, 0.9));
+    background-color: #21262d;
     color: #ffffff;
     border-bottom-color: transparent;
-    border: 1px solid rgba(88, 166, 255, 0.3);
+    border-color: #58a6ff;
 }
 QTabBar::tab:hover:!selected {
-    background: rgba(33, 38, 45, 0.8);
+    background-color: #21262d;
     color: #c9d1d9;
 }
 
@@ -243,22 +232,18 @@ QGroupBox::title {
     margin-left: 12px;
 }
 
-/* Диалоги прогресса */
+/* Диалоги прогресса - упрощенные */
 QProgressBar {
-    border: 1px solid rgba(48, 54, 61, 0.5);
-    border-radius: 8px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
     text-align: center;
-    background-color: rgba(22, 27, 34, 0.8);
+    background-color: #161b22;
     color: #c9d1d9;
-    font-weight: 500;
-    height: 24px;
+    height: 20px;
 }
 QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                                stop:0 #1f6feb,
-                                stop:0.5 #58a6ff,
-                                stop:1 #79c0ff);
-    border-radius: 7px;
+    background-color: #58a6ff;
+    border-radius: 5px;
 }
 
 /* Tooltip */

@@ -91,12 +91,14 @@ class MainController(QObject):
         # Сигнал от контроллера к MainWindow
         self.request_editor_display.connect(main_win.switch_to_editor)
 
-        # ===== ДОБАВЬТЕ ЭТИ СТРОКИ =====
         # Подключаем умные коллекции
         if hasattr(main_win, 'smart_collections'):
             main_win.smart_collections.collection_changed.connect(self._on_collection_changed)
             main_win.smart_collections.image_selected.connect(self._on_smart_collection_image_selected)
-        # ================================
+
+        # Подключаем виджет карты
+        if hasattr(main_win, 'map_widget'):
+            main_win.map_widget.image_selected.connect(self._on_smart_collection_image_selected)
 
     # И ДОБАВЬТЕ НОВЫЙ МЕТОД:
 
@@ -314,6 +316,10 @@ class MainController(QObject):
             # Обновляем умные коллекции
             if hasattr(self.view, 'smart_collections'):
                 self.view.smart_collections.set_images(self.image_data)
+
+            # Обновляем виджет карты
+            if hasattr(self.view, 'map_widget'):
+                self.view.map_widget.set_images(self.image_data)
 
         except Exception as e:
             import traceback

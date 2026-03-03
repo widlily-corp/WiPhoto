@@ -109,6 +109,10 @@ class SmartCollectionsWidget(QWidget):
             ("📸 По камере", "by_camera"),
             ("🔍 Все дубликаты", "all_duplicates"),
             ("✨ Уникальные", "unique"),
+            ("😊 С лицами", "with_faces"),
+            ("🐾 С животными", "with_animals"),
+            ("📄 Документы", "documents"),
+            ("🌍 С геотегами", "with_geotags"),
         ]
 
         for name, collection_id in collections:
@@ -167,6 +171,16 @@ class SmartCollectionsWidget(QWidget):
             return [img for img in self.all_images if img.group_id is not None]
         elif collection_id == "unique":
             return [img for img in self.all_images if img.group_id is None]
+        elif collection_id == "with_faces":
+            return [img for img in self.all_images if img.faces_count > 0]
+        elif collection_id == "with_animals":
+            return [img for img in self.all_images if img.animals_count > 0]
+        elif collection_id == "documents":
+            # Документы имеют aspect ratio близкое к A4 (0.707) или Letter (0.773)
+            return [img for img in self.all_images
+                   if 0.65 <= img.aspect_ratio <= 0.85 or 1.18 <= img.aspect_ratio <= 1.54]
+        elif collection_id == "with_geotags":
+            return [img for img in self.all_images if img.gps_location is not None]
 
         return []
 
