@@ -26,9 +26,9 @@ jobs:
       - name: Download ExifTool
         shell: pwsh
         run: |
-          $exiftoolUrl = "https://exiftool.org/exiftool-13.28_64.zip"
+          $exiftoolUrl = "https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download"
           $zipPath = "exiftool.zip"
-          Invoke-WebRequest -Uri $exiftoolUrl -OutFile $zipPath
+          Invoke-WebRequest -Uri $exiftoolUrl -OutFile $zipPath -UserAgent "Mozilla/5.0"
           New-Item -ItemType Directory -Force -Path "exiftool_files"
           Expand-Archive -Path $zipPath -DestinationPath "exiftool_files" -Force
           # Rename exiftool(-k).exe to exiftool.exe
@@ -87,9 +87,16 @@ jobs:
           name: WiPhoto_v2.0.0_Windows
           path: dist/WiPhoto_v2.0.0_Windows.zip
 
-      - name: Upload to release
+      - name: Upload to release (on release event)
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ github.event.release.tag_name }} dist/WiPhoto_v2.0.0_Windows.zip --clobber
+
+      - name: Upload to latest release (on manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload v2.0.0 dist/WiPhoto_v2.0.0_Windows.zip --clobber

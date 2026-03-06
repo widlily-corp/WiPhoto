@@ -31,7 +31,7 @@ def _download_exiftool_windows():
     print("[INFO] Скачивание ExifTool для Windows...")
 
     try:
-        url = "https://exiftool.org/exiftool-13.28_64.zip"
+        url = "https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download"
         zip_path = os.path.join(data_dir, 'exiftool.zip')
         urllib.request.urlretrieve(url, zip_path)
 

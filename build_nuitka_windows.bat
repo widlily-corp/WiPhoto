@@ -31,7 +31,7 @@ pip install nuitka ordered-set zstandard
 if not exist "exiftool_files\exiftool.exe" (
     echo Downloading ExifTool...
     if not exist exiftool_files mkdir exiftool_files
-    powershell -Command "Invoke-WebRequest -Uri 'https://exiftool.org/exiftool-13.28_64.zip' -OutFile 'exiftool.zip'"
+    powershell -Command "Invoke-WebRequest -Uri 'https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download' -OutFile 'exiftool.zip'"
     powershell -Command "Expand-Archive -Path 'exiftool.zip' -DestinationPath 'exiftool_files' -Force"
     powershell -Command "Get-ChildItem 'exiftool_files' -Filter 'exiftool*.exe' | Where-Object { $_.Name -ne 'exiftool.exe' } | ForEach-Object { Rename-Item $_.FullName 'exiftool.exe' }"
     del exiftool.zip
