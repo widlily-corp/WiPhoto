@@ -26,17 +26,15 @@ jobs:
       - name: Download ExifTool
         shell: bash
         run: |
-          mkdir -p exiftool_files
           curl -L -o exiftool.zip "https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download"
-          unzip -o exiftool.zip -d exiftool_files/
+          unzip -o exiftool.zip -d /tmp/exiftool_extract/
+          # Move inner exiftool_files dir to project root (zip has exiftool-13.52_64/exiftool_files/ inside)
+          mv /tmp/exiftool_extract/exiftool-13.52_64/exiftool_files ./exiftool_files
           # Rename exiftool(-k).exe to exiftool.exe
-          for f in exiftool_files/exiftool*.exe; do
-            if [ "$(basename "$f")" != "exiftool.exe" ]; then
-              mv "$f" exiftool_files/exiftool.exe
-            fi
-          done
-          rm -f exiftool.zip
-          ls -la exiftool_files/
+          mv "./exiftool_files/exiftool(-k).exe" ./exiftool_files/exiftool.exe 2>/dev/null || true
+          find ./exiftool_files -maxdepth 1 -name "exiftool*.exe" ! -name "exiftool.exe" -exec mv {} ./exiftool_files/exiftool.exe \;
+          rm -rf exiftool.zip /tmp/exiftool_extract
+          ls -la exiftool_files/exiftool.exe
 
       - name: Build with Nuitka
         run: |
