@@ -1,19 +1,18 @@
 #!/bin/bash
 # ========================================
-# WiPhoto Ubuntu Build Script (Nuitka)
+# WiPhoto v2.0.0 Ubuntu Build Script (Nuitka)
 # ========================================
 
 set -e  # Exit on error
 
 echo "========================================"
-echo "WiPhoto Ubuntu Build with Nuitka"
+echo "WiPhoto v2.0.0 Ubuntu Build with Nuitka"
 echo "========================================"
 echo ""
 
 # Check if running on Ubuntu/Debian
 if ! command -v apt &> /dev/null; then
     echo "WARNING: This script is optimized for Ubuntu/Debian"
-    echo "It may work on other distributions but is not tested"
     read -p "Continue anyway? (y/N) " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -27,26 +26,25 @@ echo ""
 
 MISSING_DEPS=()
 
-# Check for required packages
-if ! dpkg -l | grep -q libgl1-mesa-glx; then
-    MISSING_DEPS+=("libgl1-mesa-glx")
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*libgl1[: ]"; then
+    MISSING_DEPS+=("libgl1")
 fi
-if ! dpkg -l | grep -q libglib2.0-0; then
-    MISSING_DEPS+=("libglib2.0-0")
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*libglib2.0-0"; then
+    MISSING_DEPS+=("libglib2.0-0t64")
 fi
-if ! dpkg -l | grep -q libxcb-xinerama0; then
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*libxcb-xinerama0"; then
     MISSING_DEPS+=("libxcb-xinerama0")
 fi
-if ! dpkg -l | grep -q libxcb-cursor0; then
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*libxcb-cursor0"; then
     MISSING_DEPS+=("libxcb-cursor0")
 fi
-if ! dpkg -l | grep -q libexiftool-perl; then
-    MISSING_DEPS+=("libexiftool-perl")
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*libimage-exiftool-perl"; then
+    MISSING_DEPS+=("libimage-exiftool-perl")
 fi
-if ! dpkg -l | grep -q patchelf; then
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*patchelf"; then
     MISSING_DEPS+=("patchelf")
 fi
-if ! dpkg -l | grep -q ccache; then
+if ! dpkg -l 2>/dev/null | grep -q "^ii.*ccache"; then
     MISSING_DEPS+=("ccache")
 fi
 
@@ -62,8 +60,9 @@ echo "System dependencies OK"
 echo ""
 
 # Setup virtual environment
-if [ ! -d ".venv" ]; then
+if [ ! -f ".venv/bin/activate" ]; then
     echo "Creating virtual environment..."
+    rm -rf .venv
     python3 -m venv .venv
 fi
 
@@ -75,6 +74,7 @@ echo ""
 echo "Installing Python dependencies..."
 pip install --upgrade pip wheel
 pip install -r requirements.txt
+pip install pillow-heif
 pip install nuitka ordered-set zstandard
 
 # Clean previous builds
@@ -89,7 +89,7 @@ mkdir -p dist
 
 echo ""
 echo "========================================"
-echo "Building WiPhoto with Nuitka..."
+echo "Building WiPhoto v2.0.0 with Nuitka..."
 echo "This may take 15-30 minutes..."
 echo "========================================"
 echo ""
@@ -107,25 +107,21 @@ python -m nuitka \
     --include-package=rawpy \
     --include-package=imagehash \
     --include-package=skimage \
-    --include-package=simple_lama_inpainting \
-    --include-package=torch \
-    --include-package=torchvision \
+    --include-package=pillow_heif \
     --include-package-data=cv2 \
-    --include-package-data=simple_lama_inpainting \
-    --include-package-data=torch \
     --nofollow-import-to=matplotlib \
     --nofollow-import-to=scipy \
     --nofollow-import-to=tkinter \
+    --nofollow-import-to=torch \
+    --nofollow-import-to=torchvision \
+    --nofollow-import-to=simple_lama_inpainting \
     --linux-icon=assets/icon.ico \
     --output-dir=build \
     main.py
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo "========================================"
     echo "Build FAILED!"
-    echo "Check the output above for errors."
-    echo "========================================"
     exit 1
 fi
 
@@ -148,22 +144,14 @@ cp liquid_glass.qss dist/WiPhoto_Linux/
 # Create launcher script
 cat > dist/WiPhoto_Linux/wiphoto.sh << 'LAUNCHER_EOF'
 #!/bin/bash
-# WiPhoto Launcher Script
-
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
-
-# Set library paths
 export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"
-
-# Detect and set Qt platform
 if [ -n "$WAYLAND_DISPLAY" ] && [ -z "$FORCE_X11" ]; then
     export QT_QPA_PLATFORM=wayland
 else
     export QT_QPA_PLATFORM=xcb
 fi
-
-# Run WiPhoto
 exec ./WiPhoto "$@"
 LAUNCHER_EOF
 
@@ -171,52 +159,31 @@ chmod +x dist/WiPhoto_Linux/wiphoto.sh
 
 # Create README
 cat > dist/WiPhoto_Linux/README.txt << 'README_EOF'
-WiPhoto v1.5.1 for Linux
+WiPhoto v2.0.0 for Linux
 
 Installation:
-1. Ensure dependencies are installed:
-   sudo apt install libgl1-mesa-glx libexiftool-perl libxcb-xinerama0 libxcb-cursor0
+1. Install dependencies:
+   sudo apt install libgl1 libimage-exiftool-perl libxcb-xinerama0 libxcb-cursor0
 
-2. Run the launcher:
+2. Run:
    ./wiphoto.sh
 
-   Or run directly:
-   ./WiPhoto
-
-For more information:
 https://github.com/widlily-corp/WiPhoto
-
-Troubleshooting:
-- If you see Qt platform errors, try: export QT_QPA_PLATFORM=xcb
-- For Wayland, use: export QT_QPA_PLATFORM=wayland
-- For X11 force: export FORCE_X11=1 && ./wiphoto.sh
 README_EOF
 
 # Create install script
 cat > dist/WiPhoto_Linux/install.sh << 'INSTALL_EOF'
 #!/bin/bash
-# WiPhoto System-wide Installation Script
-
 set -e
-
-echo "Installing WiPhoto v1.5.1..."
-
-# Check for sudo
+echo "Installing WiPhoto v2.0.0..."
 if [ "$EUID" -ne 0 ]; then
-    echo "This script requires sudo privileges"
     exec sudo "$0" "$@"
 fi
-
-# Install to /opt
 INSTALL_DIR="/opt/wiphoto"
-echo "Installing to $INSTALL_DIR..."
-
 mkdir -p "$INSTALL_DIR"
 cp -r ./* "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/WiPhoto"
 chmod +x "$INSTALL_DIR/wiphoto.sh"
-
-# Create desktop entry
 cat > /usr/share/applications/wiphoto.desktop << DESKTOP_EOF
 [Desktop Entry]
 Type=Application
@@ -226,48 +193,34 @@ Exec=$INSTALL_DIR/wiphoto.sh %F
 Icon=$INSTALL_DIR/assets/icon.ico
 Terminal=false
 Categories=Graphics;Photography;
-MimeType=image/jpeg;image/png;image/bmp;image/gif;image/tiff;video/mp4;
+MimeType=image/jpeg;image/png;image/bmp;image/gif;image/tiff;image/heic;video/mp4;
 DESKTOP_EOF
-
-# Create symlink
 ln -sf "$INSTALL_DIR/wiphoto.sh" /usr/local/bin/wiphoto
-
-echo ""
-echo "Installation complete!"
-echo "Run 'wiphoto' from terminal or find WiPhoto in your applications menu"
+echo "Installation complete! Run 'wiphoto' or find WiPhoto in applications menu"
 INSTALL_EOF
 
 chmod +x dist/WiPhoto_Linux/install.sh
 
 echo ""
-echo "========================================"
 echo "Creating archive..."
-echo "========================================"
 
-# Create tarball
 cd dist
-tar -czf WiPhoto_v1.5.1_Linux.tar.gz WiPhoto_Linux/
+tar -czf WiPhoto_v2.0.0_Linux.tar.gz WiPhoto_Linux/
 cd ..
 
-if [ -f "dist/WiPhoto_v1.5.1_Linux.tar.gz" ]; then
+if [ -f "dist/WiPhoto_v2.0.0_Linux.tar.gz" ]; then
     echo ""
     echo "========================================"
     echo "Build completed successfully!"
     echo "========================================"
     echo ""
     echo "Executable: dist/WiPhoto_Linux/WiPhoto"
-    echo "Archive: dist/WiPhoto_v1.5.1_Linux.tar.gz"
+    echo "Archive: dist/WiPhoto_v2.0.0_Linux.tar.gz"
     echo ""
-    ls -lh dist/WiPhoto_v1.5.1_Linux.tar.gz
+    ls -lh dist/WiPhoto_v2.0.0_Linux.tar.gz
     echo ""
-    echo "Test the build:"
-    echo "  cd dist/WiPhoto_Linux"
-    echo "  ./wiphoto.sh"
-    echo ""
+    echo "Test: cd dist/WiPhoto_Linux && ./wiphoto.sh"
 else
-    echo ""
-    echo "========================================"
     echo "Archive creation FAILED!"
-    echo "========================================"
     exit 1
 fi

@@ -3,13 +3,14 @@
 import os
 import logging
 import rawpy
+import cv2
 from PIL import Image
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QPointF
 from PyQt6.QtGui import (QPixmap, QIcon, QImage, QColor, QPainter, QPen, QAction, QActionGroup,
-                         QTransform, QKeySequence, QPalette, QBrush)
+                         QTransform, QKeySequence, QPalette, QBrush, QPolygonF)
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QListWidgetItem,
                              QTableWidgetItem, QToolBar, QStatusBar, QSizePolicy, QSlider, QTabWidget,
-                             QGraphicsDropShadowEffect, QVBoxLayout)
+                             QGraphicsDropShadowEffect, QVBoxLayout, QLabel)
 
 from models.image_model import ImageInfo
 from views.editor_widget import EditorWidget
@@ -22,7 +23,10 @@ from views.map_widget import MapWidget
 from utils import resource_path, apply_shadow_effect
 
 Image.MAX_IMAGE_PIXELS = None
-RAW_FORMATS = ('.arw', '.cr2', '.nef', '.dng', '.raw')
+RAW_FORMATS = ('.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
+               '.raf', '.srw', '.x3f')
+VIDEO_FORMATS = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+                 '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts')
 
 
 class BackgroundWidget(QWidget):
@@ -69,8 +73,9 @@ class MainWindow(QMainWindow):
     thumbnail_size_changed = pyqtSignal(int)
     rotate_requested = pyqtSignal(int)
     style_copy_requested = pyqtSignal()
-    files_dropped = pyqtSignal(list)  # Новый сигнал для Drag&Drop
-    compare_requested = pyqtSignal(list)  # Сигнал для сравнения
+    files_dropped = pyqtSignal(list)
+    compare_requested = pyqtSignal(list)
+    refresh_requested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -388,10 +393,17 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
 
     def _quick_view(self):
-        """Быстрый просмотр (Space)"""
+        """Быстрый просмотр (Space) — полноэкранный оверлей"""
         selected = self._get_selected_image_infos()
-        if len(selected) == 1:
-            self.statusBar().showMessage(f"Быстрый просмотр: {os.path.basename(selected[0].path)}")
+        if len(selected) != 1:
+            return
+        info = selected[0]
+        if not hasattr(self, '_quick_view_overlay') or self._quick_view_overlay is None:
+            self._quick_view_overlay = QuickViewOverlay(self)
+        if self._quick_view_overlay.isVisible():
+            self._quick_view_overlay.hide()
+        else:
+            self._quick_view_overlay.show_image(info.path)
 
     def _next_image(self):
         """Следующее изображение (Right)"""
@@ -410,6 +422,7 @@ class MainWindow(QMainWindow):
     def _refresh_gallery(self):
         """Обновить галерею (F5)"""
         self.statusBar().showMessage("Обновление галереи...")
+        self.refresh_requested.emit()
 
     def _open_about_dialog(self):
         """Открывает диалог 'О программе'"""
@@ -447,6 +460,22 @@ class MainWindow(QMainWindow):
                     try:
                         pixmap = QPixmap(info.thumbnail_path)
                         if not pixmap.isNull():
+                            # Play icon overlay for videos
+                            if info.is_video():
+                                painter = QPainter(pixmap)
+                                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                                cx, cy = pixmap.width() // 2, pixmap.height() // 2
+                                painter.setBrush(QColor(0, 0, 0, 160))
+                                painter.setPen(Qt.PenStyle.NoPen)
+                                painter.drawEllipse(cx - 25, cy - 25, 50, 50)
+                                painter.setBrush(QColor(255, 255, 255, 220))
+                                triangle = QPolygonF([
+                                    QPointF(cx - 10, cy - 15),
+                                    QPointF(cx - 10, cy + 15),
+                                    QPointF(cx + 15, cy)
+                                ])
+                                painter.drawPolygon(triangle)
+                                painter.end()
                             icon = QIcon(pixmap)
                             item = QListWidgetItem(icon, os.path.basename(info.path))
                             item.setData(Qt.ItemDataRole.UserRole, info)
@@ -573,12 +602,23 @@ class MainWindow(QMainWindow):
             logging.error(f"Ошибка удаления миниатюр: {e}")
 
     def show_preview(self, image_path: str):
-        """Показывает превью изображения"""
+        """Показывает превью изображения или кадр видео"""
         try:
             pil_image = None
             is_raw = image_path.lower().endswith(RAW_FORMATS)
+            is_video = image_path.lower().endswith(VIDEO_FORMATS)
 
-            if is_raw:
+            if is_video:
+                cap = cv2.VideoCapture(image_path)
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    pil_image = Image.fromarray(rgb)
+                else:
+                    self.gallery_widget.preview_area.setText("Не удалось загрузить видео")
+                    return
+            elif is_raw:
                 with rawpy.imread(image_path) as raw:
                     rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
                 pil_image = Image.fromarray(rgb)
@@ -640,3 +680,69 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.error(f"Ошибка при закрытии окна: {e}")
             event.accept()
+
+
+class QuickViewOverlay(QWidget):
+    """Полноэкранный оверлей быстрого просмотра (Space)"""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setStyleSheet("background-color: rgba(0, 0, 0, 220);")
+        self._label = QLabel(self)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.addWidget(self._label)
+        self.hide()
+
+    def show_image(self, image_path: str):
+        self.setGeometry(self.parent().rect())
+        try:
+            is_video = image_path.lower().endswith(VIDEO_FORMATS)
+            is_raw = image_path.lower().endswith(RAW_FORMATS)
+
+            if is_video:
+                cap = cv2.VideoCapture(image_path)
+                ret, frame = cap.read()
+                cap.release()
+                if ret:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, ch = rgb.shape
+                    q_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888).copy()
+                    pixmap = QPixmap.fromImage(q_img)
+                else:
+                    self._label.setText("Не удалось загрузить видео")
+                    self.show()
+                    self.raise_()
+                    return
+            elif is_raw:
+                with rawpy.imread(image_path) as raw:
+                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
+                pil_img = Image.fromarray(rgb)
+                if pil_img.mode != 'RGB':
+                    pil_img = pil_img.convert('RGB')
+                q_img = QImage(pil_img.tobytes(), pil_img.width, pil_img.height,
+                               pil_img.width * 3, QImage.Format.Format_RGB888)
+                pixmap = QPixmap.fromImage(q_img)
+            else:
+                pixmap = QPixmap(image_path)
+
+            if not pixmap.isNull():
+                self._label.setPixmap(pixmap.scaled(
+                    self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                ))
+            else:
+                self._label.setText("Не удалось загрузить изображение")
+        except Exception as e:
+            self._label.setText(f"Ошибка: {e}")
+
+        self.show()
+        self.raise_()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Escape):
+            self.hide()
+
+    def mousePressEvent(self, event):
+        self.hide()

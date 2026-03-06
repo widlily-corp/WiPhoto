@@ -26,7 +26,9 @@ class ImageInfo:
     faces_count: int = 0
     animals_count: int = 0
     gps_location: Optional[tuple] = None  # (latitude, longitude)
-    aspect_ratio: float = 0.0  # Для определения документов
+    aspect_ratio: float = 0.0
+    camera_model: str = ""
+    date_taken: str = ""
 
     def is_video(self) -> bool:
         """Проверяет, является ли файл видео"""

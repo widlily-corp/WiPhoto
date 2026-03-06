@@ -6,13 +6,4 @@ opencv-python>=4.8.0
 scikit-image>=0.21.0
 imagehash>=4.3.0
 rawpy>=0.18.0
-
-# New Features (v1.5+)
-# All features use OpenCV built-in capabilities (no extra deps):
-# - Face detection (Haar Cascades)
-# - Animal detection (Haar Cascades)
-# - Document scanning (contours & perspective transform)
-# - Geotag parsing (built-in)
-
-# Build Tools
-cx-Freeze>=6.15.0
+pillow-heif>=0.13.0

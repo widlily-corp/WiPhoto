@@ -87,6 +87,8 @@ class MainController(QObject):
         main_win.thumbnail_size_changed.connect(self.view.set_thumbnail_size)
         main_win.files_dropped.connect(self.handle_dropped_files)
         main_win.compare_requested.connect(self.handle_compare)
+        if hasattr(main_win, 'refresh_requested'):
+            main_win.refresh_requested.connect(self._handle_refresh)
 
         # Сигнал от контроллера к MainWindow
         self.request_editor_display.connect(main_win.switch_to_editor)
@@ -95,6 +97,7 @@ class MainController(QObject):
         if hasattr(main_win, 'smart_collections'):
             main_win.smart_collections.collection_changed.connect(self._on_collection_changed)
             main_win.smart_collections.image_selected.connect(self._on_smart_collection_image_selected)
+            main_win.smart_collections.delete_requested.connect(self.handle_delete)
 
         # Подключаем виджет карты
         if hasattr(main_win, 'map_widget'):
@@ -770,6 +773,28 @@ class MainController(QObject):
 
         except Exception as e:
             QMessageBox.critical(self.view, "Ошибка", f"Произошла ошибка: {e}")
+
+    def _handle_refresh(self):
+        """Обработка F5 — повторное сканирование текущей папки"""
+        if self.image_data:
+            folder = os.path.dirname(self.image_data[0].path)
+            self.start_scan(folder, True)
+
+    def _run_advanced_duplicate_search(self, method: str = "phash"):
+        """Быстрый пересчёт дубликатов без диалога (после удаления/перемещения)"""
+        try:
+            threshold = settings.get_hamming_threshold()
+            if method == "combined":
+                groups = self.duplicate_finder.find_duplicates_combined(
+                    self.image_data, methods=["phash", "dhash"], threshold=threshold)
+            else:
+                groups = self.duplicate_finder.find_duplicates_single_method(
+                    self.image_data, method=method, threshold=threshold)
+            self.duplicate_finder.apply_groups_to_images(groups, mark_best=True)
+            self.groups = groups
+            self.view.update_thumbnail_styles()
+        except Exception as e:
+            logging.error(f"Ошибка пересчёта дубликатов: {e}")
 
     def cleanup(self):
         """Корректное завершение работы контроллера"""

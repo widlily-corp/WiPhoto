@@ -19,6 +19,7 @@ class SmartCollectionsWidget(QWidget):
 
     collection_changed = pyqtSignal(str)
     image_selected = pyqtSignal(ImageInfo)
+    delete_requested = pyqtSignal(list)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -165,7 +166,7 @@ class SmartCollectionsWidget(QWidget):
             raw_exts = ('.arw', '.cr2', '.nef', '.dng', '.raw')
             return [img for img in self.all_images if img.path.lower().endswith(raw_exts)]
         elif collection_id == "by_camera":
-            return self.all_images
+            return [img for img in self.all_images if img.camera_model]
         elif collection_id == "all_duplicates":
             return [img for img in self.all_images if img.group_id is not None]
         elif collection_id == "unique":
@@ -180,12 +181,19 @@ class SmartCollectionsWidget(QWidget):
         return []
 
     def _filter_by_date(self, date_condition) -> list[ImageInfo]:
-        """Фильтрует по дате модификации файла"""
+        """Фильтрует по дате (EXIF date_taken или mtime)"""
         result = []
         for img in self.all_images:
             try:
-                mtime = os.path.getmtime(img.path)
-                file_date = datetime.fromtimestamp(mtime)
+                file_date = None
+                if img.date_taken:
+                    try:
+                        file_date = datetime.strptime(img.date_taken, "%Y:%m:%d %H:%M:%S")
+                    except ValueError:
+                        pass
+                if file_date is None:
+                    mtime = os.path.getmtime(img.path)
+                    file_date = datetime.fromtimestamp(mtime)
                 if date_condition(file_date):
                     result.append(img)
             except Exception as e:
@@ -249,21 +257,7 @@ class SmartCollectionsWidget(QWidget):
                 subprocess.run(['xdg-open', os.path.dirname(info.path)])
 
     def _delete_image(self, item: QListWidgetItem):
-        """Удаляет изображение"""
+        """Удаляет изображение через контроллер"""
         info = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(info, ImageInfo):
-            reply = QMessageBox.question(
-                self,
-                "Подтверждение",
-                f"Удалить файл {os.path.basename(info.path)}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-
-            if reply == QMessageBox.StandardButton.Yes:
-                try:
-                    os.remove(info.path)
-                    self.images_grid.takeItem(self.images_grid.row(item))
-                    self.all_images.remove(info)
-                    QMessageBox.information(self, "Успех", "Файл удален")
-                except Exception as e:
-                    QMessageBox.critical(self, "Ошибка", f"Не удалось удалить:\n{e}")
+            self.delete_requested.emit([info])

@@ -11,10 +11,14 @@ def resource_path(relative_path):
     Получает абсолютный путь к ресурсу, работает как для dev, так и для PyInstaller.
     """
     try:
-        # PyInstaller создает временную папку и сохраняет путь в _MEIPASS
+        # PyInstaller
         base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    except AttributeError:
+        if getattr(sys, 'frozen', False):
+            # Nuitka standalone
+            base_path = os.path.dirname(sys.executable)
+        else:
+            base_path = os.path.abspath(".")
 
     full_path = os.path.join(base_path, relative_path)
 

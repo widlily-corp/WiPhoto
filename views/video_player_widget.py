@@ -84,30 +84,52 @@ class VideoPlayerWidget(QWidget):
         # Buttons row
         buttons_layout = QHBoxLayout()
 
+        btn_style = """
+            QPushButton {
+                background-color: #1f6feb;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:hover { background-color: #58a6ff; }
+            QPushButton:pressed { background-color: #0969da; }
+        """
+
+        # Step back button
+        self.step_back_btn = QPushButton()
+        self.step_back_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSkipBackward))
+        self.step_back_btn.clicked.connect(self._step_backward)
+        self.step_back_btn.setFixedSize(32, 32)
+        self.step_back_btn.setStyleSheet(btn_style)
+        self.step_back_btn.setToolTip("Кадр назад (←)")
+        buttons_layout.addWidget(self.step_back_btn)
+
         # Play/Pause button
         self.play_button = QPushButton()
         self.play_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self.play_button.clicked.connect(self._toggle_play)
         self.play_button.setFixedSize(40, 40)
-        self.play_button.setStyleSheet("""
-            QPushButton {
-                background-color: #1f6feb;
-                border: none;
-                border-radius: 20px;
-            }
-            QPushButton:hover {
-                background-color: #58a6ff;
-            }
-            QPushButton:pressed {
-                background-color: #0969da;
-            }
-        """)
+        self.play_button.setStyleSheet(btn_style.replace("16px", "20px"))
+        self.play_button.setToolTip("Воспроизведение (Space)")
         buttons_layout.addWidget(self.play_button)
+
+        # Step forward button
+        self.step_fwd_btn = QPushButton()
+        self.step_fwd_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaSkipForward))
+        self.step_fwd_btn.clicked.connect(self._step_forward)
+        self.step_fwd_btn.setFixedSize(32, 32)
+        self.step_fwd_btn.setStyleSheet(btn_style)
+        self.step_fwd_btn.setToolTip("Кадр вперед (→)")
+        buttons_layout.addWidget(self.step_fwd_btn)
 
         # Time label
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setStyleSheet("color: #8b949e; font-size: 12px;")
         buttons_layout.addWidget(self.time_label)
+
+        # No audio indicator
+        no_audio = QLabel("🔇 Без звука")
+        no_audio.setStyleSheet("color: #484f58; font-size: 11px;")
+        buttons_layout.addWidget(no_audio)
 
         buttons_layout.addStretch()
 
@@ -167,9 +189,8 @@ class VideoPlayerWidget(QWidget):
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb_frame.shape
             bytes_per_line = ch * w
-            q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+            q_image = QImage(rgb_frame.data, w, h, bytes_per_line, QImage.Format.Format_RGB888).copy()
 
-            # Scale to fit label while maintaining aspect ratio
             pixmap = QPixmap.fromImage(q_image)
             scaled_pixmap = pixmap.scaled(
                 self.video_label.size(),
@@ -236,8 +257,34 @@ class VideoPlayerWidget(QWidget):
         self.closed.emit()
         self.close()
 
+    def _step_forward(self):
+        """Один кадр вперед"""
+        if self.cap and self.current_frame < self.total_frames - 1:
+            if self.is_playing:
+                self._toggle_play()
+            self._update_frame()
+
+    def _step_backward(self):
+        """Один кадр назад"""
+        if self.cap and self.current_frame > 1:
+            if self.is_playing:
+                self._toggle_play()
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame - 2)
+            self._update_frame()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Space:
+            self._toggle_play()
+        elif event.key() == Qt.Key.Key_Right:
+            self._step_forward()
+        elif event.key() == Qt.Key.Key_Left:
+            self._step_backward()
+        elif event.key() == Qt.Key.Key_Escape:
+            self._on_close()
+        else:
+            super().keyPressEvent(event)
+
     def closeEvent(self, event):
-        """Handle widget close event"""
         if self.timer.isActive():
             self.timer.stop()
         if self.cap:

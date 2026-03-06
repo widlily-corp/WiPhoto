@@ -7,10 +7,16 @@ import rawpy
 import numpy as np
 import cv2
 import imagehash
-from PIL import Image, UnidentifiedImageError  # <<< ИМПОРТИРУЕМ UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 from skimage.exposure import match_histograms
 from core.settings_manager import settings
 import hashlib
+
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 # --- Константы ---
 THUMBNAIL_SIZE = (256, 256)
@@ -165,7 +171,7 @@ def process_single_file(file_path: str) -> dict:
         faces_count = 0
         try:
             from core.face_detector import FaceDetector
-            detector = FaceDetector()
+            detector = FaceDetector.get_instance()
             if detector.available:
                 faces_count = detector.count_faces(file_path)
         except Exception as e:
@@ -175,7 +181,7 @@ def process_single_file(file_path: str) -> dict:
         animals_count = 0
         try:
             from core.animal_detector import AnimalDetector
-            detector = AnimalDetector()
+            detector = AnimalDetector.get_instance()
             if detector.available:
                 animals_count = detector.count_animals(file_path)
         except Exception as e:
@@ -191,10 +197,21 @@ def process_single_file(file_path: str) -> dict:
         except Exception as e:
             print(f"[WARN] Ошибка получения GPS для {file_path}: {e}")
 
-        # 8. АВТОАНАЛИЗ: Вычисляем aspect ratio (для детекции документов)
+        # 8. АВТОАНАЛИЗ: Вычисляем aspect ratio
         aspect_ratio = 0.0
         if pil_image.width > 0 and pil_image.height > 0:
             aspect_ratio = pil_image.width / pil_image.height
+
+        # 9. АВТОАНАЛИЗ: Камера и дата из EXIF
+        camera_model = ""
+        date_taken = ""
+        try:
+            from core.metadata_reader import read_metadata
+            meta = read_metadata(file_path)
+            camera_model = meta.get("Camera Model Name", "")
+            date_taken = meta.get("Date/Time Original", "")
+        except Exception:
+            pass
 
         pil_image.close()
 
@@ -209,7 +226,9 @@ def process_single_file(file_path: str) -> dict:
             "faces_count": faces_count,
             "animals_count": animals_count,
             "gps_location": gps_location,
-            "aspect_ratio": aspect_ratio
+            "aspect_ratio": aspect_ratio,
+            "camera_model": camera_model,
+            "date_taken": date_taken,
         }
     except Exception as e:
         print(f"[ERROR] Ошибка обработки файла {file_path}: {e}")

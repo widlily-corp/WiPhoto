@@ -111,7 +111,6 @@ def check_critical_files():
     """Проверяет наличие критически важных файлов"""
     critical_files = [
         "assets/icon.ico",
-        "assets/background.png",
         "liquid_glass.qss"
     ]
 
