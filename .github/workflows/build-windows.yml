@@ -35,6 +35,26 @@ jobs:
           rm -rf exiftool.zip /tmp/exiftool_extract
           ls -la exiftool_files/exiftool.exe
 
+      - name: Install dependency walker for Nuitka
+        shell: bash
+        run: |
+          python -m nuitka --help >/dev/null 2>&1 || true
+          # Nuitka needs dependency walker on Windows standalone
+          pip install ordered-set
+          python -c "
+          import urllib.request, zipfile, os, sys
+          url = 'https://dependencywalker.com/depends22_x64.zip'
+          dest = os.path.join(os.path.dirname(sys.executable), 'depends.exe')
+          if not os.path.exists(dest):
+              urllib.request.urlretrieve(url, 'depends.zip')
+              with zipfile.ZipFile('depends.zip') as z:
+                  z.extractall(os.path.dirname(sys.executable))
+              os.remove('depends.zip')
+              print('Dependency Walker installed')
+          else:
+              print('Dependency Walker already present')
+          "
+
       - name: Build with Nuitka
         run: |
           python -m nuitka `
