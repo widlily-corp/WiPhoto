@@ -213,14 +213,16 @@ def main():
     # Логируем системную информацию
     log_system_info()
 
-    # Проверяем и скачиваем ExifTool если нужно
+    # Проверяем ExifTool (на Windows — авто-скачивание, на Linux — подсказка apt)
     logging.info("\nПроверка ExifTool...")
     try:
-        from core.exiftool_downloader import ensure_exiftool_available
-        if ensure_exiftool_available(show_ui=False):
-            logging.info("ExifTool доступен")
+        from core.metadata_reader import EXIFTOOL_AVAILABLE, EXIFTOOL_PATH
+        if EXIFTOOL_AVAILABLE:
+            logging.info(f"ExifTool доступен: {EXIFTOOL_PATH}")
         else:
-            logging.warning("ExifTool не установлен - метаданные EXIF будут недоступны")
+            logging.warning("ExifTool не найден — метаданные EXIF будут недоступны")
+            if not sys.platform.startswith('win'):
+                logging.warning("Установите: sudo apt install libimage-exiftool-perl")
     except Exception as e:
         logging.error(f"Ошибка проверки ExifTool: {e}")
 

@@ -3,15 +3,65 @@
 import subprocess
 import os
 import sys
+import logging
+
+
+def _get_app_data_dir():
+    """Возвращает директорию данных приложения"""
+    if sys.platform.startswith('win'):
+        base = os.environ.get('LOCALAPPDATA', os.path.expanduser('~'))
+        return os.path.join(base, 'WiPhoto')
+    else:
+        return os.path.join(os.path.expanduser('~'), '.local', 'share', 'wiphoto')
+
+
+def _download_exiftool_windows():
+    """Скачивает ExifTool для Windows автоматически"""
+    import zipfile
+    import urllib.request
+
+    data_dir = _get_app_data_dir()
+    exiftool_dir = os.path.join(data_dir, 'exiftool_files')
+    exiftool_exe = os.path.join(exiftool_dir, 'exiftool.exe')
+
+    if os.path.exists(exiftool_exe):
+        return exiftool_exe
+
+    os.makedirs(exiftool_dir, exist_ok=True)
+    print("[INFO] Скачивание ExifTool для Windows...")
+
+    try:
+        url = "https://exiftool.org/exiftool-13.28_64.zip"
+        zip_path = os.path.join(data_dir, 'exiftool.zip')
+        urllib.request.urlretrieve(url, zip_path)
+
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            zf.extractall(exiftool_dir)
+
+        # exiftool zip содержит exiftool(-k).exe — переименовываем
+        for f in os.listdir(exiftool_dir):
+            if f.lower().startswith('exiftool') and f.lower().endswith('.exe'):
+                src = os.path.join(exiftool_dir, f)
+                if src != exiftool_exe:
+                    os.rename(src, exiftool_exe)
+                    break
+
+        os.remove(zip_path)
+        print(f"[OK] ExifTool установлен: {exiftool_exe}")
+        return exiftool_exe
+    except Exception as e:
+        logging.error(f"Не удалось скачать ExifTool: {e}")
+        return None
 
 
 def get_exiftool_path():
-    """Возвращает корректный путь к exiftool в зависимости от режима запуска и ОС"""
+    """Возвращает путь к exiftool, при необходимости скачивает"""
     if sys.platform.startswith('win'):
         exiftool_name = 'exiftool.exe'
     else:
         exiftool_name = 'exiftool'
 
+    # 1. Проверяем рядом с приложением (bundled)
     if getattr(sys, 'frozen', False):
         if hasattr(sys, '_MEIPASS'):
             base_path = sys._MEIPASS
@@ -20,26 +70,35 @@ def get_exiftool_path():
     else:
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    exiftool_dir = os.path.join(base_path, 'exiftool_files')
-    exiftool_path = os.path.join(exiftool_dir, exiftool_name)
+    for check_dir in [os.path.join(base_path, 'exiftool_files'), base_path]:
+        path = os.path.join(check_dir, exiftool_name)
+        if os.path.exists(path):
+            return path
 
-    if os.path.exists(exiftool_path):
-        return exiftool_path
+    # 2. Проверяем в данных приложения (скачанный ранее)
+    data_path = os.path.join(_get_app_data_dir(), 'exiftool_files', exiftool_name)
+    if os.path.exists(data_path):
+        return data_path
 
-    exiftool_path = os.path.join(base_path, exiftool_name)
-    if os.path.exists(exiftool_path):
-        return exiftool_path
-
+    # 3. Linux: системный exiftool
     if not sys.platform.startswith('win'):
         import shutil
         system_exiftool = shutil.which('exiftool')
         if system_exiftool:
             return system_exiftool
 
-    return os.path.join(exiftool_dir, exiftool_name)
+    # 4. Windows: скачиваем автоматически
+    if sys.platform.startswith('win'):
+        downloaded = _download_exiftool_windows()
+        if downloaded:
+            return downloaded
+
+    return data_path  # fallback path
 
 
+# Флаг доступности
 EXIFTOOL_PATH = get_exiftool_path()
+EXIFTOOL_AVAILABLE = os.path.exists(EXIFTOOL_PATH)
 
 TAG_MAP = {
     "Make": "Камера (производитель)",
