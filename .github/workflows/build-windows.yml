@@ -28,11 +28,10 @@ jobs:
         run: |
           curl -L -o exiftool.zip "https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download"
           unzip -o exiftool.zip -d /tmp/exiftool_extract/
-          # Move inner exiftool_files dir to project root (zip has exiftool-13.52_64/exiftool_files/ inside)
+          # Zip structure: exiftool-13.52_64/exiftool_files/ (perl+libs) + exiftool-13.52_64/exiftool(-k).exe
           mv /tmp/exiftool_extract/exiftool-13.52_64/exiftool_files ./exiftool_files
-          # Rename exiftool(-k).exe to exiftool.exe
-          mv "./exiftool_files/exiftool(-k).exe" ./exiftool_files/exiftool.exe 2>/dev/null || true
-          find ./exiftool_files -maxdepth 1 -name "exiftool*.exe" ! -name "exiftool.exe" -exec mv {} ./exiftool_files/exiftool.exe \;
+          # The exe is at top level of the extracted dir, not inside exiftool_files
+          cp /tmp/exiftool_extract/exiftool-13.52_64/exiftool*.exe ./exiftool_files/exiftool.exe
           rm -rf exiftool.zip /tmp/exiftool_extract
           ls -la exiftool_files/exiftool.exe
 
