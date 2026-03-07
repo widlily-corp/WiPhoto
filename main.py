@@ -111,7 +111,7 @@ def check_critical_files():
     """Проверяет наличие критически важных файлов"""
     critical_files = [
         "assets/icon.ico",
-        "liquid_glass.qss"
+        "pro_dark.qss"
     ]
 
     missing_files = []
@@ -177,7 +177,7 @@ def load_stylesheet(app):
     Использует .replace вместо .format во избежание конфликтов с фигурными скобками CSS.
     """
     try:
-        stylesheet_path = resource_path("liquid_glass.qss")
+        stylesheet_path = resource_path("pro_dark.qss")
         if not os.path.exists(stylesheet_path):
             logging.warning(f"Файл стилей не найден: {stylesheet_path}")
             return False
@@ -243,7 +243,7 @@ def main():
 
         app = QApplication(sys.argv)
         app.setApplicationName("WiPhoto")
-        app.setApplicationVersion("2.0.0")
+        app.setApplicationVersion("2.1.0")
         app.setOrganizationName("Widlily Corporation")
 
         logging.info("QApplication создан успешно")
@@ -252,9 +252,6 @@ def main():
         logging.critical(f"Не удалось создать QApplication: {e}")
         logging.critical(traceback.format_exc())
         return 1
-
-    # Устанавливаем темную палитру ДО загрузки стилей
-    set_dark_palette(app)
 
     # Загружаем стили
     load_stylesheet(app)

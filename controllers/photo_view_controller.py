@@ -75,6 +75,7 @@ class MainController(QObject):
 
         # Сигналы от GalleryWidget
         gallery.thumbnail_view.itemClicked.connect(self._on_thumbnail_selected)
+        gallery.thumbnail_view.itemDoubleClicked.connect(self._on_thumbnail_double_clicked)
         gallery.edit_requested.connect(self._on_edit_requested)
 
         # Сигналы от MainWindow
@@ -93,23 +94,39 @@ class MainController(QObject):
         # Сигнал от контроллера к MainWindow
         self.request_editor_display.connect(main_win.switch_to_editor)
 
-        # Подключаем умные коллекции
+        # Подключаем умные коллекции (sidebar)
         if hasattr(main_win, 'smart_collections'):
+            main_win.smart_collections.collection_selected.connect(self._on_collection_filter_applied)
             main_win.smart_collections.collection_changed.connect(self._on_collection_changed)
-            main_win.smart_collections.image_selected.connect(self._on_smart_collection_image_selected)
-            main_win.smart_collections.delete_requested.connect(self.handle_delete)
 
         # Подключаем виджет карты
         if hasattr(main_win, 'map_widget'):
-            main_win.map_widget.image_selected.connect(self._on_smart_collection_image_selected)
+            main_win.map_widget.image_selected.connect(self._on_map_image_selected)
 
-    # И ДОБАВЬТЕ НОВЫЙ МЕТОД:
-
-    def _on_smart_collection_image_selected(self, info: ImageInfo):
-        """Обработка выбора изображения из умной коллекции"""
+    def _on_map_image_selected(self, info: ImageInfo):
+        """Обработка выбора изображения с карты"""
         try:
-            print(f"Открытие изображения из умной коллекции: {info.path}")
-            self.request_editor_display.emit(info)
+            self.view.show_preview(info.path)
+            self.view.update_ai_info(info)
+        except Exception as e:
+            logging.error(f"Ошибка: {e}")
+
+    def _on_collection_filter_applied(self, filtered_images: list):
+        """Фильтрация галереи по выбранной коллекции"""
+        try:
+            self.view.clear_thumbnails()
+            self.view.add_thumbnails_batch(filtered_images)
+            self.view.statusBar().showMessage(f"Показано: {len(filtered_images)} из {len(self.image_data)}")
+            self.view.switch_to_gallery()
+        except Exception as e:
+            logging.error(f"Ошибка фильтрации коллекции: {e}")
+
+    def _on_thumbnail_double_clicked(self, item):
+        """Обработка двойного клика — редактирование/видеоплеер"""
+        try:
+            info = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(info, ImageInfo):
+                self._on_edit_requested(info)
         except Exception as e:
             logging.error(f"Ошибка: {e}")
 
@@ -278,11 +295,9 @@ class MainController(QObject):
             self.view.comparison_view.load_images(image_infos)
             print(f"Сравнение: {image_infos[0].path} vs {image_infos[1].path}")
 
-    def _on_collection_changed(self, collection_name: str):
+    def _on_collection_changed(self, collection_id: str):
         """Обработка смены умной коллекции"""
-        print(f"Выбрана коллекция: {collection_name}")
-        # Обновляем данные в умных коллекциях
-
+        logging.info(f"Коллекция: {collection_id}")
 
     def _on_image_processed(self, info: ImageInfo):
         """Обрабатывает сигнал о готовности изображения"""
@@ -546,7 +561,7 @@ class MainController(QObject):
             logging.error(f"Ошибка открытия файла: {e}")
 
     def _on_thumbnail_selected(self, item):
-        """Обрабатывает выбор миниатюры"""
+        """Обрабатывает выбор миниатюры — обновляет правый сайдбар"""
         try:
             info = item.data(Qt.ItemDataRole.UserRole)
 
@@ -559,15 +574,16 @@ class MainController(QObject):
                 self.view.show_preview(info.path)
                 metadata = read_exif(info.path)
 
-                # Добавляем GPS данные к метаданным
+                # GPS данные
                 from core.geotag_manager import get_geolocation
                 geolocation = get_geolocation(info.path)
                 if geolocation:
-                    metadata['GPS Координаты'] = f"{geolocation.latitude:.6f}, {geolocation.longitude:.6f}"
+                    metadata['GPS'] = f"{geolocation.latitude:.6f}, {geolocation.longitude:.6f}"
                     if geolocation.altitude:
-                        metadata['GPS Высота'] = f"{geolocation.altitude:.2f} м"
+                        metadata['Высота'] = f"{geolocation.altitude:.2f} м"
 
                 self.view.update_metadata(metadata)
+                self.view.update_ai_info(info)
 
         except Exception as e:
             logging.error(f"Ошибка: {e}")
