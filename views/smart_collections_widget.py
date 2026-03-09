@@ -44,19 +44,22 @@ class SmartCollectionsWidget(QWidget):
 
     def _add_standard_collections(self):
         collections = [
-            ("Все файлы", "all"),
-            ("Сегодня", "today"),
-            ("Эта неделя", "this_week"),
-            ("Этот месяц", "this_month"),
-            ("Лучшие", "best_quality"),
-            ("Высокая резкость", "sharp"),
-            ("RAW файлы", "raw_files"),
-            ("По камере", "by_camera"),
-            ("Дубликаты", "all_duplicates"),
-            ("Уникальные", "unique"),
-            ("С лицами", "with_faces"),
-            ("С животными", "with_animals"),
-            ("С геотегами", "with_geotags"),
+            ("\U0001f4c2 Все файлы", "all"),
+            ("\U0001f4c5 Сегодня", "today"),
+            ("\U0001f5d3 Эта неделя", "this_week"),
+            ("\U0001f4c6 Этот месяц", "this_month"),
+            ("\u2b50 Лучшие", "best_quality"),
+            ("\U0001f50d Высокая резкость", "sharp"),
+            ("\U0001f4f7 RAW файлы", "raw_files"),
+            ("\U0001f4f8 По камере", "by_camera"),
+            ("\U0001f501 Дубликаты", "all_duplicates"),
+            ("\u2728 Уникальные", "unique"),
+            ("\U0001f464 С лицами", "with_faces"),
+            ("\U0001f43e С животными", "with_animals"),
+            ("\U0001f4cd С геотегами", "with_geotags"),
+            ("\u2b50 По рейтингу (4+)", "rated_high"),
+            ("\U0001f3ac Видео", "videos"),
+            ("\U0001f5d1 Корзина", "trash"),
         ]
 
         for name, collection_id in collections:
@@ -113,8 +116,26 @@ class SmartCollectionsWidget(QWidget):
             return [img for img in self.all_images if img.animals_count > 0]
         elif collection_id == "with_geotags":
             return [img for img in self.all_images if img.gps_location is not None]
+        elif collection_id == "rated_high":
+            return [img for img in self.all_images if img.rating >= 4]
+        elif collection_id == "videos":
+            return [img for img in self.all_images if img.is_video()]
+        elif collection_id == "trash":
+            return self._get_trash_items()
 
         return []
+
+    def _get_trash_items(self) -> list:
+        """Get items from WiPhoto trash"""
+        trash_dir = os.path.join(os.path.expanduser("~"), ".wiphoto", "trash")
+        if not os.path.isdir(trash_dir):
+            return []
+        items = []
+        for f in os.listdir(trash_dir):
+            path = os.path.join(trash_dir, f)
+            if os.path.isfile(path):
+                items.append(ImageInfo(path=path))
+        return items
 
     def _filter_by_date(self, date_condition) -> list:
         result = []

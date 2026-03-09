@@ -1,8 +1,11 @@
 
+import logging
 from PyQt6.QtCore import QThread, pyqtSignal
 from PIL import Image
 import numpy as np
 import cv2
+
+logger = logging.getLogger(__name__)
 
 
 class LocalInpaintingWorker(QThread):
@@ -17,7 +20,7 @@ class LocalInpaintingWorker(QThread):
 
     def run(self):
         try:
-            print("[Inpainting] Старт улучшенного удаления объектов...")
+            logger.info("Старт улучшенного удаления объектов...")
 
             # Сохраняем оригинальный размер
             orig_w, orig_h = self.original_image.size
@@ -35,14 +38,14 @@ class LocalInpaintingWorker(QThread):
             # Попытка использования LaMa с улучшенными параметрами
             try:
                 from simple_lama_inpainting import SimpleLama
-                print("[LaMa] Использование нейросетевой модели LaMa...")
+                logger.info("Использование нейросетевой модели LaMa...")
 
                 # Оптимальный размер для качества
                 max_size = 2048
                 needs_resize = False
 
                 if max(orig_w, orig_h) > max_size:
-                    print(f"[LaMa] Масштабирование с {orig_w}x{orig_h} до {max_size}px...")
+                    logger.info(f"Масштабирование с {orig_w}x{orig_h} до {max_size}px...")
                     ratio = min(max_size / orig_w, max_size / orig_h)
                     new_size = (int(orig_w * ratio), int(orig_h * ratio))
 
@@ -56,7 +59,7 @@ class LocalInpaintingWorker(QThread):
 
                 # Восстановление размера с улучшенной интерполяцией
                 if needs_resize:
-                    print(f"[LaMa] Восстановление размера до {orig_w}x{orig_h}...")
+                    logger.info(f"Восстановление размера до {orig_w}x{orig_h}...")
                     final_image = result_small.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
                 else:
                     final_image = result_small
@@ -64,17 +67,17 @@ class LocalInpaintingWorker(QThread):
                 # Постобработка: сглаживание границ
                 final_image = self._blend_edges(self.original_image, final_image, mask_input)
 
-                print("[LaMa] Готово!")
+                logger.info("LaMa inpainting завершено")
                 self.finished.emit(final_image)
 
             except ImportError:
                 # Fallback: использование улучшенного OpenCV inpainting
-                print("[Inpainting] LaMa недоступна, использование улучшенного OpenCV метода...")
+                logger.info("LaMa недоступна, использование улучшенного OpenCV метода...")
                 result = self._opencv_inpaint_enhanced(img_input, mask_input)
                 self.finished.emit(result)
 
         except Exception as e:
-            print(f"[Inpainting Error] {e}")
+            logger.error(f"Ошибка inpainting: {e}")
             self.error.emit(f"Ошибка удаления объекта: {str(e)}")
 
     def _opencv_inpaint_enhanced(self, img: Image.Image, mask: Image.Image) -> Image.Image:

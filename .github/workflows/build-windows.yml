@@ -67,28 +67,28 @@ jobs:
       - name: Package distribution
         shell: pwsh
         run: |
-          $distDir = "dist/WiPhoto_v2.1.0_Windows"
+          $distDir = "dist/WiPhoto_v2.1.1_Windows"
           New-Item -ItemType Directory -Force -Path $distDir
           Copy-Item -Recurse "build/main.dist/*" $distDir/
           Rename-Item "$distDir/main.exe" "WiPhoto.exe"
-          Compress-Archive -Path $distDir -DestinationPath "dist/WiPhoto_v2.1.0_Windows.zip"
+          Compress-Archive -Path $distDir -DestinationPath "dist/WiPhoto_v2.1.1_Windows.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WiPhoto_v2.1.0_Windows
-          path: dist/WiPhoto_v2.1.0_Windows.zip
+          name: WiPhoto_v2.1.1_Windows
+          path: dist/WiPhoto_v2.1.1_Windows.zip
 
       - name: Upload to release (on release event)
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ github.event.release.tag_name }} dist/WiPhoto_v2.1.0_Windows.zip --clobber
+          gh release upload ${{ github.event.release.tag_name }} dist/WiPhoto_v2.1.1_Windows.zip --clobber
 
       - name: Upload to latest release (on manual trigger)
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload v2.1.0 dist/WiPhoto_v2.1.0_Windows.zip --clobber
+          gh release upload v2.1.1 dist/WiPhoto_v2.1.1_Windows.zip --clobber

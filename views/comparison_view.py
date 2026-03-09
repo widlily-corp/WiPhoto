@@ -10,10 +10,10 @@ from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QTransform, QIcon
 from PIL import Image
 import rawpy
 
-from models.image_model import ImageInfo
+from models.image_model import ImageInfo, RAW_EXTENSIONS
 from utils import resource_path
 
-RAW_FORMATS = ('.arw', '.cr2', '.nef', '.dng', '.raw')
+RAW_FORMATS = RAW_EXTENSIONS
 
 
 class SyncedGraphicsView(QGraphicsView):
@@ -286,18 +286,21 @@ class ComparisonView(QWidget):
             else:
                 pil_image = Image.open(image_path)
 
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
+            try:
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
 
-            q_image = QImage(
-                pil_image.tobytes(),
-                pil_image.width,
-                pil_image.height,
-                pil_image.width * 3,
-                QImage.Format.Format_RGB888
-            )
+                q_image = QImage(
+                    pil_image.tobytes(),
+                    pil_image.width,
+                    pil_image.height,
+                    pil_image.width * 3,
+                    QImage.Format.Format_RGB888
+                )
 
-            return QPixmap.fromImage(q_image)
+                return QPixmap.fromImage(q_image)
+            finally:
+                pil_image.close()
 
         except Exception as e:
             logging.error(f"Ошибка загрузки изображения {image_path}: {e}")

@@ -2,8 +2,11 @@
 
 import sys
 import os
+import logging
 from PyQt6.QtWidgets import QGraphicsDropShadowEffect
 from PyQt6.QtGui import QColor
+
+logger = logging.getLogger(__name__)
 
 
 def resource_path(relative_path):
@@ -24,7 +27,7 @@ def resource_path(relative_path):
 
     # Проверка существования файла (для отладки)
     if not os.path.exists(full_path):
-        print(f"ПРЕДУПРЕЖДЕНИЕ: Ресурс не найден: {full_path}")
+        logger.warning(f"Ресурс не найден: {full_path}")
 
     return full_path
 
@@ -51,7 +54,7 @@ def apply_shadow_effect(widget, blur_radius=20, x_offset=0, y_offset=0, color=No
         shadow.setColor(color)
         widget.setGraphicsEffect(shadow)
     except Exception as e:
-        print(f"Не удалось применить эффект тени: {e}")
+        logger.warning(f"Не удалось применить эффект тени: {e}")
 
 
 def format_file_size(size_bytes):
@@ -70,7 +73,7 @@ def format_file_size(size_bytes):
                 return f"{size_bytes:.1f} {unit}"
             size_bytes /= 1024.0
         return f"{size_bytes:.1f} PB"
-    except:
+    except (TypeError, ValueError):
         return "Unknown"
 
 
@@ -110,5 +113,5 @@ def ensure_directory_exists(directory_path):
         os.makedirs(directory_path, exist_ok=True)
         return True
     except Exception as e:
-        print(f"Не удалось создать директорию {directory_path}: {e}")
+        logger.error(f"Не удалось создать директорию {directory_path}: {e}")
         return False

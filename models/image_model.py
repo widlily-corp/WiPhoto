@@ -8,6 +8,9 @@ from PyQt6.QtGui import QPixmap
 VIDEO_EXTENSIONS = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
                     '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts')
 
+RAW_EXTENSIONS = ('.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
+                  '.raf', '.srw', '.x3f')
+
 
 @dataclass
 class ImageInfo:
@@ -29,6 +32,13 @@ class ImageInfo:
     aspect_ratio: float = 0.0
     camera_model: str = ""
     date_taken: str = ""
+    rating: int = 0  # 0-5 stars
+    file_size: int = 0  # bytes
+    width: int = 0
+    height: int = 0
+    color_label: str = ""  # red, yellow, green, blue, purple
+    flag_status: str = ""  # "" = unflagged, "picked" = picked, "rejected" = rejected
+    tags: list = field(default_factory=list)  # AI-generated tags
 
     def is_video(self) -> bool:
         """Проверяет, является ли файл видео"""

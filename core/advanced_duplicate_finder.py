@@ -1,11 +1,14 @@
 # core/advanced_duplicate_finder.py
 
+import logging
 import imagehash
 from PIL import Image
 from collections import defaultdict
 from typing import List, Dict, Tuple
 from models.image_model import ImageInfo
 from core.settings_manager import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AdvancedDuplicateFinder:
@@ -92,7 +95,7 @@ class AdvancedDuplicateFinder:
         unassigned = list(images)
         group_counter = 0
 
-        print(f"Поиск дубликатов методом {method}, порог={threshold}")
+        logger.info(f"Поиск дубликатов методом {method}, порог={threshold}")
 
         while unassigned:
             base_image = unassigned.pop(0)
@@ -139,7 +142,7 @@ class AdvancedDuplicateFinder:
                 groups[group_id] = current_group
                 group_counter += 1
 
-        print(f"Найдено групп: {len(groups)}")
+        logger.info(f"Найдено групп: {len(groups)}")
         return dict(groups)
 
     def find_duplicates_combined(self,
@@ -158,7 +161,7 @@ class AdvancedDuplicateFinder:
         Returns:
             Словарь {group_id: [ImageInfo, ...]}
         """
-        print(f"Комбинированный поиск: {methods}, порог={threshold}")
+        logger.info(f"Комбинированный поиск: {methods}, порог={threshold}")
 
         # Получаем результаты по каждому методу
         all_results = {}
@@ -200,7 +203,7 @@ class AdvancedDuplicateFinder:
                         processed.add(img.path)
                 group_counter += 1
 
-        print(f"Комбинированный результат: {len(combined_groups)} групп")
+        logger.info(f"Комбинированный результат: {len(combined_groups)} групп")
         return combined_groups
 
     def rank_by_quality(self, group: List[ImageInfo]) -> List[ImageInfo]:
@@ -214,22 +217,16 @@ class AdvancedDuplicateFinder:
         """
 
         def get_quality_score(img: ImageInfo) -> Tuple:
-            # Резкость (чем больше - тем лучше)
             sharpness = img.sharpness if hasattr(img, 'sharpness') and img.sharpness else 0
+            file_size = img.file_size if hasattr(img, 'file_size') and img.file_size else 0
+            resolution = (img.width * img.height) if hasattr(img, 'width') and img.width > 0 else 0
 
-            # Размер файла (больше обычно лучше)
-            try:
-                import os
-                file_size = os.path.getsize(img.path)
-            except:
-                file_size = 0
-
-            # Разрешение (пытаемся получить из PIL)
-            try:
-                with Image.open(img.path) as pil_img:
-                    resolution = pil_img.width * pil_img.height
-            except:
-                resolution = 0
+            # Fallback to disk if ImageInfo has no data
+            if file_size == 0:
+                try:
+                    file_size = os.path.getsize(img.path)
+                except OSError:
+                    pass
 
             return (sharpness, file_size, resolution)
 
@@ -280,7 +277,7 @@ class AdvancedDuplicateFinder:
                 for img in group_images:
                     try:
                         sizes.append(os.path.getsize(img.path))
-                    except:
+                    except OSError:
                         pass
 
                 if sizes:

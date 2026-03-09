@@ -28,7 +28,7 @@ def _download_exiftool_windows():
         return exiftool_exe
 
     os.makedirs(exiftool_dir, exist_ok=True)
-    print("[INFO] Скачивание ExifTool для Windows...")
+    logging.info("Скачивание ExifTool для Windows...")
 
     try:
         url = "https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download"
@@ -47,7 +47,7 @@ def _download_exiftool_windows():
                     break
 
         os.remove(zip_path)
-        print(f"[OK] ExifTool установлен: {exiftool_exe}")
+        logging.info(f"ExifTool установлен: {exiftool_exe}")
         return exiftool_exe
     except Exception as e:
         logging.error(f"Не удалось скачать ExifTool: {e}")
@@ -141,10 +141,10 @@ def _run_exiftool(command):
 def startup_exiftool():
     """Проверяет доступность ExifTool"""
     if not os.path.exists(EXIFTOOL_PATH):
-        print(f"[ERROR] ExifTool не найден: {EXIFTOOL_PATH}")
+        logging.error(f"ExifTool не найден: {EXIFTOOL_PATH}")
         return False
     else:
-        print(f"[OK] Служба ExifTool готова: {EXIFTOOL_PATH}")
+        logging.info(f"Служба ExifTool готова: {EXIFTOOL_PATH}")
         return True
 
 
@@ -198,5 +198,5 @@ def read_exif(image_path: str) -> dict:
     except subprocess.TimeoutExpired:
         return {"Error": "Превышено время ожидания"}
     except Exception as e:
-        print(f"[ERROR] Ошибка чтения EXIF: {e}")
+        logging.error(f"Ошибка чтения EXIF: {e}")
         return {"Error": "Не удалось обработать ответ ExifTool."}

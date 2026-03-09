@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo WiPhoto v2.1.0 Windows Build (Nuitka)
+echo WiPhoto v2.1.1 Windows Build (Nuitka)
 echo ========================================
 echo.
 
@@ -48,7 +48,7 @@ if not exist dist mkdir dist
 
 echo.
 echo ========================================
-echo Building WiPhoto v2.1.0...
+echo Building WiPhoto v2.1.1...
 echo This may take 15-30 minutes...
 echo ========================================
 echo.
@@ -77,8 +77,8 @@ python -m nuitka ^
     --windows-console-mode=disable ^
     --company-name="Widlily Corporation" ^
     --product-name="WiPhoto" ^
-    --file-version=2.1.0.0 ^
-    --product-version=2.1.0 ^
+    --file-version=2.1.1.0 ^
+    --product-version=2.1.1 ^
     --file-description="WiPhoto - Professional Photo Manager" ^
     --output-dir=build ^
     main.py
@@ -98,17 +98,17 @@ rename dist\WiPhoto_Windows\main.exe WiPhoto.exe
 echo.
 echo Creating ZIP archive...
 cd dist
-powershell -Command "Compress-Archive -Path WiPhoto_Windows -DestinationPath WiPhoto_v2.1.0_Windows.zip -Force"
+powershell -Command "Compress-Archive -Path WiPhoto_Windows -DestinationPath WiPhoto_v2.1.1_Windows.zip -Force"
 cd ..
 
-if exist dist\WiPhoto_v2.1.0_Windows.zip (
+if exist dist\WiPhoto_v2.1.1_Windows.zip (
     echo.
     echo ========================================
     echo Build completed!
     echo ========================================
     echo.
     echo Executable: dist\WiPhoto_Windows\WiPhoto.exe
-    echo Archive: dist\WiPhoto_v2.1.0_Windows.zip
+    echo Archive: dist\WiPhoto_v2.1.1_Windows.zip
     echo.
 ) else (
     echo Archive creation FAILED!

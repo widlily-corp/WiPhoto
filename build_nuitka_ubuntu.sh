@@ -1,12 +1,12 @@
 #!/bin/bash
 # ========================================
-# WiPhoto v2.1.0 Ubuntu Build Script (Nuitka)
+# WiPhoto v2.1.1 Ubuntu Build Script (Nuitka)
 # ========================================
 
 set -e  # Exit on error
 
 echo "========================================"
-echo "WiPhoto v2.1.0 Ubuntu Build with Nuitka"
+echo "WiPhoto v2.1.1 Ubuntu Build with Nuitka"
 echo "========================================"
 echo ""
 
@@ -89,7 +89,7 @@ mkdir -p dist
 
 echo ""
 echo "========================================"
-echo "Building WiPhoto v2.1.0 with Nuitka..."
+echo "Building WiPhoto v2.1.1 with Nuitka..."
 echo "This may take 15-30 minutes..."
 echo "========================================"
 echo ""
@@ -159,7 +159,7 @@ chmod +x dist/WiPhoto_Linux/wiphoto.sh
 
 # Create README
 cat > dist/WiPhoto_Linux/README.txt << 'README_EOF'
-WiPhoto v2.1.0 for Linux
+WiPhoto v2.1.1 for Linux
 
 Installation:
 1. Install dependencies:
@@ -175,7 +175,7 @@ README_EOF
 cat > dist/WiPhoto_Linux/install.sh << 'INSTALL_EOF'
 #!/bin/bash
 set -e
-echo "Installing WiPhoto v2.1.0..."
+echo "Installing WiPhoto v2.1.1..."
 if [ "$EUID" -ne 0 ]; then
     exec sudo "$0" "$@"
 fi
@@ -205,19 +205,19 @@ echo ""
 echo "Creating archive..."
 
 cd dist
-tar -czf WiPhoto_v2.1.0_Linux.tar.gz WiPhoto_Linux/
+tar -czf WiPhoto_v2.1.1_Linux.tar.gz WiPhoto_Linux/
 cd ..
 
-if [ -f "dist/WiPhoto_v2.1.0_Linux.tar.gz" ]; then
+if [ -f "dist/WiPhoto_v2.1.1_Linux.tar.gz" ]; then
     echo ""
     echo "========================================"
     echo "Build completed successfully!"
     echo "========================================"
     echo ""
     echo "Executable: dist/WiPhoto_Linux/WiPhoto"
-    echo "Archive: dist/WiPhoto_v2.1.0_Linux.tar.gz"
+    echo "Archive: dist/WiPhoto_v2.1.1_Linux.tar.gz"
     echo ""
-    ls -lh dist/WiPhoto_v2.1.0_Linux.tar.gz
+    ls -lh dist/WiPhoto_v2.1.1_Linux.tar.gz
     echo ""
     echo "Test: cd dist/WiPhoto_Linux && ./wiphoto.sh"
 else

@@ -243,7 +243,7 @@ def main():
 
         app = QApplication(sys.argv)
         app.setApplicationName("WiPhoto")
-        app.setApplicationVersion("2.1.0")
+        app.setApplicationVersion("2.1.1")
         app.setOrganizationName("Widlily Corporation")
 
         logging.info("QApplication создан успешно")
@@ -253,7 +253,8 @@ def main():
         logging.critical(traceback.format_exc())
         return 1
 
-    # Загружаем стили
+    # Apply dark palette as base, then load QSS on top
+    set_dark_palette(app)
     load_stylesheet(app)
 
     # Создаем контроллер приложения

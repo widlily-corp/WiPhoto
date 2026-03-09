@@ -2,6 +2,7 @@
 
 import os
 import io
+import logging
 
 import rawpy
 import numpy as np
@@ -11,6 +12,8 @@ from PIL import Image, UnidentifiedImageError
 from skimage.exposure import match_histograms
 from core.settings_manager import settings
 import hashlib
+
+logger = logging.getLogger(__name__)
 
 try:
     from pillow_heif import register_heif_opener
@@ -47,19 +50,21 @@ def calculate_sharpness(image: Image.Image) -> float:
 
 def _extract_video_frame(file_path: str) -> Image.Image:
     """Извлекает первый кадр из видео для миниатюры"""
+    cap = None
     try:
         cap = cv2.VideoCapture(file_path)
         ret, frame = cap.read()
-        cap.release()
 
         if ret and frame is not None:
-            # Конвертируем BGR в RGB
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             return Image.fromarray(rgb_frame)
         return None
     except Exception as e:
-        print(f"[ERROR] Ошибка извлечения кадра из видео {file_path}: {e}")
+        logger.error(f"Ошибка извлечения кадра из видео {file_path}: {e}")
         return None
+    finally:
+        if cap is not None:
+            cap.release()
 
 
 def _load_image_optimized(file_path: str, for_thumbnail: bool = False) -> Image.Image:
@@ -104,10 +109,10 @@ def _load_image_optimized(file_path: str, for_thumbnail: bool = False) -> Image.
                     return img.copy()
 
     except UnidentifiedImageError:
-        print(f"[ERROR] Невозможно определить формат изображения: {file_path}")
+        logger.error(f"Невозможно определить формат изображения: {file_path}")
         return None
     except Exception as e:
-        print(f"[ERROR] Ошибка загрузки изображения {file_path}: {e}")
+        logger.error(f"Ошибка загрузки изображения {file_path}: {e}")
         return None
 
 def _load_image(file_path: str) -> Image.Image:
@@ -120,7 +125,7 @@ def _create_thumbnail(pil_image: Image.Image, file_path: str) -> str:
     try:
         os.makedirs(cache_dir, exist_ok=True)
     except OSError as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА: не удалось создать папку кэша {cache_dir}: {e}")
+        logger.error(f"Не удалось создать папку кэша {cache_dir}: {e}")
         return None
 
     try:
@@ -141,7 +146,7 @@ def _create_thumbnail(pil_image: Image.Image, file_path: str) -> str:
         thumb_img.save(cached_thumb_path, "JPEG", quality=90, optimize=True)
         return cached_thumb_path
     except Exception as e:
-        print(f"[ERROR] Ошибка создания миниатюры для {file_path}: {e}")
+        logger.error(f"Ошибка создания миниатюры для {file_path}: {e}")
         return None
 
 
@@ -175,7 +180,7 @@ def process_single_file(file_path: str) -> dict:
             if detector.available:
                 faces_count = detector.count_faces(file_path)
         except Exception as e:
-            print(f"[WARN] Ошибка детекции лиц для {file_path}: {e}")
+            logger.warning(f"Ошибка детекции лиц для {file_path}: {e}")
 
         # 6. АВТОАНАЛИЗ: Определяем животных
         animals_count = 0
@@ -185,7 +190,7 @@ def process_single_file(file_path: str) -> dict:
             if detector.available:
                 animals_count = detector.count_animals(file_path)
         except Exception as e:
-            print(f"[WARN] Ошибка детекции животных для {file_path}: {e}")
+            logger.warning(f"Ошибка детекции животных для {file_path}: {e}")
 
         # 7. АВТОАНАЛИЗ: Получаем GPS координаты
         gps_location = None
@@ -195,12 +200,20 @@ def process_single_file(file_path: str) -> dict:
             if geolocation:
                 gps_location = (geolocation.latitude, geolocation.longitude)
         except Exception as e:
-            print(f"[WARN] Ошибка получения GPS для {file_path}: {e}")
+            logger.warning(f"Ошибка получения GPS для {file_path}: {e}")
 
-        # 8. АВТОАНАЛИЗ: Вычисляем aspect ratio
+        # 8. АВТОАНАЛИЗ: Размеры и aspect ratio
+        img_width = pil_image.width
+        img_height = pil_image.height
         aspect_ratio = 0.0
-        if pil_image.width > 0 and pil_image.height > 0:
-            aspect_ratio = pil_image.width / pil_image.height
+        if img_width > 0 and img_height > 0:
+            aspect_ratio = img_width / img_height
+
+        # 8b. Размер файла
+        try:
+            file_size = os.path.getsize(file_path)
+        except OSError:
+            file_size = 0
 
         # 9. АВТОАНАЛИЗ: Камера и дата из EXIF
         camera_model = ""
@@ -229,9 +242,12 @@ def process_single_file(file_path: str) -> dict:
             "aspect_ratio": aspect_ratio,
             "camera_model": camera_model,
             "date_taken": date_taken,
+            "width": img_width,
+            "height": img_height,
+            "file_size": file_size,
         }
     except Exception as e:
-        print(f"[ERROR] Ошибка обработки файла {file_path}: {e}")
+        logger.error(f"Ошибка обработки файла {file_path}: {e}")
         return None
 
 
@@ -247,6 +263,6 @@ def transfer_style(source_image: Image.Image, target_image: Image.Image) -> Imag
         matched_np = match_histograms(target_np, source_np, channel_axis=-1)
         return Image.fromarray(matched_np.astype('uint8'), 'RGB')
     except Exception as e:
-        print(f"[ERROR] Ошибка переноса стиля: {e}")
+        logger.error(f"Ошибка переноса стиля: {e}")
         return None
 # --- END OF FILE core/analyzer.py ---

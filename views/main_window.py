@@ -2,18 +2,16 @@
 
 import os
 import logging
-import rawpy
-import cv2
 from PIL import Image
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QPointF
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import (QPixmap, QIcon, QImage, QColor, QPainter, QPen, QAction, QActionGroup,
-                         QTransform, QKeySequence, QPolygonF)
+                         QTransform, QKeySequence)
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidgetItem,
                              QTableWidgetItem, QToolBar, QStatusBar, QSizePolicy, QSlider,
                              QSplitter, QStackedWidget, QLabel, QTableWidget, QAbstractItemView,
-                             QHeaderView, QPushButton)
+                             QHeaderView, QPushButton, QComboBox, QLineEdit)
 
-from models.image_model import ImageInfo
+from models.image_model import ImageInfo, RAW_EXTENSIONS, VIDEO_EXTENSIONS
 from views.editor_widget import EditorWidget
 from views.gallery_widget import GalleryWidget
 from views.about_dialog import AboutDialog
@@ -21,13 +19,14 @@ from views.settings_dialog import SettingsDialog
 from views.comparison_view import ComparisonView
 from views.smart_collections_widget import SmartCollectionsWidget
 from views.map_widget import MapWidget
+from views.timeline_widget import TimelineWidget
+from views.histogram_widget import HistogramWidget
+from views.color_palette_widget import ColorPaletteWidget
 from utils import resource_path
 
 Image.MAX_IMAGE_PIXELS = None
-RAW_FORMATS = ('.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
-               '.raf', '.srw', '.x3f')
-VIDEO_FORMATS = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v',
-                 '.mpg', '.mpeg', '.3gp', '.ogv', '.ts', '.mts', '.m2ts')
+RAW_FORMATS = RAW_EXTENSIONS
+VIDEO_FORMATS = VIDEO_EXTENSIONS
 
 
 class MainWindow(QMainWindow):
@@ -42,6 +41,9 @@ class MainWindow(QMainWindow):
     files_dropped = pyqtSignal(list)
     compare_requested = pyqtSignal(list)
     refresh_requested = pyqtSignal()
+    batch_rename_requested = pyqtSignal(list)
+    sort_changed = pyqtSignal(str)
+    search_changed = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -58,6 +60,7 @@ class MainWindow(QMainWindow):
         self.comparison_view = ComparisonView(self)
         self.smart_collections = SmartCollectionsWidget(self)
         self.map_widget = MapWidget(self)
+        self.timeline_widget = TimelineWidget(self)
 
         # --- Build layout ---
         self._build_layout()
@@ -88,6 +91,7 @@ class MainWindow(QMainWindow):
         self.center_stack.addWidget(self.map_widget)        # index 1
         self.center_stack.addWidget(self.comparison_view)   # index 2
         self.center_stack.addWidget(self.editor_widget)     # index 3
+        self.center_stack.addWidget(self.timeline_widget)   # index 4
         self.center_stack.setCurrentIndex(0)
 
         # === RIGHT SIDEBAR ===
@@ -115,7 +119,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(filter_label)
 
         self._filter_buttons = {}
-        for text, filter_id in [("Все", "all"), ("Лучшие", "best"), ("Дубликаты", "duplicates")]:
+        for text, filter_id in [("Все", "all"), ("Лучшие", "best"), ("Дубликаты", "duplicates"),
+                                ("\u2713 Выбранные", "picked"), ("\u2717 Отклонённые", "rejected")]:
             btn = QPushButton(text)
             btn.setCheckable(True)
             btn.setChecked(filter_id == "all")
@@ -133,9 +138,10 @@ class MainWindow(QMainWindow):
         layout.addStretch()
 
         # Toggle left sidebar button
-        self.toggle_left_btn = QPushButton("Скрыть")
+        self.toggle_left_btn = QPushButton("\u00ab")
         self.toggle_left_btn.setFixedHeight(24)
-        self.toggle_left_btn.setStyleSheet("font-size: 11px; border: none; color: #808080;")
+        self.toggle_left_btn.setToolTip("Свернуть левую панель")
+        self.toggle_left_btn.setStyleSheet("font-size: 14px; font-weight: bold; border: none; color: #808080;")
         self.toggle_left_btn.clicked.connect(self._toggle_left_sidebar)
         layout.addWidget(self.toggle_left_btn)
 
@@ -165,6 +171,14 @@ class MainWindow(QMainWindow):
             }
         """)
         right_splitter.addWidget(self.preview_area)
+
+        # Histogram
+        self.histogram_widget = HistogramWidget()
+        right_splitter.addWidget(self.histogram_widget)
+
+        # Color palette
+        self.color_palette = ColorPaletteWidget()
+        right_splitter.addWidget(self.color_palette)
 
         # Metadata table
         meta_container = QWidget()
@@ -203,14 +217,15 @@ class MainWindow(QMainWindow):
         ai_layout.addStretch()
         right_splitter.addWidget(ai_container)
 
-        right_splitter.setSizes([400, 200, 100])
+        right_splitter.setSizes([300, 110, 55, 160, 90])
 
         layout.addWidget(right_splitter)
 
         # Toggle right sidebar button
-        self.toggle_right_btn = QPushButton("Скрыть")
+        self.toggle_right_btn = QPushButton("\u00bb")
         self.toggle_right_btn.setFixedHeight(24)
-        self.toggle_right_btn.setStyleSheet("font-size: 11px; border: none; color: #808080;")
+        self.toggle_right_btn.setToolTip("Свернуть правую панель")
+        self.toggle_right_btn.setStyleSheet("font-size: 14px; font-weight: bold; border: none; color: #808080;")
         self.toggle_right_btn.clicked.connect(self._toggle_right_sidebar)
         layout.addWidget(self.toggle_right_btn)
 
@@ -222,14 +237,36 @@ class MainWindow(QMainWindow):
         self.filter_changed.emit(filter_id)
 
     def _toggle_left_sidebar(self):
-        vis = self.left_sidebar.isVisible()
-        self.left_sidebar.setVisible(not vis)
-        self.toggle_left_btn.setText("Показать" if vis else "Скрыть")
+        vis = self.left_sidebar.maximumWidth() > 30
+        if vis:
+            self._left_sidebar_width = self.left_sidebar.width()
+            self.left_sidebar.setMaximumWidth(24)
+            self.toggle_left_btn.setText("\u00bb")
+            for child in self.left_sidebar.findChildren(QWidget):
+                if child is not self.toggle_left_btn:
+                    child.setVisible(False)
+        else:
+            for child in self.left_sidebar.findChildren(QWidget):
+                child.setVisible(True)
+            self.left_sidebar.setMaximumWidth(300)
+            self.left_sidebar.resize(getattr(self, '_left_sidebar_width', 200), self.left_sidebar.height())
+            self.toggle_left_btn.setText("\u00ab")
 
     def _toggle_right_sidebar(self):
-        vis = self.right_sidebar.isVisible()
-        self.right_sidebar.setVisible(not vis)
-        self.toggle_right_btn.setText("Показать" if vis else "Скрыть")
+        vis = self.right_sidebar.maximumWidth() > 30
+        if vis:
+            self._right_sidebar_width = self.right_sidebar.width()
+            self.right_sidebar.setMaximumWidth(24)
+            self.toggle_right_btn.setText("\u00ab")
+            for child in self.right_sidebar.findChildren(QWidget):
+                if child is not self.toggle_right_btn:
+                    child.setVisible(False)
+        else:
+            for child in self.right_sidebar.findChildren(QWidget):
+                child.setVisible(True)
+            self.right_sidebar.setMaximumWidth(500)
+            self.right_sidebar.resize(getattr(self, '_right_sidebar_width', 300), self.right_sidebar.height())
+            self.toggle_right_btn.setText("\u00bb")
 
     # ========== DRAG & DROP ==========
     def dragEnterEvent(self, event):
@@ -264,6 +301,11 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Ошибка: {e}")
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, '_quick_view_overlay') and self._quick_view_overlay is not None:
+            self._quick_view_overlay.parentResizeEvent()
+
     # ========== ACTIONS ==========
     def switch_to_editor(self, image_info: ImageInfo):
         try:
@@ -280,6 +322,9 @@ class MainWindow(QMainWindow):
 
     def switch_to_compare(self):
         self.center_stack.setCurrentIndex(2)
+
+    def switch_to_timeline(self):
+        self.center_stack.setCurrentIndex(4)
 
     def _create_actions(self):
         try:
@@ -300,6 +345,11 @@ class MainWindow(QMainWindow):
             self.select_all_action = QAction("Выбрать все", self)
             self.deselect_all_action = QAction("Снять выделение", self)
             self.refresh_action = QAction("Обновить", self)
+            self.batch_rename_action = QAction("Пакетное переименование", self)
+            self.batch_export_action = QAction("Экспорт...", self)
+            self.contact_sheet_action = QAction("Контактный лист...", self)
+            self.slideshow_action = QAction("Слайдшоу", self)
+            self.delete_rejected_action = QAction("Удалить отклонённые", self)
 
             # View mode actions
             self.view_gallery_action = QAction("Галерея", self)
@@ -307,6 +357,8 @@ class MainWindow(QMainWindow):
             self.view_gallery_action.setChecked(True)
             self.view_map_action = QAction("Карта", self)
             self.view_map_action.setCheckable(True)
+            self.view_timeline_action = QAction("Таймлайн", self)
+            self.view_timeline_action.setCheckable(True)
 
             # Shortcuts
             self.settings_action.setShortcut(QKeySequence("Ctrl+,"))
@@ -323,6 +375,9 @@ class MainWindow(QMainWindow):
             self.next_image_action.setShortcut(QKeySequence("Right"))
             self.prev_image_action.setShortcut(QKeySequence("Left"))
             self.refresh_action.setShortcut(QKeySequence("F5"))
+            self.batch_rename_action.setShortcut(QKeySequence("F2"))
+            self.batch_export_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+            self.slideshow_action.setShortcut(QKeySequence("F8"))
 
             # Connect signals
             self.settings_action.triggered.connect(self.open_settings_dialog)
@@ -342,9 +397,15 @@ class MainWindow(QMainWindow):
             self.next_image_action.triggered.connect(self._next_image)
             self.prev_image_action.triggered.connect(self._prev_image)
             self.refresh_action.triggered.connect(self._refresh_gallery)
+            self.batch_rename_action.triggered.connect(self._on_batch_rename_triggered)
+            self.batch_export_action.triggered.connect(self._on_batch_export_triggered)
+            self.contact_sheet_action.triggered.connect(self._on_contact_sheet_triggered)
+            self.slideshow_action.triggered.connect(self._on_slideshow_triggered)
+            self.delete_rejected_action.triggered.connect(self._on_delete_rejected_triggered)
 
             self.view_gallery_action.triggered.connect(self.switch_to_gallery)
             self.view_map_action.triggered.connect(self.switch_to_map)
+            self.view_timeline_action.triggered.connect(self.switch_to_timeline)
 
             self.addActions([
                 self.delete_action, self.copy_action, self.move_action,
@@ -372,6 +433,7 @@ class MainWindow(QMainWindow):
         view_menu = menu_bar.addMenu("Вид")
         view_menu.addAction(self.view_gallery_action)
         view_menu.addAction(self.view_map_action)
+        view_menu.addAction(self.view_timeline_action)
         view_menu.addSeparator()
         view_menu.addAction(self.fullscreen_action)
         view_menu.addAction(self.quick_view_action)
@@ -379,6 +441,13 @@ class MainWindow(QMainWindow):
         tools_menu = menu_bar.addMenu("Инструменты")
         tools_menu.addAction(self.compare_action)
         tools_menu.addAction(self.style_action)
+        tools_menu.addAction(self.batch_rename_action)
+        tools_menu.addAction(self.batch_export_action)
+        tools_menu.addAction(self.contact_sheet_action)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.slideshow_action)
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.delete_rejected_action)
 
         help_menu = menu_bar.addMenu("Справка")
         help_menu.addAction(self.about_action)
@@ -388,13 +457,15 @@ class MainWindow(QMainWindow):
             toolbar = QToolBar("Инструменты")
             self.addToolBar(toolbar)
             toolbar.setMovable(False)
-            toolbar.setIconSize(QSize(18, 18))
+            toolbar.setIconSize(QSize(22, 22))
+            toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
 
             # View mode buttons
             view_group = QActionGroup(self)
             view_group.setExclusive(True)
             view_group.addAction(self.view_gallery_action)
             view_group.addAction(self.view_map_action)
+            view_group.addAction(self.view_timeline_action)
             toolbar.addActions(view_group.actions())
             toolbar.addSeparator()
 
@@ -416,6 +487,46 @@ class MainWindow(QMainWindow):
             spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             toolbar.addWidget(spacer)
 
+            # Search field
+            self.search_field = QLineEdit()
+            self.search_field.setPlaceholderText("Поиск по имени...")
+            self.search_field.setFixedWidth(160)
+            self.search_field.setClearButtonEnabled(True)
+            self.search_field.setStyleSheet("""
+                QLineEdit {
+                    background: #2d2d2d; border: 1px solid #3c3c3c;
+                    border-radius: 3px; padding: 4px 8px; color: #ccc; font-size: 12px;
+                }
+                QLineEdit:focus { border-color: #4a9eff; }
+            """)
+            self.search_field.textChanged.connect(self.search_changed.emit)
+            toolbar.addWidget(self.search_field)
+
+            toolbar.addSeparator()
+
+            # Sort dropdown
+            sort_label = QLabel(" Сортировка: ")
+            sort_label.setStyleSheet("color: #808080; font-size: 12px;")
+            toolbar.addWidget(sort_label)
+
+            self.sort_combo = QComboBox()
+            self.sort_combo.addItems(["По имени", "По дате", "По размеру", "По камере", "По рейтингу"])
+            self.sort_combo.setFixedWidth(130)
+            self.sort_combo.setStyleSheet("""
+                QComboBox {
+                    background: #2d2d2d; border: 1px solid #3c3c3c;
+                    border-radius: 3px; padding: 3px 8px; color: #ccc; font-size: 12px;
+                }
+                QComboBox::drop-down { border: none; }
+                QComboBox QAbstractItemView {
+                    background: #2d2d2d; color: #ccc; selection-background-color: #4a9eff;
+                }
+            """)
+            self.sort_combo.currentTextChanged.connect(self._on_sort_changed)
+            toolbar.addWidget(self.sort_combo)
+
+            toolbar.addSeparator()
+
             # Zoom slider
             zoom_label = QLabel(" Размер: ")
             zoom_label.setStyleSheet("color: #808080; font-size: 12px;")
@@ -429,6 +540,13 @@ class MainWindow(QMainWindow):
             toolbar.addWidget(self.size_slider)
         except Exception as e:
             logging.error(f"Error creating toolbar: {e}")
+
+    def _on_sort_changed(self, text: str):
+        sort_map = {
+            "По имени": "name", "По дате": "date", "По размеру": "size",
+            "По камере": "camera", "По рейтингу": "rating"
+        }
+        self.sort_changed.emit(sort_map.get(text, "name"))
 
     def _create_status_bar(self):
         self.status_bar = QStatusBar()
@@ -473,6 +591,67 @@ class MainWindow(QMainWindow):
         current = view.currentRow()
         if current > 0:
             view.setCurrentRow(current - 1)
+
+    delete_rejected_requested = pyqtSignal()
+
+    def _on_batch_export_triggered(self):
+        selected = self._get_selected_image_infos()
+        if not selected:
+            # Export all visible
+            view = self.gallery_widget.thumbnail_view
+            selected = []
+            for i in range(view.count()):
+                item = view.item(i)
+                if not item.isHidden():
+                    info = item.data(Qt.ItemDataRole.UserRole)
+                    if isinstance(info, ImageInfo):
+                        selected.append(info)
+        if selected:
+            from views.batch_export_dialog import BatchExportDialog
+            dialog = BatchExportDialog(selected, self)
+            dialog.exec()
+        else:
+            self.statusBar().showMessage("Нет файлов для экспорта")
+
+    def _on_delete_rejected_triggered(self):
+        self.delete_rejected_requested.emit()
+
+    def _on_contact_sheet_triggered(self):
+        infos = self._get_all_visible_infos()
+        if not infos:
+            self.statusBar().showMessage("Нет файлов для контактного листа")
+            return
+        from views.contact_sheet_dialog import ContactSheetDialog
+        dialog = ContactSheetDialog(infos, self)
+        dialog.exec()
+
+    def _on_slideshow_triggered(self):
+        infos = self._get_all_visible_infos()
+        if not infos:
+            self.statusBar().showMessage("Нет файлов для слайдшоу")
+            return
+        from views.slideshow_widget import SlideshowWindow
+        self._slideshow = SlideshowWindow(infos)
+        self._slideshow.showFullScreen()
+
+    def _get_all_visible_infos(self) -> list:
+        """Get all visible (non-hidden) image infos from gallery"""
+        view = self.gallery_widget.thumbnail_view
+        result = []
+        for i in range(view.count()):
+            item = view.item(i)
+            if not item.isHidden():
+                info = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(info, ImageInfo):
+                    result.append(info)
+        return result
+
+    def _on_batch_rename_triggered(self):
+        selected = self._get_selected_image_infos()
+        if not selected:
+            self.statusBar().showMessage("Выберите файлы для переименования")
+            return
+        self.batch_rename_requested.emit(selected)
 
     def _refresh_gallery(self):
         self.statusBar().showMessage("Обновление...")
@@ -541,11 +720,16 @@ class MainWindow(QMainWindow):
     # ========== PREVIEW ==========
     def show_preview(self, image_path: str):
         try:
+            # Update histogram & color palette
+            self.histogram_widget.set_image_path(image_path)
+            self.color_palette.set_image_path(image_path)
+
             pil_image = None
             is_raw = image_path.lower().endswith(RAW_FORMATS)
             is_video = image_path.lower().endswith(VIDEO_FORMATS)
 
             if is_video:
+                import cv2
                 cap = cv2.VideoCapture(image_path)
                 ret, frame = cap.read()
                 cap.release()
@@ -556,6 +740,7 @@ class MainWindow(QMainWindow):
                     self.preview_area.setText("Видео не загружено")
                     return
             elif is_raw:
+                import rawpy
                 with rawpy.imread(image_path) as raw:
                     rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
                 pil_image = Image.fromarray(rgb)
@@ -566,14 +751,16 @@ class MainWindow(QMainWindow):
                 if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
 
+                img_bytes = pil_image.tobytes()
                 q_image = QImage(
-                    pil_image.tobytes(),
+                    img_bytes,
                     pil_image.width,
                     pil_image.height,
                     pil_image.width * 3,
                     QImage.Format.Format_RGB888
                 )
                 self.current_preview_pixmap = QPixmap.fromImage(q_image)
+                pil_image.close()
 
                 self.preview_area.setPixmap(
                     self.current_preview_pixmap.scaled(
@@ -589,12 +776,14 @@ class MainWindow(QMainWindow):
 
     def update_metadata(self, data: dict):
         try:
-            self.metadata_view.setRowCount(0)
+            self.metadata_view.setUpdatesEnabled(False)
             self.metadata_view.setRowCount(len(data))
             for row, (key, value) in enumerate(data.items()):
                 self.metadata_view.setItem(row, 0, QTableWidgetItem(key))
                 self.metadata_view.setItem(row, 1, QTableWidgetItem(str(value)))
+            self.metadata_view.setUpdatesEnabled(True)
         except Exception as e:
+            self.metadata_view.setUpdatesEnabled(True)
             logging.error(f"Error updating metadata: {e}")
 
     def update_ai_info(self, info: ImageInfo):
@@ -624,6 +813,8 @@ class MainWindow(QMainWindow):
     def clear_preview_and_metadata(self):
         self.preview_area.setText("Выберите файл")
         self.preview_area.setPixmap(QPixmap())
+        self.histogram_widget.clear()
+        self.color_palette.clear()
         self.metadata_view.setRowCount(0)
         self.ai_info_label.setText("")
 
@@ -670,8 +861,22 @@ class MainWindow(QMainWindow):
     def _update_status_bar(self):
         try:
             total = self.gallery_widget.thumbnail_view.count()
-            selected = len(self.gallery_widget.thumbnail_view.selectedItems())
-            self.status_bar.showMessage(f"Всего: {total} | Выбрано: {selected}")
+            selected_items = self.gallery_widget.thumbnail_view.selectedItems()
+            selected = len(selected_items)
+            parts = [f"Всего: {total}", f"Выбрано: {selected}"]
+
+            if selected == 1:
+                info = selected_items[0].data(Qt.ItemDataRole.UserRole)
+                if isinstance(info, ImageInfo):
+                    parts.append(os.path.basename(info.path))
+                    if info.width > 0 and info.height > 0:
+                        parts.append(f"{info.width}x{info.height}")
+                    if info.camera_model:
+                        parts.append(info.camera_model)
+                    if info.rating > 0:
+                        parts.append("\u2605" * info.rating)
+
+            self.status_bar.showMessage(" | ".join(parts))
         except Exception as e:
             logging.error(f"Error: {e}")
 
@@ -705,6 +910,7 @@ class QuickViewOverlay(QWidget):
             is_raw = image_path.lower().endswith(RAW_FORMATS)
 
             if is_video:
+                import cv2
                 cap = cv2.VideoCapture(image_path)
                 ret, frame = cap.read()
                 cap.release()
@@ -719,6 +925,7 @@ class QuickViewOverlay(QWidget):
                     self.raise_()
                     return
             elif is_raw:
+                import rawpy
                 with rawpy.imread(image_path) as raw:
                     rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
                 pil_img = Image.fromarray(rgb)
@@ -749,3 +956,8 @@ class QuickViewOverlay(QWidget):
 
     def mousePressEvent(self, event):
         self.hide()
+
+    def parentResizeEvent(self):
+        """Called from parent's resizeEvent to follow window size"""
+        if self.isVisible():
+            self.setGeometry(self.parent().rect())

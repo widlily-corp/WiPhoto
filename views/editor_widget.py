@@ -11,7 +11,7 @@ from PyQt6.QtGui import QPixmap, QImage, QAction, QIcon, QPainter, QWheelEvent, 
 from PIL import Image
 import rawpy
 
-from models.image_model import ImageInfo
+from models.image_model import ImageInfo, RAW_EXTENSIONS
 from utils import resource_path
 from views.control_panel_widget import ControlPanelWidget
 from views.history_tree_widget import HistoryTreeWidget, CompactHistoryWidget
@@ -41,6 +41,8 @@ class ZoomableView(QGraphicsView):
 
 
 class EditorWidget(QWidget):
+    back_to_gallery = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_image_info = None
@@ -133,6 +135,7 @@ class EditorWidget(QWidget):
 
         self.history_tree = HistoryTreeWidget()
         self.history_tree.jump_to_state.connect(self._jump_to_history_state)
+        self.history_tree.history_cleared.connect(self._on_history_cleared)
         right_panel.addTab(self.history_tree, "История")
         right_panel.setMaximumWidth(280)
 
@@ -172,9 +175,18 @@ class EditorWidget(QWidget):
         actions_to_style = []
 
         # Основные действия
+        self.back_action = QAction("← Галерея", self)
+        self.back_action.setShortcut("Escape")
+        self.back_action.triggered.connect(self.back_to_gallery.emit)
+        self.toolbar.addAction(self.back_action)
+        self.toolbar.addSeparator()
+
         self.save_action = QAction(QIcon(resource_path("assets/save.png")), "Сохранить как...", self)
+        self.save_action.setShortcut("Ctrl+S")
         self.undo_action = QAction(QIcon(resource_path("assets/undo.png")), "Отменить", self)
+        self.undo_action.setShortcut("Ctrl+Z")
         self.redo_action = QAction(QIcon(resource_path("assets/redo.png")), "Повторить", self)
+        self.redo_action.setShortcut("Ctrl+Y")
         self.save_action.triggered.connect(self._save_image)
         self.undo_action.triggered.connect(self.undo)
         self.redo_action.triggered.connect(self.redo)
@@ -187,9 +199,22 @@ class EditorWidget(QWidget):
         # Зум
         self.toolbar.addSeparator()
         self.zoom_in_action = QAction(QIcon(resource_path("assets/zoom-in.png")), "Приблизить", self)
+        self.zoom_in_action.setShortcut("Ctrl+=")
         self.zoom_out_action = QAction(QIcon(resource_path("assets/zoom-out.png")), "Отдалить", self)
+        self.zoom_out_action.setShortcut("Ctrl+-")
         self.fit_view_action = QAction(QIcon(resource_path("assets/zoom-fit.png")), "Подогнать по размеру", self)
+        self.fit_view_action.setShortcut("Ctrl+0")
         self.actual_size_action = QAction(QIcon(resource_path("assets/zoom-100.png")), "Реальный размер (100%)", self)
+        self.actual_size_action.setShortcut("Ctrl+1")
+        self.toolbar.addSeparator()
+        self.before_after_action = QAction("До/После", self)
+        self.before_after_action.setCheckable(True)
+        self.before_after_action.setToolTip("Сравнение до/после (разделённый вид)")
+        self.before_after_action.triggered.connect(self._toggle_before_after)
+        self.toolbar.addAction(self.before_after_action)
+        self._before_after_mode = False
+        self._split_pos = 0.5  # 0.0 - 1.0
+
         self.zoom_in_action.triggered.connect(lambda: self._set_zoom(1.25))
         self.zoom_out_action.triggered.connect(lambda: self._set_zoom(0.8))
         self.fit_view_action.triggered.connect(self._fit_to_view)
@@ -316,7 +341,7 @@ class EditorWidget(QWidget):
         self._render_image()
 
     def _load_pil_image(self, path: str) -> Image:
-        if path.lower().endswith(('.arw', '.cr2', '.nef', '.dng', '.raw')):
+        if path.lower().endswith(RAW_EXTENSIONS):
             with rawpy.imread(path) as raw:
                 rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
             return Image.fromarray(rgb)
@@ -406,12 +431,47 @@ class EditorWidget(QWidget):
         self._add_to_history(state)
         self._render_image()
 
+    def _toggle_before_after(self, checked):
+        self._before_after_mode = checked
+        self._render_image()
+
     def _render_image(self, preview=False):
         if not self.processor:
             return
         processed_image = self.processor.process(is_preview=preview)
-        pixmap = self._pil_to_pixmap(processed_image)
+
+        if self._before_after_mode and self.processor.original_image:
+            pixmap = self._create_split_pixmap(self.processor.original_image, processed_image)
+        else:
+            pixmap = self._pil_to_pixmap(processed_image)
         self._update_scene(pixmap)
+
+    def _create_split_pixmap(self, original: Image.Image, edited: Image.Image) -> QPixmap:
+        """Create a side-by-side split comparison image"""
+        w, h = edited.size
+        split_x = int(w * self._split_pos)
+
+        result = original.copy()
+        # Paste edited portion on the right side
+        right_crop = edited.crop((split_x, 0, w, h))
+        result.paste(right_crop, (split_x, 0))
+
+        # Draw split line
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(result)
+        draw.line([(split_x, 0), (split_x, h)], fill=(255, 255, 255), width=2)
+
+        # Labels
+        try:
+            from PIL import ImageFont
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", max(14, h // 40))
+        except Exception:
+            font = ImageFont.load_default()
+
+        draw.text((10, 10), "ДО", fill=(255, 255, 255), font=font)
+        draw.text((split_x + 10, 10), "ПОСЛЕ", fill=(255, 255, 255), font=font)
+
+        return self._pil_to_pixmap(result)
 
     def _add_to_history(self, state: OrderedDict):
         if self.history_index > -1 and state == self.history[self.history_index]:
@@ -463,6 +523,14 @@ class EditorWidget(QWidget):
         self._render_image()
         self._update_history_buttons()
         self._update_history_widgets()
+
+    def _on_history_cleared(self):
+        """Reset editor history when tree widget clears"""
+        if self.processor and self.processor.original_image:
+            self.history = [self.processor.get_state()]
+            self.history_index = 0
+            self._render_image()
+            self._update_history_buttons()
 
     def _update_history_buttons(self):
         self.undo_action.setEnabled(self.history_index > 0)

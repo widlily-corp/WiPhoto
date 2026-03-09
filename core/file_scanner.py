@@ -1,9 +1,12 @@
 import os
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 from models.image_model import ImageInfo
 from core.analyzer import process_single_file
 from core.settings_manager import settings
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_IMAGE_EXTENSIONS = (
     # Common raster formats
@@ -65,9 +68,9 @@ class Scanner(QObject):
                         if result_data and result_data.get("thumbnail_path"):
                             self.image_processed.emit(ImageInfo(**result_data))
                         else:
-                            print(f"Пропущен файл (нет результата): {file_path}")
+                            logger.debug(f"Пропущен файл (нет результата): {file_path}")
                     except Exception as e:
-                        print(f"Ошибка обработки файла {file_path}: {e}")
+                        logger.warning(f"Ошибка обработки файла {file_path}: {e}")
 
                     processed_count += 1
                     self.progress_updated.emit(processed_count, total_files)
@@ -76,7 +79,7 @@ class Scanner(QObject):
                     self.executor.shutdown(wait=True, cancel_futures=not self.is_running)
                     self.executor = None
         except Exception as e:
-            print(f"Критическая ошибка в сканере: {type(e).__name__}: {e}")
+            logger.error(f"Критическая ошибка в сканере: {type(e).__name__}: {e}")
         finally:
             self.finished.emit()
 
@@ -104,6 +107,6 @@ class Scanner(QObject):
                         # <<< ИСПРАВЛЕНИЕ: Нормализуем путь
                         files.append(os.path.normpath(path))
         except Exception as e:
-            print(f"Ошибка сбора файлов: {e}")
+            logger.error(f"Ошибка сбора файлов: {e}")
         return files
 # --- END OF FILE core/file_scanner.py ---

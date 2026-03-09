@@ -21,7 +21,7 @@ class ProgressDialog(QDialog):
 
         try:
             self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
-        except:
+        except Exception:
             pass
 
         self._init_ui()

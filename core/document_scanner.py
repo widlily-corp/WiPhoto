@@ -1,9 +1,12 @@
 # core/document_scanner.py
 
+import logging
 import cv2
 import numpy as np
 from typing import List, Tuple, Optional
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -108,7 +111,7 @@ class DocumentScanner:
             return None
 
         except Exception as e:
-            print(f"Error detecting document in {image_path}: {e}")
+            logger.error(f"Error detecting document in {image_path}: {e}")
             return None
 
     def scan_document(self, image_path: str, output_path: str) -> bool:
@@ -147,5 +150,5 @@ class DocumentScanner:
             return True
 
         except Exception as e:
-            print(f"Error scanning document from {image_path}: {e}")
+            logger.error(f"Error scanning document from {image_path}: {e}")
             return False

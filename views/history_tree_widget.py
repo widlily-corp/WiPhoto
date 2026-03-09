@@ -12,6 +12,7 @@ class HistoryTreeWidget(QWidget):
     """Дерево истории изменений с визуализацией"""
 
     jump_to_state = pyqtSignal(int)  # Переход к конкретному состоянию
+    history_cleared = pyqtSignal()  # Сигнал очистки истории
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -143,6 +144,7 @@ class HistoryTreeWidget(QWidget):
         self.history = []
         self.current_index = -1
         self.info_label.setText("История очищена")
+        self.history_cleared.emit()
 
 
 class CompactHistoryWidget(QWidget):

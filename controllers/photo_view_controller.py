@@ -52,7 +52,7 @@ class MainController(QObject):
         self.add_thumbnail_timer.timeout.connect(self._process_thumbnail_buffer)
 
         self.scanner_thread.start()
-        print("Контроллер вида: готов к работе, поток сканера запущен.")
+        logging.info("Контроллер вида: готов к работе, поток сканера запущен.")
 
     def start_scan(self, folder_path, is_recursive):
         """Начинает сканирование папки С ПРОГРЕСС-БАРОМ"""
@@ -90,18 +90,45 @@ class MainController(QObject):
         main_win.compare_requested.connect(self.handle_compare)
         if hasattr(main_win, 'refresh_requested'):
             main_win.refresh_requested.connect(self._handle_refresh)
+        if hasattr(main_win, 'batch_rename_requested'):
+            main_win.batch_rename_requested.connect(self._handle_batch_rename)
+        if hasattr(main_win, 'delete_rejected_requested'):
+            main_win.delete_rejected_requested.connect(self._handle_delete_rejected)
+
+        # Find similar from gallery context menu
+        if hasattr(gallery, 'find_similar_requested'):
+            gallery.find_similar_requested.connect(self._handle_find_similar)
 
         # Сигнал от контроллера к MainWindow
         self.request_editor_display.connect(main_win.switch_to_editor)
+
+        # Editor back to gallery
+        if hasattr(main_win, 'editor_widget'):
+            main_win.editor_widget.back_to_gallery.connect(main_win.switch_to_gallery)
 
         # Подключаем умные коллекции (sidebar)
         if hasattr(main_win, 'smart_collections'):
             main_win.smart_collections.collection_selected.connect(self._on_collection_filter_applied)
             main_win.smart_collections.collection_changed.connect(self._on_collection_changed)
 
+        # Sort and search
+        if hasattr(main_win, 'sort_changed'):
+            main_win.sort_changed.connect(self._apply_sort)
+        if hasattr(main_win, 'search_changed'):
+            main_win.search_changed.connect(self._apply_search)
+
+        # Rating/color label changes from gallery
+        if hasattr(gallery, 'thumbnail_view'):
+            gallery.thumbnail_view.rating_changed.connect(self._on_rating_changed)
+            gallery.thumbnail_view.color_label_changed.connect(self._on_color_label_changed)
+
         # Подключаем виджет карты
         if hasattr(main_win, 'map_widget'):
             main_win.map_widget.image_selected.connect(self._on_map_image_selected)
+
+        # Подключаем таймлайн
+        if hasattr(main_win, 'timeline_widget'):
+            main_win.timeline_widget.image_selected.connect(self._on_map_image_selected)
 
     def _on_map_image_selected(self, info: ImageInfo):
         """Обработка выбора изображения с карты"""
@@ -132,7 +159,7 @@ class MainController(QObject):
 
     def handle_dropped_files(self, file_paths: list):
         """Обработка перетащенных файлов - ПОЛНАЯ РЕАЛИЗАЦИЯ"""
-        print(f"Обработка {len(file_paths)} перетащенных файлов...")
+        logging.info(f"Обработка {len(file_paths)} перетащенных файлов...")
 
         try:
             from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QButtonGroup, QRadioButton
@@ -213,10 +240,6 @@ class MainController(QObject):
                     logging.error(f"Ошибка добавления файла: {e}")
 
             self.view.statusBar().showMessage(f"Добавлено: {added_count} из {len(file_paths)}")
-
-            # Пересчитываем дубликаты
-            if added_count > 0:
-                self._run_advanced_duplicate_search("phash")
         else:
             # Для большого количества - используем полное сканирование
             self.view.statusBar().showMessage("Много файлов - запуск полного сканирования...")
@@ -253,39 +276,75 @@ class MainController(QObject):
         self._scan_file_list(file_paths)
 
     def _scan_file_list(self, file_paths: list):
-        """Сканирует конкретный список файлов"""
-        # Используем существующий Scanner, но передаем список файлов
-        # Для этого нужно модифицировать Scanner или создать временный метод
-
-        # Простое решение: обрабатываем синхронно
+        """Сканирует конкретный список файлов в фоновом потоке"""
+        from concurrent.futures import ProcessPoolExecutor, as_completed
         from core.analyzer import process_single_file
-        from models.image_model import ImageInfo
+        from core.settings_manager import settings
 
         self.thumbnail_buffer.clear()
         self.add_thumbnail_timer.start()
 
         total = len(file_paths)
-        for idx, file_path in enumerate(file_paths):
-            try:
-                result = process_single_file(file_path)
-                if result and result.get("thumbnail_path"):
-                    info = ImageInfo(**result)
-                    self.image_data.append(info)
-                    self.thumbnail_buffer.append(info)
+        self.view.statusBar().showMessage(f"Обработка {total} файлов...")
 
-                # Обновляем прогресс
-                if (idx + 1) % 10 == 0:
-                    self.view.statusBar().showMessage(f"Обработано: {idx + 1}/{total}")
-            except Exception as e:
-                logging.error(f"Ошибка обработки файла: {e}")
+        class FileListWorker(QObject):
+            image_processed = pyqtSignal(object)
+            progress = pyqtSignal(int, int)
+            finished = pyqtSignal()
 
-        self.add_thumbnail_timer.stop()
-        self._process_thumbnail_buffer()
+            def __init__(self, paths, worker_count):
+                super().__init__()
+                self._paths = paths
+                self._worker_count = worker_count
 
-        # Запускаем поиск дубликатов
-        self._show_duplicate_finder_dialog()
+            def run(self):
+                try:
+                    with ProcessPoolExecutor(max_workers=self._worker_count) as executor:
+                        futures = {executor.submit(process_single_file, p): p for p in self._paths}
+                        done = 0
+                        for future in as_completed(futures):
+                            try:
+                                result = future.result(timeout=60)
+                                if result and result.get("thumbnail_path"):
+                                    self.image_processed.emit(result)
+                            except Exception as e:
+                                logging.error(f"Ошибка обработки файла: {e}")
+                            done += 1
+                            if done % 5 == 0:
+                                self.progress.emit(done, len(self._paths))
+                except Exception as e:
+                    logging.error(f"Ошибка сканирования: {e}")
+                finally:
+                    self.finished.emit()
 
-        self.view.statusBar().showMessage(f"Готово! Обработано: {len(self.image_data)} файлов")
+        self._file_list_thread = QThread()
+        self._file_list_worker = FileListWorker(file_paths, settings.get_worker_count())
+        self._file_list_worker.moveToThread(self._file_list_thread)
+
+        def on_result(result_data):
+            info = ImageInfo(**result_data)
+            self.image_data.append(info)
+            self.thumbnail_buffer.append(info)
+
+        def on_progress(done, total):
+            self.view.statusBar().showMessage(f"Обработано: {done}/{total}")
+
+        def on_finished():
+            self.add_thumbnail_timer.stop()
+            self._process_thumbnail_buffer()
+            self._show_duplicate_finder_dialog()
+            if hasattr(self.view, 'smart_collections'):
+                self.view.smart_collections.set_images(self.image_data)
+            if hasattr(self.view, 'timeline_widget'):
+                self.view.timeline_widget.set_images(self.image_data)
+            self.view.statusBar().showMessage(f"Готово! Обработано: {len(self.image_data)} файлов")
+            self._file_list_thread.quit()
+
+        self._file_list_worker.image_processed.connect(on_result)
+        self._file_list_worker.progress.connect(on_progress)
+        self._file_list_worker.finished.connect(on_finished)
+        self._file_list_thread.started.connect(self._file_list_worker.run)
+        self._file_list_thread.start()
 
     # ДОБАВЬТЕ ЭТИ МЕТОДЫ В КЛАСС MainController в photo_view_controller.py
 
@@ -293,7 +352,7 @@ class MainController(QObject):
         """Обработка запроса сравнения"""
         if len(image_infos) == 2:
             self.view.comparison_view.load_images(image_infos)
-            print(f"Сравнение: {image_infos[0].path} vs {image_infos[1].path}")
+            logging.info(f"Сравнение: {image_infos[0].path} vs {image_infos[1].path}")
 
     def _on_collection_changed(self, collection_id: str):
         """Обработка смены умной коллекции"""
@@ -326,7 +385,7 @@ class MainController(QObject):
             self.add_thumbnail_timer.stop()
             self._process_thumbnail_buffer()
 
-            print(f"Контроллер вида: Анализ завершен. Найдено изображений: {len(self.image_data)}")
+            logging.info(f"Контроллер вида: Анализ завершен. Найдено изображений: {len(self.image_data)}")
 
             # Показываем диалог выбора метода поиска дубликатов
             self._show_duplicate_finder_dialog()
@@ -338,6 +397,10 @@ class MainController(QObject):
             # Обновляем виджет карты
             if hasattr(self.view, 'map_widget'):
                 self.view.map_widget.set_images(self.image_data)
+
+            # Обновляем таймлайн
+            if hasattr(self.view, 'timeline_widget'):
+                self.view.timeline_widget.set_images(self.image_data)
 
         except Exception as e:
             import traceback
@@ -401,7 +464,7 @@ class MainController(QObject):
         if dialog.exec():
             self._run_advanced_duplicate_search_with_progress(selected_method[0])
         else:
-            print("Поиск дубликатов пропущен")
+            logging.info("Поиск дубликатов пропущен")
             self.view.update_thumbnail_styles()
 
     def _run_advanced_duplicate_search_with_progress(self, method: str):
@@ -460,18 +523,20 @@ class MainController(QObject):
             def stop(self):
                 self.should_stop = True
 
-        # Создаем поток и worker
-        thread = QThread()
-        worker = DuplicateSearchWorker(
+        # Store as instance attrs to prevent GC
+        self._dup_thread = QThread()
+        self._dup_worker = DuplicateSearchWorker(
             self.duplicate_finder,
             self.image_data,
             method,
             settings.get_hamming_threshold()
         )
-        worker.moveToThread(thread)
+        self._dup_worker.moveToThread(self._dup_thread)
 
         # Подключаем сигналы
-        thread.started.connect(worker.run)
+        self._dup_thread.started.connect(self._dup_worker.run)
+        thread = self._dup_thread
+        worker = self._dup_worker
 
         def on_finished(groups, stats):
             progress_dialog.set_indeterminate(False)
@@ -511,6 +576,88 @@ class MainController(QObject):
         thread.start()
         progress_dialog.show()
 
+    def _on_rating_changed(self, info: ImageInfo, rating: int):
+        """Persist rating change via XMP sidecar"""
+        logging.info(f"Rating set: {os.path.basename(info.path)} → {rating}")
+        self._save_sidecar(info)
+
+    def _on_color_label_changed(self, info: ImageInfo, color: str):
+        """Persist color label change via XMP sidecar"""
+        logging.info(f"Color label: {os.path.basename(info.path)} → {color or 'none'}")
+        self._save_sidecar(info)
+
+    def _save_sidecar(self, info: ImageInfo):
+        """Save rating/label/flag to .xmp sidecar file"""
+        try:
+            base, _ = os.path.splitext(info.path)
+            xmp_path = base + ".xmp"
+            lines = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
+                '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+                '<rdf:Description',
+                ' xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
+                ' xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/">',
+                f' <xmp:Rating>{info.rating}</xmp:Rating>',
+                f' <xmp:Label>{info.color_label}</xmp:Label>',
+            ]
+            if info.flag_status:
+                lines.append(f' <xmp:Flag>{info.flag_status}</xmp:Flag>')
+            lines += [
+                '</rdf:Description>',
+                '</rdf:RDF>',
+                '</x:xmpmeta>',
+            ]
+            with open(xmp_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines))
+        except Exception as e:
+            logging.error(f"XMP sidecar write error: {e}")
+
+    def _apply_sort(self, sort_key: str):
+        """Sort gallery thumbnails"""
+        try:
+            view = self.view.gallery_widget.thumbnail_view
+            items_data = []
+            for i in range(view.count()):
+                item = view.item(i)
+                info = item.data(Qt.ItemDataRole.UserRole)
+                items_data.append(info)
+
+            if sort_key == "name":
+                items_data.sort(key=lambda x: os.path.basename(x.path).lower())
+            elif sort_key == "date":
+                items_data.sort(key=lambda x: x.date_taken or "", reverse=True)
+            elif sort_key == "size":
+                items_data.sort(key=lambda x: x.file_size, reverse=True)
+            elif sort_key == "camera":
+                items_data.sort(key=lambda x: x.camera_model or "")
+            elif sort_key == "rating":
+                items_data.sort(key=lambda x: x.rating, reverse=True)
+
+            self.view.clear_thumbnails()
+            self.view.add_thumbnails_batch(items_data)
+            self.view.statusBar().showMessage(f"Отсортировано: {sort_key}")
+        except Exception as e:
+            logging.error(f"Sort error: {e}")
+
+    def _apply_search(self, text: str):
+        """Filter gallery by filename"""
+        try:
+            text = text.lower().strip()
+            view = self.view.gallery_widget.thumbnail_view
+            visible = 0
+            for i in range(view.count()):
+                item = view.item(i)
+                info = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(info, ImageInfo):
+                    match = not text or text in os.path.basename(info.path).lower()
+                    item.setHidden(not match)
+                    if match:
+                        visible += 1
+            self.view.statusBar().showMessage(f"Показано: {visible} из {view.count()}")
+        except Exception as e:
+            logging.error(f"Search error: {e}")
+
     def apply_filter(self, filter_mode: str):
         """Применяет фильтр отображения"""
         try:
@@ -528,6 +675,10 @@ class MainController(QObject):
                     is_visible = info.is_best_in_group
                 elif filter_mode == "duplicates":
                     is_visible = info.group_id is not None
+                elif filter_mode == "picked":
+                    is_visible = info.flag_status == "picked"
+                elif filter_mode == "rejected":
+                    is_visible = info.flag_status == "rejected"
 
                 if is_visible:
                     total_visible += 1
@@ -542,12 +693,12 @@ class MainController(QObject):
     def _on_edit_requested(self, info: ImageInfo):
         """Обрабатывает запрос на редактирование или воспроизведение"""
         try:
-            print(f"Контроллер: Получен запрос на редактирование файла {info.path}")
+            logging.info(f"Контроллер: Получен запрос на редактирование файла {info.path}")
 
             # Если это видео - открываем видеоплеер
             if info.is_video():
                 from views.video_player_widget import VideoPlayerWidget
-                print(f"Открытие видео: {info.path}")
+                logging.info(f"Открытие видео: {info.path}")
 
                 # Создаем и показываем видеоплеер
                 self.video_player = VideoPlayerWidget(info.path)
@@ -615,7 +766,7 @@ class MainController(QObject):
 
     def apply_style(self, source_info: ImageInfo):
         """Применяет стиль с одного изображения на другое"""
-        print(f"Применяем стиль с '{source_info.path}' на '{self.style_target_info.path}'")
+        logging.info(f"Применяем стиль с '{source_info.path}' на '{self.style_target_info.path}'")
 
         try:
             with Image.open(source_info.path).convert("RGB") as source_img, \
@@ -689,37 +840,61 @@ class MainController(QObject):
         except Exception as e:
             QMessageBox.critical(self.view, "Ошибка", f"Произошла ошибка: {e}")
 
+    TRASH_DIR = os.path.join(os.path.expanduser("~"), ".wiphoto", "trash")
+
+    def _move_to_trash(self, file_path: str) -> bool:
+        """Move file to WiPhoto trash instead of permanent delete"""
+        os.makedirs(self.TRASH_DIR, exist_ok=True)
+        basename = os.path.basename(file_path)
+        dest = os.path.join(self.TRASH_DIR, basename)
+        # Handle name conflicts
+        if os.path.exists(dest):
+            name, ext = os.path.splitext(basename)
+            counter = 1
+            while os.path.exists(dest):
+                dest = os.path.join(self.TRASH_DIR, f"{name}_{counter}{ext}")
+                counter += 1
+        shutil.move(file_path, dest)
+        return True
+
     def handle_delete(self, infos_to_delete: list[ImageInfo]):
-        """Удаляет выбранные файлы"""
+        """Перемещает файлы в корзину WiPhoto"""
         try:
             count = len(infos_to_delete)
             reply = QMessageBox.question(
                 self.view, "Подтверждение удаления",
-                f"Вы уверены, что хотите удалить {count} файл(ов)?",
+                f"Переместить {count} файл(ов) в корзину?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No
             )
 
             if reply == QMessageBox.StandardButton.Yes:
                 failed_files = []
+                succeeded = []
 
                 for info in infos_to_delete:
                     try:
-                        os.remove(info.path)
+                        self._move_to_trash(info.path)
+                        # Also move XMP sidecar if exists
+                        xmp_path = os.path.splitext(info.path)[0] + ".xmp"
+                        if os.path.exists(xmp_path):
+                            self._move_to_trash(xmp_path)
+                        succeeded.append(info)
                     except Exception as e:
+                        logging.error(f"Не удалось удалить {info.path}: {e}")
                         failed_files.append(info.path)
 
-                # Обновляем интерфейс
-                self.view.remove_thumbnails(infos_to_delete)
-                self.image_data = [info for info in self.image_data if info not in infos_to_delete]
-
-                # Пересчитываем группы
-                self._run_advanced_duplicate_search("phash")
+                # Only remove successfully moved items from UI
+                if succeeded:
+                    self.view.remove_thumbnails(succeeded)
+                    succeeded_set = set(id(i) for i in succeeded)
+                    self.image_data = [info for info in self.image_data if id(info) not in succeeded_set]
 
                 if failed_files:
                     QMessageBox.warning(
                         self.view, "Предупреждение",
-                        f"Не удалось удалить {len(failed_files)} файл(ов)."
+                        f"Не удалось удалить {len(failed_files)} файл(ов):\n" +
+                        "\n".join(os.path.basename(f) for f in failed_files[:5])
                     )
 
         except Exception as e:
@@ -737,7 +912,7 @@ class MainController(QObject):
 
                 for info in infos_to_copy:
                     try:
-                        shutil.copy(info.path, dest_dir)
+                        shutil.copy2(info.path, dest_dir)
                     except Exception as e:
                         failed_files.append(info.path)
 
@@ -764,17 +939,21 @@ class MainController(QObject):
 
             if dest_dir:
                 failed_files = []
+                succeeded = []
 
                 for info in infos_to_move:
                     try:
                         shutil.move(info.path, dest_dir)
+                        succeeded.append(info)
                     except Exception as e:
+                        logging.error(f"Не удалось переместить {info.path}: {e}")
                         failed_files.append(info.path)
 
-                # Обновляем интерфейс
-                self.view.remove_thumbnails(infos_to_move)
-                self.image_data = [info for info in self.image_data if info not in infos_to_move]
-                self._run_advanced_duplicate_search("phash")
+                # Only remove successfully moved items
+                if succeeded:
+                    self.view.remove_thumbnails(succeeded)
+                    succeeded_set = set(id(i) for i in succeeded)
+                    self.image_data = [info for info in self.image_data if id(info) not in succeeded_set]
 
                 if failed_files:
                     QMessageBox.warning(
@@ -784,11 +963,88 @@ class MainController(QObject):
                 else:
                     QMessageBox.information(
                         self.view, "Готово",
-                        f"{len(infos_to_move)} файл(ов) перемещено."
+                        f"{len(succeeded)} файл(ов) перемещено."
                     )
 
         except Exception as e:
             QMessageBox.critical(self.view, "Ошибка", f"Произошла ошибка: {e}")
+
+    def _handle_batch_rename(self, image_infos: list):
+        """Handle batch rename request"""
+        try:
+            from views.batch_rename_dialog import BatchRenameDialog
+            dialog = BatchRenameDialog(image_infos, self.view)
+            if dialog.exec():
+                rename_map = dialog.get_rename_map()
+                renamed = 0
+                errors = []
+                for old_path, new_path in rename_map.items():
+                    if old_path == new_path:
+                        continue
+                    try:
+                        os.rename(old_path, new_path)
+                        # Update ImageInfo path
+                        for info in self.image_data:
+                            if info.path == old_path:
+                                info.path = new_path
+                                break
+                        renamed += 1
+                    except Exception as e:
+                        errors.append(f"{os.path.basename(old_path)}: {e}")
+
+                if errors:
+                    QMessageBox.warning(self.view, "Ошибки", f"Не удалось переименовать:\n" + "\n".join(errors[:10]))
+
+                self.view.statusBar().showMessage(f"Переименовано: {renamed} файлов")
+                self.view.update_thumbnail_styles()
+        except Exception as e:
+            logging.error(f"Batch rename error: {e}")
+
+    def _handle_delete_rejected(self):
+        """Delete all rejected images"""
+        rejected = [info for info in self.image_data if info.flag_status == "rejected"]
+        if not rejected:
+            self.view.statusBar().showMessage("Нет отклонённых файлов")
+            return
+        self.handle_delete(rejected)
+
+    def _handle_find_similar(self, target_info: ImageInfo):
+        """Find images similar to target using perceptual hash"""
+        try:
+            if not target_info.phash:
+                self.view.statusBar().showMessage("Нет хеша для сравнения")
+                return
+
+            import imagehash
+            target_hash = imagehash.hex_to_hash(target_info.phash)
+            threshold = 15  # More permissive for "similar" vs "duplicate"
+
+            similar = []
+            for info in self.image_data:
+                if info.path == target_info.path:
+                    continue
+                if info.phash:
+                    try:
+                        h = imagehash.hex_to_hash(info.phash)
+                        dist = target_hash - h
+                        if dist <= threshold:
+                            similar.append((dist, info))
+                    except Exception:
+                        pass
+
+            similar.sort(key=lambda x: x[0])
+            result = [info for _, info in similar[:50]]
+
+            if result:
+                self.view.clear_thumbnails()
+                self.view.add_thumbnails_batch(result)
+                self.view.statusBar().showMessage(
+                    f"Найдено {len(result)} похожих на {os.path.basename(target_info.path)}")
+            else:
+                self.view.statusBar().showMessage("Похожих изображений не найдено")
+        except Exception as e:
+            logging.error(f"Find similar error: {e}")
+            self.view.statusBar().showMessage(f"Ошибка поиска: {e}")
 
     def _handle_refresh(self):
         """Обработка F5 — повторное сканирование текущей папки"""
@@ -814,7 +1070,7 @@ class MainController(QObject):
 
     def cleanup(self):
         """Корректное завершение работы контроллера"""
-        print("Контроллер: Остановка сканера и выход из потока...")
+        logging.info("Контроллер: Остановка сканера и выход из потока...")
 
         try:
             if self.scanner:
@@ -824,11 +1080,11 @@ class MainController(QObject):
             self.scanner_thread.quit()
 
             if not self.scanner_thread.wait(5000):  # Таймаут 5 секунд
-                print("Контроллер: Принудительное завершение потока сканера...")
+                logging.warning("Контроллер: Принудительное завершение потока сканера...")
                 self.scanner_thread.terminate()
                 self.scanner_thread.wait()
 
-            print("Контроллер: Поток сканера завершен.")
+            logging.info("Контроллер: Поток сканера завершен.")
 
         except Exception as e:
             logging.error(f"Ошибка при остановке сканера: {e}")
