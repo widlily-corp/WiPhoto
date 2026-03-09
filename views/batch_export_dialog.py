@@ -5,7 +5,7 @@ import logging
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
                              QComboBox, QSpinBox, QPushButton, QGroupBox, QFormLayout,
                              QDialogButtonBox, QCheckBox, QSlider, QFileDialog,
-                             QProgressBar, QTextEdit)
+                             QProgressBar, QTextEdit, QWidget)
 from PyQt6.QtCore import Qt, QThread, QObject, pyqtSignal
 from PIL import Image, ImageDraw, ImageFont
 
