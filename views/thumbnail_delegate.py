@@ -1,8 +1,9 @@
 # views/thumbnail_delegate.py
 
 import os
+import logging
 from collections import OrderedDict
-from PyQt6.QtWidgets import QStyledItemDelegate, QStyle
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyle, QToolTip
 from PyQt6.QtCore import Qt, QSize, QRect, QRectF, QPointF
 from PyQt6.QtGui import (QPainter, QPixmap, QColor, QPen, QFont,
                          QBrush, QPolygonF, QFontMetrics, QPainterPath)
@@ -41,6 +42,7 @@ class ThumbnailDelegate(QStyledItemDelegate):
         self._info_bar_height = 36  # taller for two lines
         self._pixmap_cache = OrderedDict()
         self._cache_limit = 300
+        self._exif_cache = {}  # path → EXIF dict (cached per session)
 
     def set_cell_size(self, size: int):
         self._cell_size = size
@@ -268,3 +270,88 @@ class ThumbnailDelegate(QStyledItemDelegate):
 
     def clear_cache(self):
         self._pixmap_cache.clear()
+
+    def helpEvent(self, event, view, option, index):
+        """Show EXIF tooltip on hover"""
+        from PyQt6.QtCore import QEvent
+        if event.type() == QEvent.Type.ToolTip:
+            info = index.data(Qt.ItemDataRole.UserRole)
+            if isinstance(info, ImageInfo):
+                tooltip = self._build_tooltip(info)
+                if tooltip:
+                    QToolTip.showText(event.globalPos(), tooltip, view)
+                    return True
+        return super().helpEvent(event, view, option, index)
+
+    def _build_tooltip(self, info: ImageInfo) -> str:
+        """Build rich EXIF tooltip for thumbnail hover"""
+        lines = [f"<b>{os.path.basename(info.path)}</b>"]
+
+        if info.width > 0 and info.height > 0:
+            mp = (info.width * info.height) / 1_000_000
+            lines.append(f"{info.width} x {info.height} ({mp:.1f} MP)")
+
+        size_str = _format_size(info.file_size)
+        if size_str:
+            lines.append(f"Размер: {size_str}")
+
+        if info.camera_model:
+            lines.append(f"Камера: {info.camera_model}")
+
+        # Load cached EXIF for extra details
+        exif = self._get_exif_cached(info.path)
+        if exif:
+            iso = exif.get("ISO", "")
+            shutter = exif.get("Shutter Speed", "") or exif.get("Exposure Time", "")
+            aperture = exif.get("Aperture", "") or exif.get("F Number", "")
+            focal = exif.get("Focal Length", "")
+            lens = exif.get("Lens Model", "") or exif.get("Lens", "")
+
+            exposure_parts = []
+            if shutter:
+                exposure_parts.append(str(shutter))
+            if aperture:
+                exposure_parts.append(f"f/{aperture}" if not str(aperture).startswith("f") else str(aperture))
+            if iso:
+                exposure_parts.append(f"ISO {iso}")
+            if exposure_parts:
+                lines.append(" | ".join(exposure_parts))
+            if focal:
+                lines.append(f"Фокусное: {focal}")
+            if lens:
+                lines.append(f"Объектив: {lens}")
+
+        if info.date_taken:
+            lines.append(f"Дата: {info.date_taken}")
+
+        if info.faces_count > 0:
+            lines.append(f"Лица: {info.faces_count}")
+        if info.animals_count > 0:
+            species = ", ".join(info.animal_species) if info.animal_species else ""
+            lines.append(f"Животные: {info.animals_count}" + (f" ({species})" if species else ""))
+        if info.tags:
+            lines.append(f"Теги: {', '.join(info.tags[:8])}")
+
+        if info.rating > 0:
+            lines.append(f"Рейтинг: {'★' * info.rating}")
+
+        return "<br>".join(lines)
+
+    def _get_exif_cached(self, path: str) -> dict:
+        """Get EXIF data with caching"""
+        if path in self._exif_cache:
+            return self._exif_cache[path]
+        try:
+            from core.metadata_reader import read_metadata
+            exif = read_metadata(path)
+            self._exif_cache[path] = exif
+            # Limit cache size
+            if len(self._exif_cache) > 500:
+                # Remove oldest entries
+                keys = list(self._exif_cache.keys())
+                for k in keys[:100]:
+                    del self._exif_cache[k]
+            return exif
+        except Exception:
+            self._exif_cache[path] = {}
+            return {}

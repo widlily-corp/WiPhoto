@@ -51,6 +51,8 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
         self.setGeometry(100, 100, 1600, 900)
         self.current_preview_pixmap = None
+        self._preview_cache = {}  # path → QPixmap (prefetch cache)
+        self._preview_cache_limit = 5
 
         self.setAcceptDrops(True)
 
@@ -724,10 +726,47 @@ class MainWindow(QMainWindow):
             self.histogram_widget.set_image_path(image_path)
             self.color_palette.set_image_path(image_path)
 
-            pil_image = None
-            is_raw = image_path.lower().endswith(RAW_FORMATS)
-            is_video = image_path.lower().endswith(VIDEO_FORMATS)
+            # Check prefetch cache first
+            if image_path in self._preview_cache:
+                self.current_preview_pixmap = self._preview_cache[image_path]
+            else:
+                pixmap = self._load_preview_pixmap(image_path)
+                if pixmap:
+                    self.current_preview_pixmap = pixmap
+                    self._preview_cache[image_path] = pixmap
+                else:
+                    self.preview_area.setText("Не удалось загрузить")
+                    return
 
+            self.preview_area.setPixmap(
+                self.current_preview_pixmap.scaled(
+                    self.preview_area.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+            )
+
+            # Prefetch neighbors in background
+            self._prefetch_neighbors(image_path)
+
+            # Evict old cache entries
+            while len(self._preview_cache) > self._preview_cache_limit:
+                oldest = next(iter(self._preview_cache))
+                if oldest != image_path:
+                    del self._preview_cache[oldest]
+                else:
+                    break
+
+        except Exception as e:
+            self.preview_area.setText(f"Ошибка: {e}")
+
+    def _load_preview_pixmap(self, image_path: str) -> QPixmap:
+        """Load image from path and return QPixmap"""
+        pil_image = None
+        is_raw = image_path.lower().endswith(RAW_FORMATS)
+        is_video = image_path.lower().endswith(VIDEO_FORMATS)
+
+        try:
             if is_video:
                 import cv2
                 cap = cv2.VideoCapture(image_path)
@@ -737,8 +776,7 @@ class MainWindow(QMainWindow):
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_image = Image.fromarray(rgb)
                 else:
-                    self.preview_area.setText("Видео не загружено")
-                    return
+                    return None
             elif is_raw:
                 import rawpy
                 with rawpy.imread(image_path) as raw:
@@ -750,7 +788,6 @@ class MainWindow(QMainWindow):
             if pil_image:
                 if pil_image.mode != 'RGB':
                     pil_image = pil_image.convert('RGB')
-
                 img_bytes = pil_image.tobytes()
                 q_image = QImage(
                     img_bytes,
@@ -759,20 +796,33 @@ class MainWindow(QMainWindow):
                     pil_image.width * 3,
                     QImage.Format.Format_RGB888
                 )
-                self.current_preview_pixmap = QPixmap.fromImage(q_image)
+                pixmap = QPixmap.fromImage(q_image)
                 pil_image.close()
+                return pixmap
+        except Exception:
+            pass
+        return None
 
-                self.preview_area.setPixmap(
-                    self.current_preview_pixmap.scaled(
-                        self.preview_area.size(),
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation
-                    )
-                )
-            else:
-                self.preview_area.setText("Не удалось загрузить")
-        except Exception as e:
-            self.preview_area.setText(f"Ошибка: {e}")
+    def _prefetch_neighbors(self, current_path: str):
+        """Prefetch prev/next images for instant switching"""
+        try:
+            gallery = self.gallery_widget.thumbnail_view
+            current_row = gallery.currentRow()
+            if current_row < 0:
+                return
+
+            for offset in [-1, 1]:
+                neighbor_row = current_row + offset
+                if 0 <= neighbor_row < gallery.count():
+                    item = gallery.item(neighbor_row)
+                    if item:
+                        info = item.data(Qt.ItemDataRole.UserRole)
+                        if isinstance(info, ImageInfo) and info.path not in self._preview_cache:
+                            pixmap = self._load_preview_pixmap(info.path)
+                            if pixmap:
+                                self._preview_cache[info.path] = pixmap
+        except Exception:
+            pass
 
     def update_metadata(self, data: dict):
         try:

@@ -7,7 +7,7 @@ from datetime import datetime
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QListWidgetItem, QLabel
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from models.image_model import ImageInfo
+from models.image_model import ImageInfo, RAW_EXTENSIONS
 
 
 class SmartCollectionsWidget(QWidget):
@@ -56,6 +56,9 @@ class SmartCollectionsWidget(QWidget):
             ("\u2728 Уникальные", "unique"),
             ("\U0001f464 С лицами", "with_faces"),
             ("\U0001f43e С животными", "with_animals"),
+            ("\U0001f431 Коты", "cats"),
+            ("\U0001f436 Собаки", "dogs"),
+            ("\U0001f426 Птицы", "birds"),
             ("\U0001f4cd С геотегами", "with_geotags"),
             ("\u2b50 По рейтингу (4+)", "rated_high"),
             ("\U0001f3ac Видео", "videos"),
@@ -102,8 +105,7 @@ class SmartCollectionsWidget(QWidget):
             threshold_idx = max(1, len(sorted_imgs) // 5)
             return sorted_imgs[:threshold_idx]
         elif collection_id == "raw_files":
-            raw_exts = ('.arw', '.cr2', '.cr3', '.nef', '.dng', '.raw', '.rw2', '.orf', '.pef', '.raf')
-            return [img for img in self.all_images if img.path.lower().endswith(raw_exts)]
+            return [img for img in self.all_images if img.path.lower().endswith(RAW_EXTENSIONS)]
         elif collection_id == "by_camera":
             return [img for img in self.all_images if img.camera_model]
         elif collection_id == "all_duplicates":
@@ -114,6 +116,12 @@ class SmartCollectionsWidget(QWidget):
             return [img for img in self.all_images if img.faces_count > 0]
         elif collection_id == "with_animals":
             return [img for img in self.all_images if img.animals_count > 0]
+        elif collection_id == "cats":
+            return [img for img in self.all_images if 'cat' in img.animal_species]
+        elif collection_id == "dogs":
+            return [img for img in self.all_images if 'dog' in img.animal_species]
+        elif collection_id == "birds":
+            return [img for img in self.all_images if 'bird' in img.animal_species]
         elif collection_id == "with_geotags":
             return [img for img in self.all_images if img.gps_location is not None]
         elif collection_id == "rated_high":

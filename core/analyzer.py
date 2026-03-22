@@ -182,13 +182,17 @@ def process_single_file(file_path: str) -> dict:
         except Exception as e:
             logger.warning(f"Ошибка детекции лиц для {file_path}: {e}")
 
-        # 6. АВТОАНАЛИЗ: Определяем животных
+        # 6. АВТОАНАЛИЗ: Определяем животных и объекты (YOLO)
         animals_count = 0
+        animal_species = []
+        auto_tags = []
         try:
             from core.animal_detector import AnimalDetector
             detector = AnimalDetector.get_instance()
             if detector.available:
                 animals_count = detector.count_animals(file_path)
+                animal_species = detector.get_animal_species(file_path)
+                auto_tags = detector.get_tags(file_path)
         except Exception as e:
             logger.warning(f"Ошибка детекции животных для {file_path}: {e}")
 
@@ -245,6 +249,8 @@ def process_single_file(file_path: str) -> dict:
             "width": img_width,
             "height": img_height,
             "file_size": file_size,
+            "animal_species": animal_species,
+            "tags": auto_tags,
         }
     except Exception as e:
         logger.error(f"Ошибка обработки файла {file_path}: {e}")

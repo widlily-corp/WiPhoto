@@ -1,9 +1,11 @@
 # views/gallery_widget.py
 
 import os
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QListWidget, QAbstractItemView, QMenu)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
+                             QAbstractItemView, QMenu, QLineEdit, QComboBox,
+                             QPushButton, QLabel, QToolButton)
 from PyQt6.QtGui import QIcon, QAction, QWheelEvent, QKeyEvent
-from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 
 from models.image_model import ImageInfo
 from views.thumbnail_delegate import ThumbnailDelegate
@@ -110,24 +112,263 @@ class ThumbnailListWidget(QListWidget):
 
 
 class GalleryWidget(QWidget):
-    """Gallery grid widget — just the thumbnail grid, no right panel"""
+    """Gallery grid widget with search, sort, filter bar"""
 
     edit_requested = pyqtSignal(ImageInfo)
+    find_similar_requested = pyqtSignal(ImageInfo)
+    filter_applied = pyqtSignal(list)  # emits filtered ImageInfo list
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._all_items_data = []  # full unfiltered data
+        self._current_sort = "name"
+        self._sort_reverse = False
+        self._search_timer = QTimer()
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(300)
+        self._search_timer.timeout.connect(self._apply_filters)
 
+        self._active_rating_filter = -1  # -1 = all
+        self._active_color_filter = ""   # "" = all
+        self._active_flag_filter = ""    # "" = all
+
+        self._init_ui()
+
+    def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # === Toolbar: search + sort ===
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(4, 4, 4, 2)
+        toolbar.setSpacing(4)
+
+        # Search
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Поиск по имени файла...")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setMaximumHeight(28)
+        self.search_edit.setStyleSheet("""
+            QLineEdit {
+                background: #2a2a2a; border: 1px solid #444;
+                border-radius: 4px; padding: 2px 8px; color: #ddd; font-size: 12px;
+            }
+            QLineEdit:focus { border-color: #0078d4; }
+        """)
+        self.search_edit.textChanged.connect(lambda: self._search_timer.start())
+        toolbar.addWidget(self.search_edit, stretch=1)
+
+        # Sort combo
+        self.sort_combo = QComboBox()
+        self.sort_combo.setMaximumHeight(28)
+        self.sort_combo.addItems([
+            "Имя ↑", "Имя ↓",
+            "Дата ↑", "Дата ↓",
+            "Размер ↑", "Размер ↓",
+            "Рейтинг ↑", "Рейтинг ↓",
+            "Резкость ↑", "Резкость ↓",
+        ])
+        self.sort_combo.setStyleSheet("""
+            QComboBox {
+                background: #2a2a2a; border: 1px solid #444;
+                border-radius: 4px; padding: 2px 6px; color: #ddd; font-size: 11px;
+                min-width: 100px;
+            }
+        """)
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        toolbar.addWidget(self.sort_combo)
+
+        # Count label
+        self.count_label = QLabel("0")
+        self.count_label.setStyleSheet("color: #888; font-size: 11px; padding: 0 4px;")
+        toolbar.addWidget(self.count_label)
+
+        layout.addLayout(toolbar)
+
+        # === Filter bar: stars + colors + flags ===
+        filter_bar = QHBoxLayout()
+        filter_bar.setContentsMargins(4, 0, 4, 2)
+        filter_bar.setSpacing(2)
+
+        # Star filter buttons
+        self._star_buttons = []
+        for i in range(6):
+            btn = QToolButton()
+            if i == 0:
+                btn.setText("All")
+                btn.setToolTip("Все рейтинги")
+            else:
+                btn.setText("\u2605" * i)
+                btn.setToolTip(f"Рейтинг {i}+")
+            btn.setCheckable(True)
+            btn.setChecked(i == 0)
+            btn.setMaximumHeight(22)
+            btn.setStyleSheet(self._filter_btn_style())
+            btn.clicked.connect(lambda checked, r=i: self._on_rating_filter(r))
+            self._star_buttons.append(btn)
+            filter_bar.addWidget(btn)
+
+        filter_bar.addSpacing(8)
+
+        # Color filter buttons
+        color_defs = [
+            ("", "#666", "Все"),
+            ("red", "#e74c3c", "Красная"),
+            ("yellow", "#f1c40f", "Желтая"),
+            ("green", "#2ecc71", "Зеленая"),
+            ("blue", "#3498db", "Синяя"),
+        ]
+        self._color_buttons = []
+        for color_id, hex_color, tooltip in color_defs:
+            btn = QToolButton()
+            if color_id:
+                btn.setText("\u25cf")
+                btn.setStyleSheet(self._color_btn_style(hex_color))
+            else:
+                btn.setText("All")
+                btn.setStyleSheet(self._filter_btn_style())
+            btn.setCheckable(True)
+            btn.setChecked(color_id == "")
+            btn.setMaximumHeight(22)
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(lambda checked, c=color_id: self._on_color_filter(c))
+            self._color_buttons.append((color_id, btn))
+            filter_bar.addWidget(btn)
+
+        filter_bar.addSpacing(8)
+
+        # Flag filter buttons
+        flag_defs = [("", "All", "Все"), ("picked", "\u2713", "Выбранные"), ("rejected", "\u2717", "Отклонённые")]
+        self._flag_buttons = []
+        for flag_id, text, tooltip in flag_defs:
+            btn = QToolButton()
+            btn.setText(text)
+            btn.setCheckable(True)
+            btn.setChecked(flag_id == "")
+            btn.setMaximumHeight(22)
+            btn.setStyleSheet(self._filter_btn_style())
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(lambda checked, f=flag_id: self._on_flag_filter(f))
+            self._flag_buttons.append((flag_id, btn))
+            filter_bar.addWidget(btn)
+
+        filter_bar.addStretch()
+        layout.addLayout(filter_bar)
+
+        # === Thumbnail grid ===
         self.thumbnail_view = ThumbnailListWidget()
         self.thumbnail_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.thumbnail_view.customContextMenuRequested.connect(self._show_context_menu)
-
         layout.addWidget(self.thumbnail_view)
 
         self._create_actions()
+
+    def _filter_btn_style(self):
+        return """
+            QToolButton {
+                background: transparent; border: 1px solid transparent;
+                border-radius: 3px; padding: 1px 5px; color: #aaa; font-size: 11px;
+            }
+            QToolButton:hover { background: #333; border-color: #555; }
+            QToolButton:checked { background: #0078d4; color: white; border-color: #0078d4; }
+        """
+
+    def _color_btn_style(self, hex_color):
+        return f"""
+            QToolButton {{
+                background: transparent; border: 1px solid transparent;
+                border-radius: 3px; padding: 1px 5px; color: {hex_color}; font-size: 14px;
+            }}
+            QToolButton:hover {{ background: #333; border-color: #555; }}
+            QToolButton:checked {{ background: #333; border-color: {hex_color}; }}
+        """
+
+    # --- Filter logic ---
+
+    def _on_rating_filter(self, rating: int):
+        self._active_rating_filter = rating
+        for i, btn in enumerate(self._star_buttons):
+            btn.setChecked(i == rating)
+        self._apply_filters()
+
+    def _on_color_filter(self, color: str):
+        self._active_color_filter = color
+        for cid, btn in self._color_buttons:
+            btn.setChecked(cid == color)
+        self._apply_filters()
+
+    def _on_flag_filter(self, flag: str):
+        self._active_flag_filter = flag
+        for fid, btn in self._flag_buttons:
+            btn.setChecked(fid == flag)
+        self._apply_filters()
+
+    def _on_sort_changed(self, index):
+        sort_keys = [
+            ("name", False), ("name", True),
+            ("date", False), ("date", True),
+            ("size", False), ("size", True),
+            ("rating", False), ("rating", True),
+            ("sharpness", False), ("sharpness", True),
+        ]
+        if 0 <= index < len(sort_keys):
+            self._current_sort, self._sort_reverse = sort_keys[index]
+            self._apply_filters()
+
+    def set_all_items(self, items_data: list):
+        """Store full unfiltered data for search/filter/sort"""
+        self._all_items_data = list(items_data)
+        self._apply_filters()
+
+    def _apply_filters(self):
+        """Apply search + rating + color + flag filters, then sort"""
+        search_text = self.search_edit.text().strip().lower()
+        result = self._all_items_data
+
+        # Search filter
+        if search_text:
+            result = [info for info in result
+                      if search_text in os.path.basename(info.path).lower()]
+
+        # Rating filter
+        if self._active_rating_filter > 0:
+            result = [info for info in result if info.rating >= self._active_rating_filter]
+
+        # Color filter
+        if self._active_color_filter:
+            result = [info for info in result if info.color_label == self._active_color_filter]
+
+        # Flag filter
+        if self._active_flag_filter:
+            result = [info for info in result if info.flag_status == self._active_flag_filter]
+
+        # Sort
+        result = self._sort_items(result)
+
+        # Update count
+        total = len(self._all_items_data)
+        shown = len(result)
+        if shown == total:
+            self.count_label.setText(f"{total}")
+        else:
+            self.count_label.setText(f"{shown}/{total}")
+
+        # Emit filtered list
+        self.filter_applied.emit(result)
+
+    def _sort_items(self, items: list) -> list:
+        key_funcs = {
+            "name": lambda i: os.path.basename(i.path).lower(),
+            "date": lambda i: i.date_taken or "",
+            "size": lambda i: i.file_size,
+            "rating": lambda i: i.rating,
+            "sharpness": lambda i: i.sharpness,
+        }
+        key_fn = key_funcs.get(self._current_sort, key_funcs["name"])
+        return sorted(items, key=key_fn, reverse=self._sort_reverse)
+
+    # --- Actions & context menu ---
 
     def _create_actions(self):
         self.edit_action = QAction(QIcon(resource_path("assets/edit.png")), "Редактировать", self)
@@ -201,8 +442,6 @@ class GalleryWidget(QWidget):
             if isinstance(info, ImageInfo):
                 info.color_label = color
         self.thumbnail_view.viewport().update()
-
-    find_similar_requested = pyqtSignal(ImageInfo)
 
     def _set_flag(self, status: str):
         for item in self.thumbnail_view.selectedItems():

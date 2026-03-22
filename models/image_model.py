@@ -36,9 +36,10 @@ class ImageInfo:
     file_size: int = 0  # bytes
     width: int = 0
     height: int = 0
+    animal_species: list = field(default_factory=list)  # ['cat', 'dog', ...]
     color_label: str = ""  # red, yellow, green, blue, purple
     flag_status: str = ""  # "" = unflagged, "picked" = picked, "rejected" = rejected
-    tags: list = field(default_factory=list)  # AI-generated tags
+    tags: list = field(default_factory=list)  # AI-generated tags (YOLO: person, car, cat, ...)
 
     def is_video(self) -> bool:
         """Проверяет, является ли файл видео"""

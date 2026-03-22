@@ -26,6 +26,7 @@ class ZoomableView(QGraphicsView):
     def __init__(self, editor: 'EditorWidget', parent=None):
         super().__init__(parent)
         self.editor = editor
+        self._dragging_split = False
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -38,6 +39,42 @@ class ZoomableView(QGraphicsView):
             self.editor._set_zoom(zoom_factor)
         else:
             super().wheelEvent(event)
+
+    def mousePressEvent(self, event):
+        if self.editor._before_after_mode and event.button() == Qt.MouseButton.LeftButton:
+            self._dragging_split = True
+            self._update_split_from_mouse(event.pos())
+            self.setCursor(Qt.CursorShape.SplitHCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging_split:
+            self._update_split_from_mouse(event.pos())
+            event.accept()
+            return
+        # Show split cursor when in before/after mode
+        if self.editor._before_after_mode:
+            self.setCursor(Qt.CursorShape.SplitHCursor)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging_split:
+            self._dragging_split = False
+            self.setCursor(Qt.CursorShape.SplitHCursor if self.editor._before_after_mode
+                          else Qt.CursorShape.ArrowCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _update_split_from_mouse(self, pos):
+        """Update split position based on mouse X relative to viewport width"""
+        vw = self.viewport().width()
+        if vw > 0:
+            new_pos = max(0.05, min(0.95, pos.x() / vw))
+            self.editor._split_pos = new_pos
+            self.editor._render_image()
 
 
 class EditorWidget(QWidget):
@@ -456,20 +493,38 @@ class EditorWidget(QWidget):
         right_crop = edited.crop((split_x, 0, w, h))
         result.paste(right_crop, (split_x, 0))
 
-        # Draw split line
+        # Draw split line with handle
         from PIL import ImageDraw
         draw = ImageDraw.Draw(result)
-        draw.line([(split_x, 0), (split_x, h)], fill=(255, 255, 255), width=2)
+        # Main split line
+        draw.line([(split_x, 0), (split_x, h)], fill=(255, 255, 255), width=3)
 
-        # Labels
+        # Draw handle circle at center
+        cy = h // 2
+        r = max(12, h // 30)
+        draw.ellipse([split_x - r, cy - r, split_x + r, cy + r],
+                     fill=(255, 255, 255, 200), outline=(200, 200, 200))
+        # Left/right arrows in handle
+        arrow_size = r // 2
+        draw.polygon([(split_x - arrow_size, cy),
+                       (split_x - 2, cy - arrow_size),
+                       (split_x - 2, cy + arrow_size)], fill=(60, 60, 60))
+        draw.polygon([(split_x + arrow_size, cy),
+                       (split_x + 2, cy - arrow_size),
+                       (split_x + 2, cy + arrow_size)], fill=(60, 60, 60))
+
+        # Labels with background
         try:
             from PIL import ImageFont
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", max(14, h // 40))
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(14, h // 40))
         except Exception:
             font = ImageFont.load_default()
 
-        draw.text((10, 10), "ДО", fill=(255, 255, 255), font=font)
-        draw.text((split_x + 10, 10), "ПОСЛЕ", fill=(255, 255, 255), font=font)
+        for text, tx in [("ДО", 10), ("ПОСЛЕ", split_x + 10)]:
+            bbox = draw.textbbox((tx, 10), text, font=font)
+            draw.rectangle([bbox[0] - 4, bbox[1] - 2, bbox[2] + 4, bbox[3] + 2],
+                          fill=(0, 0, 0, 160))
+            draw.text((tx, 10), text, fill=(255, 255, 255), font=font)
 
         return self._pil_to_pixmap(result)
 

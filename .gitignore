@@ -62,6 +62,11 @@ thumbnails/
 Thumbs.db
 desktop.ini
 
+# YOLO model files (auto-downloaded on first run)
+assets/models/yolov4-tiny.weights
+assets/models/yolov4-tiny.cfg
+assets/models/coco.names
+
 # ExifTool files (include in releases only)
 exiftool.exe
 exiftool_files/
