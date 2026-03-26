@@ -243,7 +243,7 @@ def main():
 
         app = QApplication(sys.argv)
         app.setApplicationName("WiPhoto")
-        app.setApplicationVersion("2.2.0")
+        app.setApplicationVersion("2.3.0")
         app.setOrganizationName("Widlily Corporation")
 
         logging.info("QApplication создан успешно")
