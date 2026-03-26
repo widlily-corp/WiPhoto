@@ -3,7 +3,7 @@
 import logging
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -17,13 +17,26 @@ class DocumentCorners:
     bottom_right: Tuple[int, int]
     bottom_left: Tuple[int, int]
 
+    def as_array(self) -> np.ndarray:
+        return np.array([self.top_left, self.top_right,
+                         self.bottom_right, self.bottom_left], dtype="float32")
+
+    @staticmethod
+    def from_array(pts: np.ndarray) -> 'DocumentCorners':
+        ordered = DocumentScanner.order_points(pts.astype("float32"))
+        return DocumentCorners(
+            top_left=tuple(ordered[0].astype(int)),
+            top_right=tuple(ordered[1].astype(int)),
+            bottom_right=tuple(ordered[2].astype(int)),
+            bottom_left=tuple(ordered[3].astype(int)),
+        )
+
 
 class DocumentScanner:
     """Сканер документов с автоматическим выравниванием и улучшением текста"""
 
     @staticmethod
     def order_points(pts: np.ndarray) -> np.ndarray:
-        """Упорядочивает точки в порядке: top-left, top-right, bottom-right, bottom-left"""
         rect = np.zeros((4, 2), dtype="float32")
         s = pts.sum(axis=1)
         rect[0] = pts[np.argmin(s)]
@@ -35,7 +48,6 @@ class DocumentScanner:
 
     @staticmethod
     def four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
-        """Применяет перспективную трансформацию к изображению"""
         rect = DocumentScanner.order_points(pts)
         (tl, tr, br, bl) = rect
 
@@ -47,84 +59,88 @@ class DocumentScanner:
         heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
         maxHeight = max(int(heightA), int(heightB))
 
+        if maxWidth < 10 or maxHeight < 10:
+            return image
+
         dst = np.array([
-            [0, 0],
-            [maxWidth - 1, 0],
-            [maxWidth - 1, maxHeight - 1],
-            [0, maxHeight - 1]
+            [0, 0], [maxWidth - 1, 0],
+            [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]
         ], dtype="float32")
 
         M = cv2.getPerspectiveTransform(rect, dst)
-        warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
-        return warped
+        return cv2.warpPerspective(image, M, (maxWidth, maxHeight))
 
-    def detect_document(self, image_path: str) -> Optional[DocumentCorners]:
-        """Обнаруживает границы документа на изображении"""
+    # ─── Detection ───────────────────────────────────────────────
+
+    def detect_document(self, image: np.ndarray) -> Optional[DocumentCorners]:
+        """Обнаруживает границы документа (многослойный алгоритм)"""
         try:
-            image = cv2.imread(image_path)
-            if image is None:
-                return None
-            return self._detect_from_image(image)
+            h, w = image.shape[:2]
+            max_dim = 1024
+            scale = 1.0
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                small = cv2.resize(image, None, fx=scale, fy=scale,
+                                   interpolation=cv2.INTER_AREA)
+            else:
+                small = image
+
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            sh, sw = gray.shape[:2]
+            min_area = sh * sw * 0.05
+
+            # Strategy 1: multiple Canny thresholds
+            for lo, hi in [(30, 120), (50, 200), (75, 250)]:
+                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+                edged = cv2.Canny(blurred, lo, hi)
+                edged = cv2.dilate(edged, np.ones((3, 3), np.uint8), iterations=2)
+                edged = cv2.erode(edged, np.ones((3, 3), np.uint8), iterations=1)
+                result = self._find_best_quad(edged, min_area)
+                if result is not None:
+                    return self._scale_corners(result, scale)
+
+            # Strategy 2: morphological closing + Canny
+            blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+            closed = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, kernel)
+            edged = cv2.Canny(closed, 30, 150)
+            edged = cv2.dilate(edged, np.ones((5, 5), np.uint8), iterations=2)
+            result = self._find_best_quad(edged, min_area)
+            if result is not None:
+                return self._scale_corners(result, scale)
+
+            # Strategy 3: adaptive threshold
+            for block_size in [15, 25, 41]:
+                thresh = cv2.adaptiveThreshold(blurred, 255,
+                                               cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                               cv2.THRESH_BINARY_INV, block_size, 5)
+                thresh = cv2.dilate(thresh, np.ones((5, 5), np.uint8), iterations=3)
+                thresh = cv2.erode(thresh, np.ones((3, 3), np.uint8), iterations=2)
+                result = self._find_best_quad(thresh, min_area, use_external=True)
+                if result is not None:
+                    return self._scale_corners(result, scale)
+
+            # Strategy 4: Hough lines → intersect to quad
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edged = cv2.Canny(blurred, 50, 200)
+            result = self._find_quad_from_hough(edged, sw, sh, min_area)
+            if result is not None:
+                return self._scale_corners(result, scale)
+
+            return None
         except Exception as e:
-            logger.error(f"Error detecting document in {image_path}: {e}")
+            logger.error(f"Detection error: {e}")
             return None
 
-    def _detect_from_image(self, image: np.ndarray) -> Optional[DocumentCorners]:
-        """Обнаруживает границы документа в numpy-изображении"""
-        h, w = image.shape[:2]
+    def _find_best_quad(self, binary: np.ndarray, min_area: float,
+                        use_external: bool = False) -> Optional[DocumentCorners]:
+        """Ищет лучший четырёхугольник в бинарном изображении"""
+        mode = cv2.RETR_EXTERNAL if use_external else cv2.RETR_LIST
+        contours, _ = cv2.findContours(binary, mode, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:15]
 
-        # Resize for faster processing
-        max_dim = 1024
-        scale = 1.0
-        if max(h, w) > max_dim:
-            scale = max_dim / max(h, w)
-            resized = cv2.resize(image, None, fx=scale, fy=scale)
-        else:
-            resized = image
-
-        gray = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-        # Try multiple edge detection strategies
-        corners = self._find_quad_contour(blurred, resized)
-
-        if corners is None:
-            # Try with morphological closing to connect edges
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-            closed = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, kernel)
-            corners = self._find_quad_contour(closed, resized)
-
-        if corners is None:
-            # Try adaptive threshold approach
-            thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                           cv2.THRESH_BINARY, 11, 2)
-            thresh = cv2.bitwise_not(thresh)
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-            thresh = cv2.dilate(thresh, kernel, iterations=2)
-            corners = self._find_quad_from_thresh(thresh, resized)
-
-        if corners is not None and scale != 1.0:
-            # Scale corners back to original image size
-            corners = DocumentCorners(
-                top_left=(int(corners.top_left[0] / scale), int(corners.top_left[1] / scale)),
-                top_right=(int(corners.top_right[0] / scale), int(corners.top_right[1] / scale)),
-                bottom_right=(int(corners.bottom_right[0] / scale), int(corners.bottom_right[1] / scale)),
-                bottom_left=(int(corners.bottom_left[0] / scale), int(corners.bottom_left[1] / scale)),
-            )
-
-        return corners
-
-    def _find_quad_contour(self, gray: np.ndarray, original: np.ndarray) -> Optional[DocumentCorners]:
-        """Find quadrilateral contour using Canny edge detection"""
-        edged = cv2.Canny(gray, 50, 200)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        edged = cv2.dilate(edged, kernel, iterations=1)
-
-        contours, _ = cv2.findContours(edged, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-
-        h, w = original.shape[:2]
-        min_area = h * w * 0.1  # At least 10% of image area
+        best = None
+        best_area = 0
 
         for c in contours:
             area = cv2.contourArea(c)
@@ -132,11 +148,82 @@ class DocumentScanner:
                 continue
 
             peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            # Try multiple epsilon values for approxPolyDP
+            for eps_mult in [0.015, 0.02, 0.03, 0.04, 0.05]:
+                approx = cv2.approxPolyDP(c, eps_mult * peri, True)
+                if len(approx) == 4 and cv2.isContourConvex(approx):
+                    if area > best_area:
+                        best = approx.reshape(4, 2)
+                        best_area = area
+                    break
 
-            if len(approx) == 4:
-                pts = approx.reshape(4, 2)
-                ordered = self.order_points(pts.astype("float32"))
+            # If 4-5 points but not exactly 4, try convex hull
+            if best is None or area > best_area:
+                hull = cv2.convexHull(c)
+                if len(hull) >= 4:
+                    for eps_mult in [0.02, 0.03, 0.05, 0.08]:
+                        approx = cv2.approxPolyDP(hull, eps_mult * peri, True)
+                        if len(approx) == 4 and cv2.isContourConvex(approx):
+                            if area > best_area:
+                                best = approx.reshape(4, 2)
+                                best_area = area
+                            break
+
+        if best is not None:
+            ordered = self.order_points(best.astype("float32"))
+            return DocumentCorners(
+                top_left=tuple(ordered[0].astype(int)),
+                top_right=tuple(ordered[1].astype(int)),
+                bottom_right=tuple(ordered[2].astype(int)),
+                bottom_left=tuple(ordered[3].astype(int))
+            )
+        return None
+
+    def _find_quad_from_hough(self, edges: np.ndarray, w: int, h: int,
+                              min_area: float) -> Optional[DocumentCorners]:
+        """Fallback: Hough lines → пересечения → лучший четырёхугольник"""
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=80,
+                                minLineLength=min(w, h) // 4, maxLineGap=20)
+        if lines is None or len(lines) < 4:
+            return None
+
+        # Cluster lines by angle into ~horizontal and ~vertical
+        horizontals = []
+        verticals = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            angle = np.degrees(np.arctan2(y2 - y1, x2 - x1)) % 180
+            if angle < 30 or angle > 150:
+                horizontals.append(line[0])
+            elif 60 < angle < 120:
+                verticals.append(line[0])
+
+        if len(horizontals) < 2 or len(verticals) < 2:
+            return None
+
+        # Get extreme lines (top/bottom horizontal, left/right vertical)
+        horizontals.sort(key=lambda l: (l[1] + l[3]) / 2)
+        verticals.sort(key=lambda l: (l[0] + l[2]) / 2)
+
+        top_line = horizontals[0]
+        bottom_line = horizontals[-1]
+        left_line = verticals[0]
+        right_line = verticals[-1]
+
+        # Find intersections
+        corners = []
+        for hline in [top_line, bottom_line]:
+            for vline in [left_line, right_line]:
+                pt = self._line_intersection(hline, vline)
+                if pt is not None and 0 <= pt[0] < w and 0 <= pt[1] < h:
+                    corners.append(pt)
+
+        if len(corners) == 4:
+            pts = np.array(corners, dtype="float32")
+            ordered = self.order_points(pts)
+            # Validate area
+            area = cv2.contourArea(ordered.astype(np.int32))
+            if area >= min_area:
                 return DocumentCorners(
                     top_left=tuple(ordered[0].astype(int)),
                     top_right=tuple(ordered[1].astype(int)),
@@ -145,40 +232,32 @@ class DocumentScanner:
                 )
         return None
 
-    def _find_quad_from_thresh(self, thresh: np.ndarray, original: np.ndarray) -> Optional[DocumentCorners]:
-        """Find quadrilateral from thresholded image"""
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+    @staticmethod
+    def _line_intersection(line1, line2) -> Optional[Tuple[int, int]]:
+        """Пересечение двух отрезков (расширенных до прямых)"""
+        x1, y1, x2, y2 = line1
+        x3, y3, x4, y4 = line2
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(denom) < 1e-6:
+            return None
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+        px = x1 + t * (x2 - x1)
+        py = y1 + t * (y2 - y1)
+        return (int(px), int(py))
 
-        h, w = original.shape[:2]
-        min_area = h * w * 0.1
+    def _scale_corners(self, corners: DocumentCorners, scale: float) -> DocumentCorners:
+        if scale == 1.0:
+            return corners
+        return DocumentCorners(
+            top_left=(int(corners.top_left[0] / scale), int(corners.top_left[1] / scale)),
+            top_right=(int(corners.top_right[0] / scale), int(corners.top_right[1] / scale)),
+            bottom_right=(int(corners.bottom_right[0] / scale), int(corners.bottom_right[1] / scale)),
+            bottom_left=(int(corners.bottom_left[0] / scale), int(corners.bottom_left[1] / scale)),
+        )
 
-        for c in contours:
-            if cv2.contourArea(c) < min_area:
-                continue
-            peri = cv2.arcLength(c, True)
-            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-            if len(approx) == 4:
-                pts = approx.reshape(4, 2)
-                ordered = self.order_points(pts.astype("float32"))
-                return DocumentCorners(
-                    top_left=tuple(ordered[0].astype(int)),
-                    top_right=tuple(ordered[1].astype(int)),
-                    bottom_right=tuple(ordered[2].astype(int)),
-                    bottom_left=tuple(ordered[3].astype(int))
-                )
-        return None
+    # ─── Enhancement ─────────────────────────────────────────────
 
     def enhance_document(self, image: np.ndarray, mode: str = "auto") -> np.ndarray:
-        """
-        Улучшает изображение документа для читаемости текста.
-
-        Режимы:
-        - "auto": автоматический подбор
-        - "bw": чёрно-белый (максимум контраста)
-        - "clean": чистый документ (адаптивный порог)
-        - "color": цветной документ (усиление контраста)
-        """
         if mode == "bw":
             return self._enhance_bw(image)
         elif mode == "clean":
@@ -186,139 +265,63 @@ class DocumentScanner:
         elif mode == "color":
             return self._enhance_color(image)
         else:
-            # Auto: determine if document is mostly text or has color content
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-            # Check color saturation
             if len(image.shape) == 3:
                 hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-                mean_sat = np.mean(hsv[:, :, 1])
-                if mean_sat > 40:
+                if np.mean(hsv[:, :, 1]) > 40:
                     return self._enhance_color(image)
             return self._enhance_clean(image)
 
     def _enhance_bw(self, image: np.ndarray) -> np.ndarray:
-        """Чёрно-белый режим — максимальный контраст для текста"""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-        # Adaptive threshold for clean B&W text
+        # Denoise first
+        gray = cv2.fastNlMeansDenoising(gray, h=10)
         result = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10
         )
         return cv2.cvtColor(result, cv2.COLOR_GRAY2BGR)
 
     def _enhance_clean(self, image: np.ndarray) -> np.ndarray:
-        """Чистый документ — убирает тени и выравнивает фон"""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
-
-        # Remove shadows using large-scale morphological background estimation
+        # Remove shadows
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
         bg = cv2.morphologyEx(gray, cv2.MORPH_DILATE, kernel)
-        # Normalize: divide by background to remove uneven lighting
         normalized = cv2.divide(gray, bg, scale=255)
-
         # Sharpen
         sharpened = cv2.GaussianBlur(normalized, (0, 0), 3)
         sharpened = cv2.addWeighted(normalized, 1.5, sharpened, -0.5, 0)
-
-        # CLAHE for local contrast
+        # CLAHE
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(sharpened)
-
         return cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
 
     def _enhance_color(self, image: np.ndarray) -> np.ndarray:
-        """Цветной документ — усиливает контраст, сохраняя цвета"""
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-
-        # CLAHE on L channel
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         l = clahe.apply(l)
-
-        # Boost saturation slightly
-        enhanced = cv2.merge([l, a, b])
-        result = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-
+        result = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
         # Sharpen
-        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]]) / 1.0
-        result = cv2.filter2D(result, -1, kernel * 0.3 + np.eye(3).flatten().reshape(3, 3) * 0.7)
-
+        blur = cv2.GaussianBlur(result, (0, 0), 3)
+        result = cv2.addWeighted(result, 1.5, blur, -0.5, 0)
         return result
 
-    def scan_document(self, image_path: str, output_path: str,
-                      enhance_mode: str = "auto") -> bool:
-        """
-        Сканирует документ: обнаруживает границы, выравнивает и улучшает.
+    # ─── High-level API ──────────────────────────────────────────
 
-        Args:
-            image_path: Путь к входному изображению
-            output_path: Путь для сохранения результата
-            enhance_mode: Режим улучшения ("auto", "bw", "clean", "color", "none")
-
-        Returns:
-            True если успешно, False иначе
-        """
-        try:
-            image = cv2.imread(image_path)
-            if image is None:
-                return False
-
-            corners = self._detect_from_image(image)
-
-            if corners:
-                pts = np.array([
-                    corners.top_left,
-                    corners.top_right,
-                    corners.bottom_right,
-                    corners.bottom_left
-                ], dtype="float32")
-                warped = self.four_point_transform(image, pts)
-            else:
-                # No document edges found — use whole image
-                warped = image
-
-            # Enhance
-            if enhance_mode != "none":
-                warped = self.enhance_document(warped, enhance_mode)
-
-            cv2.imwrite(output_path, warped)
-            return True
-
-        except Exception as e:
-            logger.error(f"Error scanning document from {image_path}: {e}")
-            return False
-
-    def scan_to_numpy(self, image: np.ndarray, enhance_mode: str = "auto") -> np.ndarray:
-        """Сканирует документ из numpy-массива, возвращает результат как numpy"""
-        corners = self._detect_from_image(image)
-
-        if corners:
-            pts = np.array([
-                corners.top_left,
-                corners.top_right,
-                corners.bottom_right,
-                corners.bottom_left
-            ], dtype="float32")
-            warped = self.four_point_transform(image, pts)
-        else:
-            warped = image.copy()
-
+    def scan_with_corners(self, image: np.ndarray, corners: DocumentCorners,
+                          enhance_mode: str = "auto") -> np.ndarray:
+        """Сканирует с заданными углами (для ручной коррекции)"""
+        pts = corners.as_array()
+        warped = self.four_point_transform(image, pts)
         if enhance_mode != "none":
             warped = self.enhance_document(warped, enhance_mode)
-
         return warped
 
-    def get_preview_with_corners(self, image: np.ndarray) -> Tuple[np.ndarray, Optional[DocumentCorners]]:
-        """Возвращает изображение с отмеченными углами документа для превью"""
-        corners = self._detect_from_image(image)
-        preview = image.copy()
-
+    def scan_auto(self, image: np.ndarray, enhance_mode: str = "auto") -> np.ndarray:
+        """Автоматический скан: детект + трансформация + улучшение"""
+        corners = self.detect_document(image)
         if corners:
-            pts = np.array([
-                corners.top_left, corners.top_right,
-                corners.bottom_right, corners.bottom_left
-            ], dtype=np.int32)
-            cv2.polylines(preview, [pts], True, (0, 255, 0), 3)
-            for pt in pts:
-                cv2.circle(preview, tuple(pt), 8, (0, 0, 255), -1)
-
-        return preview, corners
+            return self.scan_with_corners(image, corners, enhance_mode)
+        warped = image.copy()
+        if enhance_mode != "none":
+            warped = self.enhance_document(warped, enhance_mode)
+        return warped
