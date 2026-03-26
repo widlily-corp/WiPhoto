@@ -120,6 +120,12 @@ class ThumbnailDelegate(QStyledItemDelegate):
                 badge_y = img_rect.top() + 4
                 badge_x = img_rect.right() - 4
 
+                # Stack badge (duplicate group count)
+                stack_count = getattr(info, '_stack_count', 0)
+                if stack_count > 1:
+                    badge_x = self._draw_badge_right(painter, badge_x, badge_y,
+                                                      f"⊞ {stack_count}", QColor("#ff9800"))
+
                 # Face badge
                 if info.faces_count > 0:
                     badge_x = self._draw_badge_right(painter, badge_x, badge_y,

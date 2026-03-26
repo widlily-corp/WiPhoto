@@ -66,6 +66,11 @@ class MainController(QObject):
         # (Он уже показывается в welcome_window через progress_bar)
         # Но можно добавить более детальный:
 
+        # Set folder tree root
+        if hasattr(self.view, 'folder_tree'):
+            self.view.folder_tree.set_root(folder_path)
+        self._scan_root_folder = folder_path
+
         self.start_scanning_signal.emit(folder_path, is_recursive)
 
     def _connect_view_signals(self):
@@ -117,6 +122,10 @@ class MainController(QObject):
         if hasattr(main_win, 'search_changed'):
             main_win.search_changed.connect(self._apply_search)
 
+        # Folder tree navigation
+        if hasattr(main_win, 'folder_filter_requested'):
+            main_win.folder_filter_requested.connect(self._on_folder_filter)
+
         # Rating/color label changes from gallery
         if hasattr(gallery, 'thumbnail_view'):
             gallery.thumbnail_view.rating_changed.connect(self._on_rating_changed)
@@ -137,6 +146,29 @@ class MainController(QObject):
             self.view.update_ai_info(info)
         except Exception as e:
             logging.error(f"Ошибка: {e}")
+
+    def _on_folder_filter(self, folder_path: str):
+        """Фильтрация галереи по выбранной папке"""
+        try:
+            root = getattr(self, '_scan_root_folder', '')
+            if folder_path == root:
+                # Show all
+                filtered = self.image_data
+            else:
+                # Show only images in selected folder (non-recursive)
+                filtered = [img for img in self.image_data
+                            if os.path.dirname(img.path) == folder_path]
+
+            self.view.clear_thumbnails()
+            self.view.add_thumbnails_batch(filtered)
+            # Also update gallery's all_items for search/filter to work
+            self.view.gallery_widget.set_all_items(filtered)
+            self.view.statusBar().showMessage(
+                f"Папка: {os.path.basename(folder_path)} — {len(filtered)} файлов"
+            )
+            self.view.switch_to_gallery()
+        except Exception as e:
+            logging.error(f"Ошибка фильтрации по папке: {e}")
 
     def _on_collection_filter_applied(self, filtered_images: list):
         """Фильтрация галереи по выбранной коллекции"""

@@ -293,6 +293,14 @@ class EditorWidget(QWidget):
                 action.triggered.connect(lambda checked=False, name=tool_instance.name: self._apply_action_tool(name))
             self.toolbar.addAction(action)
 
+        # Document scanner
+        self.toolbar.addSeparator()
+        self.scan_doc_action = QAction("📄 Скан", self)
+        self.scan_doc_action.setToolTip("Сканер документов — выравнивание и улучшение текста")
+        self.scan_doc_action.triggered.connect(self._open_document_scanner)
+        self.toolbar.addAction(self.scan_doc_action)
+        actions_to_style.append(self.scan_doc_action)
+
         for action in actions_to_style:
             widget = self.toolbar.widgetForAction(action)
             if isinstance(widget, QToolButton):
@@ -607,6 +615,19 @@ class EditorWidget(QWidget):
         img_data = pil_image.tobytes("raw", "RGB")
         q_image = QImage(img_data, pil_image.width, pil_image.height, pil_image.width * 3, QImage.Format.Format_RGB888)
         return QPixmap.fromImage(q_image)
+
+    def _open_document_scanner(self):
+        """Открывает диалог сканирования документа для текущего изображения"""
+        if not self.current_image_info:
+            return
+        try:
+            from views.document_scan_dialog import DocumentScanDialog
+            dialog = DocumentScanDialog(self.current_image_info.path, self)
+            if dialog.exec():
+                # Reload image after scan
+                self.load_image(self.current_image_info)
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Ошибка сканера документов:\n{e}")
 
     def _save_image(self):
         if not self.processor:

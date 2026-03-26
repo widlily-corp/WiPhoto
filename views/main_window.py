@@ -18,6 +18,7 @@ from views.about_dialog import AboutDialog
 from views.settings_dialog import SettingsDialog
 from views.comparison_view import ComparisonView
 from views.smart_collections_widget import SmartCollectionsWidget
+from views.folder_tree_widget import FolderTreeWidget
 from views.map_widget import MapWidget
 from views.timeline_widget import TimelineWidget
 from views.histogram_widget import HistogramWidget
@@ -44,6 +45,7 @@ class MainWindow(QMainWindow):
     batch_rename_requested = pyqtSignal(list)
     sort_changed = pyqtSignal(str)
     search_changed = pyqtSignal(str)
+    folder_filter_requested = pyqtSignal(str)  # folder path
 
     def __init__(self):
         super().__init__()
@@ -72,6 +74,7 @@ class MainWindow(QMainWindow):
         self._create_status_bar()
 
         self.gallery_widget.thumbnail_view.itemSelectionChanged.connect(self._update_status_bar)
+        self.folder_tree.folder_selected.connect(self.folder_filter_requested.emit)
 
     def _build_layout(self):
         """3-column layout: left sidebar | center content | right sidebar"""
@@ -134,6 +137,10 @@ class MainWindow(QMainWindow):
             """)
             layout.addWidget(btn)
             self._filter_buttons[filter_id] = btn
+
+        # Folder tree
+        self.folder_tree = FolderTreeWidget()
+        layout.addWidget(self.folder_tree)
 
         # Smart collections
         layout.addWidget(self.smart_collections)
@@ -351,6 +358,7 @@ class MainWindow(QMainWindow):
             self.batch_export_action = QAction("Экспорт...", self)
             self.contact_sheet_action = QAction("Контактный лист...", self)
             self.slideshow_action = QAction("Слайдшоу", self)
+            self.scan_document_action = QAction("Сканер документов", self)
             self.delete_rejected_action = QAction("Удалить отклонённые", self)
 
             # View mode actions
@@ -403,6 +411,7 @@ class MainWindow(QMainWindow):
             self.batch_export_action.triggered.connect(self._on_batch_export_triggered)
             self.contact_sheet_action.triggered.connect(self._on_contact_sheet_triggered)
             self.slideshow_action.triggered.connect(self._on_slideshow_triggered)
+            self.scan_document_action.triggered.connect(self._on_scan_document_triggered)
             self.delete_rejected_action.triggered.connect(self._on_delete_rejected_triggered)
 
             self.view_gallery_action.triggered.connect(self.switch_to_gallery)
@@ -446,6 +455,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction(self.batch_rename_action)
         tools_menu.addAction(self.batch_export_action)
         tools_menu.addAction(self.contact_sheet_action)
+        tools_menu.addAction(self.scan_document_action)
         tools_menu.addSeparator()
         tools_menu.addAction(self.slideshow_action)
         tools_menu.addSeparator()
@@ -614,6 +624,19 @@ class MainWindow(QMainWindow):
             dialog.exec()
         else:
             self.statusBar().showMessage("Нет файлов для экспорта")
+
+    def _on_scan_document_triggered(self):
+        """Open document scanner for selected image"""
+        selected = self._get_selected_image_infos()
+        if len(selected) != 1:
+            self.statusBar().showMessage("Выберите одно изображение для сканирования")
+            return
+        try:
+            from views.document_scan_dialog import DocumentScanDialog
+            dialog = DocumentScanDialog(selected[0].path, self)
+            dialog.exec()
+        except Exception as e:
+            self.statusBar().showMessage(f"Ошибка сканера: {e}")
 
     def _on_delete_rejected_triggered(self):
         self.delete_rejected_requested.emit()

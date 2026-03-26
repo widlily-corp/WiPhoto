@@ -4,8 +4,8 @@ import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                              QAbstractItemView, QMenu, QLineEdit, QComboBox,
                              QPushButton, QLabel, QToolButton)
-from PyQt6.QtGui import QIcon, QAction, QWheelEvent, QKeyEvent
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
+from PyQt6.QtGui import QIcon, QAction, QWheelEvent, QKeyEvent, QDrag, QPixmap
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer, QMimeData, QUrl
 
 from models.image_model import ImageInfo
 from views.thumbnail_delegate import ThumbnailDelegate
@@ -37,6 +37,8 @@ class ThumbnailListWidget(QListWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setUniformItemSizes(True)
         self.setSpacing(4)
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
 
         self._apply_size()
 
@@ -94,6 +96,38 @@ class ThumbnailListWidget(QListWidget):
             return
         super().keyPressEvent(event)
 
+    def startDrag(self, supportedActions):
+        """Drag selected images out of the app as file URLs"""
+        items = self.selectedItems()
+        if not items:
+            return
+
+        urls = []
+        for item in items:
+            info = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(info, ImageInfo) and os.path.exists(info.path):
+                urls.append(QUrl.fromLocalFile(info.path))
+
+        if not urls:
+            return
+
+        mime_data = QMimeData()
+        mime_data.setUrls(urls)
+
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+
+        # Create drag pixmap (thumbnail of first selected image)
+        first_info = items[0].data(Qt.ItemDataRole.UserRole)
+        if isinstance(first_info, ImageInfo) and first_info.thumbnail_path:
+            pixmap = QPixmap(first_info.thumbnail_path)
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio,
+                                       Qt.TransformationMode.SmoothTransformation)
+                drag.setPixmap(scaled)
+
+        drag.exec(Qt.DropAction.CopyAction)
+
     def wheelEvent(self, event: QWheelEvent):
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
@@ -131,6 +165,8 @@ class GalleryWidget(QWidget):
         self._active_rating_filter = -1  # -1 = all
         self._active_color_filter = ""   # "" = all
         self._active_flag_filter = ""    # "" = all
+        self._stack_mode = False         # duplicate stacking
+        self._expanded_groups = set()    # expanded group_ids
 
         self._init_ui()
 
@@ -253,6 +289,18 @@ class GalleryWidget(QWidget):
             self._flag_buttons.append((flag_id, btn))
             filter_bar.addWidget(btn)
 
+        filter_bar.addSpacing(8)
+
+        # Stack mode toggle
+        self.stack_btn = QToolButton()
+        self.stack_btn.setText("⊞")
+        self.stack_btn.setToolTip("Стекинг дубликатов — группировка похожих")
+        self.stack_btn.setCheckable(True)
+        self.stack_btn.setMaximumHeight(22)
+        self.stack_btn.setStyleSheet(self._filter_btn_style())
+        self.stack_btn.clicked.connect(self._toggle_stack_mode)
+        filter_bar.addWidget(self.stack_btn)
+
         filter_bar.addStretch()
         layout.addLayout(filter_bar)
 
@@ -304,6 +352,19 @@ class GalleryWidget(QWidget):
             btn.setChecked(fid == flag)
         self._apply_filters()
 
+    def _toggle_stack_mode(self):
+        self._stack_mode = self.stack_btn.isChecked()
+        self._expanded_groups.clear()
+        self._apply_filters()
+
+    def toggle_stack_group(self, group_id: str):
+        """Expand or collapse a duplicate stack"""
+        if group_id in self._expanded_groups:
+            self._expanded_groups.discard(group_id)
+        else:
+            self._expanded_groups.add(group_id)
+        self._apply_filters()
+
     def _on_sort_changed(self, index):
         sort_keys = [
             ("name", False), ("name", True),
@@ -322,7 +383,7 @@ class GalleryWidget(QWidget):
         self._apply_filters()
 
     def _apply_filters(self):
-        """Apply search + rating + color + flag filters, then sort"""
+        """Apply search + rating + color + flag filters, stacking, then sort"""
         search_text = self.search_edit.text().strip().lower()
         result = self._all_items_data
 
@@ -346,6 +407,10 @@ class GalleryWidget(QWidget):
         # Sort
         result = self._sort_items(result)
 
+        # Duplicate stacking: collapse groups to best image only
+        if self._stack_mode:
+            result = self._apply_stacking(result)
+
         # Update count
         total = len(self._all_items_data)
         shown = len(result)
@@ -356,6 +421,34 @@ class GalleryWidget(QWidget):
 
         # Emit filtered list
         self.filter_applied.emit(result)
+
+    def _apply_stacking(self, items: list) -> list:
+        """Collapse duplicate groups — show only best unless expanded"""
+        seen_groups = set()
+        stacked = []
+        # Count group sizes for badge
+        group_counts = {}
+        for info in self._all_items_data:
+            if info.group_id is not None:
+                group_counts[info.group_id] = group_counts.get(info.group_id, 0) + 1
+
+        for info in items:
+            if info.group_id is None:
+                # Not a duplicate — always show
+                info._stack_count = 0
+                stacked.append(info)
+            elif info.group_id in self._expanded_groups:
+                # Group is expanded — show all
+                info._stack_count = 0
+                stacked.append(info)
+            elif info.group_id not in seen_groups:
+                # First time seeing this group — show best with badge
+                seen_groups.add(info.group_id)
+                info._stack_count = group_counts.get(info.group_id, 1)
+                stacked.append(info)
+            # else: skip (collapsed duplicate)
+
+        return stacked
 
     def _sort_items(self, items: list) -> list:
         key_funcs = {
@@ -420,6 +513,19 @@ class GalleryWidget(QWidget):
         for label, status in [("\u2713 Выбрано (P)", "picked"), ("\u2717 Отклонено (X)", "rejected"), ("Без флага (U)", "")]:
             action = flag_menu.addAction(label)
             action.triggered.connect(lambda checked, s=status: self._set_flag(s))
+
+        # Stack expand/collapse (single selection with group)
+        if len(selected_items) == 1 and self._stack_mode:
+            info = selected_items[0].data(Qt.ItemDataRole.UserRole)
+            if isinstance(info, ImageInfo) and info.group_id is not None:
+                menu.addSeparator()
+                if info.group_id in self._expanded_groups:
+                    collapse_action = menu.addAction("⊟ Свернуть группу")
+                    collapse_action.triggered.connect(lambda: self.toggle_stack_group(info.group_id))
+                else:
+                    stack_count = getattr(info, '_stack_count', 0)
+                    expand_action = menu.addAction(f"⊞ Раскрыть группу ({stack_count} фото)")
+                    expand_action.triggered.connect(lambda: self.toggle_stack_group(info.group_id))
 
         # Find similar (single selection)
         if len(selected_items) == 1:
