@@ -312,8 +312,6 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if hasattr(self, '_quick_view_overlay') and self._quick_view_overlay is not None:
-            self._quick_view_overlay.parentResizeEvent()
 
     # ========== ACTIONS ==========
     def switch_to_editor(self, image_info: ImageInfo):
@@ -348,7 +346,7 @@ class MainWindow(QMainWindow):
             self.about_action = QAction("О программе WiPhoto", self)
             self.compare_action = QAction(QIcon(resource_path("assets/compare.png")), "Сравнить", self)
             self.fullscreen_action = QAction("Полноэкранный режим", self)
-            self.quick_view_action = QAction("Быстрый просмотр", self)
+            self.quick_view_action = QAction("Полноэкранный просмотр", self)
             self.next_image_action = QAction("Следующее", self)
             self.prev_image_action = QAction("Предыдущее", self)
             self.select_all_action = QAction("Выбрать все", self)
@@ -570,7 +568,9 @@ class MainWindow(QMainWindow):
         selected = self._get_selected_image_infos()
         if len(selected) == 2:
             self.compare_requested.emit(selected)
-            self.center_stack.setCurrentWidget(self.comparison_view)
+            # Open comparison as fullscreen window
+            self._comparison_window = ComparisonWindow(self.comparison_view)
+            self._comparison_window.showMaximized()
         else:
             self.statusBar().showMessage("Выберите 2 фото для сравнения")
 
@@ -581,16 +581,27 @@ class MainWindow(QMainWindow):
             self.showFullScreen()
 
     def _quick_view(self):
+        """Открывает полноэкранный просмотр выбранного фото (Space / Enter)"""
         selected = self._get_selected_image_infos()
         if len(selected) != 1:
             return
         info = selected[0]
-        if not hasattr(self, '_quick_view_overlay') or self._quick_view_overlay is None:
-            self._quick_view_overlay = QuickViewOverlay(self)
-        if self._quick_view_overlay.isVisible():
-            self._quick_view_overlay.hide()
-        else:
-            self._quick_view_overlay.show_image(info.path)
+        try:
+            from views.fullscreen_viewer import FullscreenViewer
+            view = self.gallery_widget.thumbnail_view
+            images = []
+            start_idx = 0
+            for i in range(view.count()):
+                item = view.item(i)
+                img = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(img, ImageInfo):
+                    if img.path == info.path:
+                        start_idx = len(images)
+                    images.append(img)
+            self._fullscreen_viewer = FullscreenViewer(images, start_idx)
+            self._fullscreen_viewer.showFullScreen()
+        except Exception as e:
+            self.statusBar().showMessage(f"Ошибка: {e}")
 
     def _next_image(self):
         view = self.gallery_widget.thumbnail_view
@@ -963,74 +974,30 @@ class MainWindow(QMainWindow):
             event.accept()
 
 
-class QuickViewOverlay(QWidget):
-    """Fullscreen overlay for quick preview (Space key)"""
+class ComparisonWindow(QWidget):
+    """Отдельное окно для сравнения изображений на полный экран"""
 
-    def __init__(self, parent):
+    def __init__(self, comparison_view, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("background-color: rgba(0, 0, 0, 230);")
-        self._label = QLabel(self)
-        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setWindowTitle("WiPhoto — Сравнение")
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setMinimumSize(800, 500)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.addWidget(self._label)
-        self.hide()
+        layout.setContentsMargins(0, 0, 0, 0)
+        # Reparent comparison_view into this window temporarily
+        self._view = comparison_view
+        self._original_parent = comparison_view.parent()
+        layout.addWidget(comparison_view)
 
-    def show_image(self, image_path: str):
-        self.setGeometry(self.parent().rect())
-        try:
-            is_video = image_path.lower().endswith(VIDEO_FORMATS)
-            is_raw = image_path.lower().endswith(RAW_FORMATS)
-
-            if is_video:
-                import cv2
-                cap = cv2.VideoCapture(image_path)
-                ret, frame = cap.read()
-                cap.release()
-                if ret:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w, ch = rgb.shape
-                    q_img = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888).copy()
-                    pixmap = QPixmap.fromImage(q_img)
-                else:
-                    self._label.setText("Видео не загружено")
-                    self.show()
-                    self.raise_()
-                    return
-            elif is_raw:
-                import rawpy
-                with rawpy.imread(image_path) as raw:
-                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-                pil_img = Image.fromarray(rgb)
-                if pil_img.mode != 'RGB':
-                    pil_img = pil_img.convert('RGB')
-                q_img = QImage(pil_img.tobytes(), pil_img.width, pil_img.height,
-                               pil_img.width * 3, QImage.Format.Format_RGB888)
-                pixmap = QPixmap.fromImage(q_img)
-            else:
-                pixmap = QPixmap(image_path)
-
-            if not pixmap.isNull():
-                self._label.setPixmap(pixmap.scaled(
-                    self.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                ))
-            else:
-                self._label.setText("Ошибка загрузки")
-        except Exception as e:
-            self._label.setText(f"Ошибка: {e}")
-
-        self.show()
-        self.raise_()
+    def closeEvent(self, event):
+        # Return comparison_view to original parent
+        if self._original_parent and self._view:
+            self._original_parent.layout().addWidget(self._view) if hasattr(self._original_parent, 'layout') else None
+        super().closeEvent(event)
 
     def keyPressEvent(self, event):
-        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Escape):
-            self.hide()
-
-    def mousePressEvent(self, event):
-        self.hide()
-
-    def parentResizeEvent(self):
-        """Called from parent's resizeEvent to follow window size"""
-        if self.isVisible():
-            self.setGeometry(self.parent().rect())
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)

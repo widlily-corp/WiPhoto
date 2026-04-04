@@ -31,22 +31,26 @@ class AppController(QObject):
             self.welcome_window.select_folder_button.setEnabled(False)
             self.welcome_window.recursive_checkbox.setEnabled(False)
             self.welcome_window.progress_bar.setVisible(True)
+            self.welcome_window.start_progress()
 
             self.main_window = MainWindow()
             self.photo_view_controller = PhotoViewController(self.main_window)
 
-            # Подключаемся к сигналам прогресса и завершения от сканера
-            self.photo_view_controller.scanner.progress_updated.connect(self.update_progress)
+            # Connect progress with file path info
+            self.photo_view_controller.scanner.progress_updated.connect(self._on_progress)
             self.photo_view_controller.scanner.finished.connect(self.on_scan_finished)
 
-            # Запускаем сканирование через новый метод контроллера
             self.photo_view_controller.start_scan(folder_path, is_recursive)
 
-    def update_progress(self, current, total):
-        self.welcome_window.progress_bar.setMaximum(total)
-        self.welcome_window.progress_bar.setValue(current)
+    def _on_progress(self, current, total):
+        # Get current file path from the last processed image
+        last_file = ""
+        if self.photo_view_controller and self.photo_view_controller.image_data:
+            last_file = self.photo_view_controller.image_data[-1].path
+        self.welcome_window.update_scan_progress(current, total, last_file)
 
     def on_scan_finished(self):
+        self.welcome_window.stop_progress()
         self.main_window.show()
         self.welcome_window.close()
 

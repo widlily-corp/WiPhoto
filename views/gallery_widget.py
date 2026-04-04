@@ -167,6 +167,7 @@ class GalleryWidget(QWidget):
         self._active_flag_filter = ""    # "" = all
         self._stack_mode = False         # duplicate stacking
         self._expanded_groups = set()    # expanded group_ids
+        self._active_orientation = ""    # "", "h", "v", "sq"
 
         self._init_ui()
 
@@ -304,6 +305,72 @@ class GalleryWidget(QWidget):
         filter_bar.addStretch()
         layout.addLayout(filter_bar)
 
+        # === Filter bar 2: orientation + aspect ratio + file type + file size ===
+        filter_bar2 = QHBoxLayout()
+        filter_bar2.setContentsMargins(4, 0, 4, 2)
+        filter_bar2.setSpacing(2)
+
+        # Orientation filter
+        self._orientation_buttons = []
+        orient_defs = [("", "All", "Все"), ("h", "⬌", "Горизонтальные"),
+                       ("v", "⬍", "Вертикальные"), ("sq", "⬜", "Квадратные")]
+        for oid, text, tooltip in orient_defs:
+            btn = QToolButton()
+            btn.setText(text)
+            btn.setCheckable(True)
+            btn.setChecked(oid == "")
+            btn.setMaximumHeight(22)
+            btn.setStyleSheet(self._filter_btn_style())
+            btn.setToolTip(tooltip)
+            btn.clicked.connect(lambda checked, o=oid: self._on_orientation_filter(o))
+            self._orientation_buttons.append((oid, btn))
+            filter_bar2.addWidget(btn)
+
+        filter_bar2.addSpacing(6)
+
+        # Aspect ratio filter
+        filter_bar2.addWidget(QLabel("AR:"))
+        self.aspect_combo = QComboBox()
+        self.aspect_combo.setMaximumHeight(22)
+        self.aspect_combo.addItems(["Все", "16:9", "3:2", "4:3", "5:4", "5:3", "7:5", "1:1"])
+        self.aspect_combo.setStyleSheet("""
+            QComboBox { background: #2a2a2a; border: 1px solid #444;
+                border-radius: 3px; padding: 1px 4px; color: #ddd; font-size: 11px; min-width: 55px; }
+        """)
+        self.aspect_combo.currentIndexChanged.connect(self._on_aspect_filter)
+        filter_bar2.addWidget(self.aspect_combo)
+
+        filter_bar2.addSpacing(6)
+
+        # File type filter
+        filter_bar2.addWidget(QLabel("Тип:"))
+        self.type_combo = QComboBox()
+        self.type_combo.setMaximumHeight(22)
+        self.type_combo.addItems(["Все", "JPEG", "PNG", "HEIC/HEIF", "RAW", "GIF", "TIFF", "WebP", "Video"])
+        self.type_combo.setStyleSheet("""
+            QComboBox { background: #2a2a2a; border: 1px solid #444;
+                border-radius: 3px; padding: 1px 4px; color: #ddd; font-size: 11px; min-width: 70px; }
+        """)
+        self.type_combo.currentIndexChanged.connect(lambda: self._apply_filters())
+        filter_bar2.addWidget(self.type_combo)
+
+        filter_bar2.addSpacing(6)
+
+        # File size filter
+        filter_bar2.addWidget(QLabel("Размер:"))
+        self.size_combo = QComboBox()
+        self.size_combo.setMaximumHeight(22)
+        self.size_combo.addItems(["Все", "<1 MB", "1-5 MB", "5-20 MB", ">20 MB"])
+        self.size_combo.setStyleSheet("""
+            QComboBox { background: #2a2a2a; border: 1px solid #444;
+                border-radius: 3px; padding: 1px 4px; color: #ddd; font-size: 11px; min-width: 60px; }
+        """)
+        self.size_combo.currentIndexChanged.connect(lambda: self._apply_filters())
+        filter_bar2.addWidget(self.size_combo)
+
+        filter_bar2.addStretch()
+        layout.addLayout(filter_bar2)
+
         # === Thumbnail grid ===
         self.thumbnail_view = ThumbnailListWidget()
         self.thumbnail_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -350,6 +417,15 @@ class GalleryWidget(QWidget):
         self._active_flag_filter = flag
         for fid, btn in self._flag_buttons:
             btn.setChecked(fid == flag)
+        self._apply_filters()
+
+    def _on_orientation_filter(self, orientation: str):
+        self._active_orientation = orientation
+        for oid, btn in self._orientation_buttons:
+            btn.setChecked(oid == orientation)
+        self._apply_filters()
+
+    def _on_aspect_filter(self, index: int):
         self._apply_filters()
 
     def _toggle_stack_mode(self):
@@ -404,6 +480,49 @@ class GalleryWidget(QWidget):
         if self._active_flag_filter:
             result = [info for info in result if info.flag_status == self._active_flag_filter]
 
+        # Orientation filter
+        if self._active_orientation == "h":
+            result = [i for i in result if i.width > i.height]
+        elif self._active_orientation == "v":
+            result = [i for i in result if i.height > i.width]
+        elif self._active_orientation == "sq":
+            result = [i for i in result if i.width > 0 and abs(i.width - i.height) / max(i.width, 1) < 0.05]
+
+        # Aspect ratio filter
+        ar_index = self.aspect_combo.currentIndex()
+        if ar_index > 0:
+            ar_map = {1: 16/9, 2: 3/2, 3: 4/3, 4: 5/4, 5: 5/3, 6: 7/5, 7: 1/1}
+            target = ar_map.get(ar_index, 0)
+            if target > 0:
+                result = [i for i in result if i.width > 0 and i.height > 0 and
+                          (abs(max(i.width, i.height) / min(i.width, i.height) - target) < 0.08)]
+
+        # File type filter
+        type_index = self.type_combo.currentIndex()
+        if type_index > 0:
+            type_exts = {
+                1: ('.jpg', '.jpeg', '.jpe', '.jfif'),
+                2: ('.png',),
+                3: ('.heic', '.heif'),
+                4: ('.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2',
+                    '.orf', '.pef', '.raf', '.srw', '.x3f'),
+                5: ('.gif',),
+                6: ('.tiff', '.tif'),
+                7: ('.webp',),
+                8: ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m4v'),
+            }
+            exts = type_exts.get(type_index, ())
+            if exts:
+                result = [i for i in result if i.path.lower().endswith(exts)]
+
+        # File size filter
+        size_index = self.size_combo.currentIndex()
+        if size_index > 0:
+            size_ranges = {1: (0, 1_000_000), 2: (1_000_000, 5_000_000),
+                           3: (5_000_000, 20_000_000), 4: (20_000_000, float('inf'))}
+            lo, hi = size_ranges.get(size_index, (0, float('inf')))
+            result = [i for i in result if lo <= i.file_size < hi]
+
         # Sort
         result = self._sort_items(result)
 
@@ -418,6 +537,9 @@ class GalleryWidget(QWidget):
             self.count_label.setText(f"{total}")
         else:
             self.count_label.setText(f"{shown}/{total}")
+
+        # Rebuild thumbnail list
+        self._rebuild_thumbnail_view(result)
 
         # Emit filtered list
         self.filter_applied.emit(result)
@@ -449,6 +571,22 @@ class GalleryWidget(QWidget):
             # else: skip (collapsed duplicate)
 
         return stacked
+
+    def _rebuild_thumbnail_view(self, items: list):
+        """Rebuild QListWidget from filtered/sorted item list"""
+        from PyQt6.QtWidgets import QListWidgetItem
+        view = self.thumbnail_view
+        view.setUpdatesEnabled(False)
+        view.clear()
+        view.delegate.clear_cache()
+        total_size = view.gridSize()
+        for info in items:
+            if info.thumbnail_path and os.path.exists(info.thumbnail_path):
+                item = QListWidgetItem(os.path.basename(info.path))
+                item.setData(Qt.ItemDataRole.UserRole, info)
+                item.setSizeHint(total_size)
+                view.addItem(item)
+        view.setUpdatesEnabled(True)
 
     def _sort_items(self, items: list) -> list:
         key_funcs = {

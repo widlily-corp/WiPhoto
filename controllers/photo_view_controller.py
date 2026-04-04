@@ -151,17 +151,17 @@ class MainController(QObject):
         """Фильтрация галереи по выбранной папке"""
         try:
             root = getattr(self, '_scan_root_folder', '')
-            if folder_path == root:
-                # Show all
+            norm_folder = os.path.normpath(folder_path)
+            norm_root = os.path.normpath(root)
+
+            if norm_folder == norm_root:
                 filtered = self.image_data
             else:
-                # Show only images in selected folder (non-recursive)
+                # Show images in selected folder and subfolders
                 filtered = [img for img in self.image_data
-                            if os.path.dirname(img.path) == folder_path]
+                            if os.path.normpath(img.path).startswith(norm_folder + os.sep)
+                            or os.path.normpath(os.path.dirname(img.path)) == norm_folder]
 
-            self.view.clear_thumbnails()
-            self.view.add_thumbnails_batch(filtered)
-            # Also update gallery's all_items for search/filter to work
             self.view.gallery_widget.set_all_items(filtered)
             self.view.statusBar().showMessage(
                 f"Папка: {os.path.basename(folder_path)} — {len(filtered)} файлов"
@@ -173,21 +173,42 @@ class MainController(QObject):
     def _on_collection_filter_applied(self, filtered_images: list):
         """Фильтрация галереи по выбранной коллекции"""
         try:
-            self.view.clear_thumbnails()
-            self.view.add_thumbnails_batch(filtered_images)
+            # Use gallery's filter/sort system so sort order is preserved
+            self.view.gallery_widget.set_all_items(filtered_images)
             self.view.statusBar().showMessage(f"Показано: {len(filtered_images)} из {len(self.image_data)}")
             self.view.switch_to_gallery()
         except Exception as e:
             logging.error(f"Ошибка фильтрации коллекции: {e}")
 
     def _on_thumbnail_double_clicked(self, item):
-        """Обработка двойного клика — редактирование/видеоплеер"""
+        """Обработка двойного клика — полноэкранный просмотр"""
         try:
             info = item.data(Qt.ItemDataRole.UserRole)
             if isinstance(info, ImageInfo):
-                self._on_edit_requested(info)
+                self._open_fullscreen_viewer(info)
         except Exception as e:
             logging.error(f"Ошибка: {e}")
+
+    def _open_fullscreen_viewer(self, info: ImageInfo):
+        """Открывает полноэкранный просмотрщик"""
+        try:
+            from views.fullscreen_viewer import FullscreenViewer
+            # Get current visible images list and find index
+            view = self.view.gallery_widget.thumbnail_view
+            images = []
+            start_idx = 0
+            for i in range(view.count()):
+                item = view.item(i)
+                img = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(img, ImageInfo):
+                    if img.path == info.path:
+                        start_idx = len(images)
+                    images.append(img)
+
+            self._fullscreen_viewer = FullscreenViewer(images, start_idx)
+            self._fullscreen_viewer.showFullScreen()
+        except Exception as e:
+            logging.error(f"Ошибка полноэкранного просмотра: {e}")
 
     def handle_dropped_files(self, file_paths: list):
         """Обработка перетащенных файлов - ПОЛНАЯ РЕАЛИЗАЦИЯ"""
@@ -506,7 +527,9 @@ class MainController(QObject):
         # Создаем диалог прогресса
         progress_dialog = DuplicateSearchDialog(self.view)
         progress_dialog.set_method(method)
+        progress_dialog.set_status(f"Анализ {len(self.image_data)} изображений методом: {method}")
         progress_dialog.set_indeterminate(True)
+        progress_dialog.setMinimumSize(500, 250)
 
         # Создаем worker для фонового поиска
         class DuplicateSearchWorker(QObject):
@@ -604,9 +627,11 @@ class MainController(QObject):
         worker.error.connect(on_error)
         progress_dialog.cancelled.connect(on_cancelled)
 
-        # Запускаем поток
-        thread.start()
+        # Показываем ПЕРЕД запуском потока, чтобы UI отрисовался
         progress_dialog.show()
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        thread.start()
 
     def _on_rating_changed(self, info: ImageInfo, rating: int):
         """Persist rating change via XMP sidecar"""
