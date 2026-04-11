@@ -27,13 +27,11 @@ jobs:
 
       - name: Download ExifTool
         run: |
-          if (-not (Test-Path "exiftool_files\exiftool.exe")) {
-            New-Item -ItemType Directory -Force -Path exiftool_files
-            Invoke-WebRequest -Uri 'https://sourceforge.net/projects/exiftool/files/exiftool-13.52_64.zip/download' -OutFile 'exiftool.zip'
-            Expand-Archive -Path 'exiftool.zip' -DestinationPath 'exiftool_files' -Force
-            Get-ChildItem 'exiftool_files' -Filter 'exiftool*.exe' | Where-Object { $_.Name -ne 'exiftool.exe' } | ForEach-Object { Rename-Item $_.FullName 'exiftool.exe' }
-            Remove-Item 'exiftool.zip'
-          }
+          New-Item -ItemType Directory -Force -Path exiftool_files
+          Invoke-WebRequest -Uri 'https://exiftool.org/exiftool-13.52_64.zip' -OutFile 'exiftool.zip' -UseBasicParsing
+          Expand-Archive -Path 'exiftool.zip' -DestinationPath 'exiftool_files' -Force
+          Get-ChildItem 'exiftool_files' -Filter 'exiftool*.exe' | Where-Object { $_.Name -ne 'exiftool.exe' } | ForEach-Object { Rename-Item $_.FullName 'exiftool.exe' }
+          Remove-Item 'exiftool.zip'
         shell: pwsh
 
       - name: Get version
