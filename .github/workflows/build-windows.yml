@@ -67,6 +67,7 @@ jobs:
             --file-version=2.4.1.0 `
             --product-version=2.4.1 `
             --file-description="WiPhoto - Professional Photo Manager" `
+            --assume-yes-for-downloads `
             --output-dir=build `
             main.py
         shell: pwsh
