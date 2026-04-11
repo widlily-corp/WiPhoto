@@ -206,10 +206,9 @@ def main():
 
     # Настройка multiprocessing для Windows
     multiprocessing.freeze_support()
-
+    multiprocessing.set_start_method('spawn', force=True)
     # Настраиваем логирование
     log_path = setup_logging()
-
     # Логируем системную информацию
     log_system_info()
 
