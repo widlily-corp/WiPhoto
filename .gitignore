@@ -73,3 +73,6 @@ exiftool_files/
 
 # ExifTool temporary files
 *.exiftool_tmp
+*.txt
+WiPhoto_v1.5.0_Linux/
+test_media/
