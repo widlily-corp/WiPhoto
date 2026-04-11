@@ -9,12 +9,9 @@ from core.settings_manager import settings
 logger = logging.getLogger(__name__)
 
 SUPPORTED_IMAGE_EXTENSIONS = (
-    # Common raster formats
     '.jpg', '.jpeg', '.jpe', '.jfif', '.png', '.bmp', '.gif', '.tiff', '.tif', '.webp',
     '.ico', '.ppm', '.pgm', '.pbm', '.pnm',
-    # Additional formats
     '.heic', '.heif', '.avif', '.jp2', '.j2k', '.jpx', '.jpm',
-    # RAW formats
     '.arw', '.cr2', '.cr3', '.nef', '.nrw', '.dng', '.raw', '.rw2', '.orf', '.pef',
     '.raf', '.srw', '.x3f', '.3fr', '.ari', '.bay', '.cap', '.iiq', '.eip', '.fff',
     '.mef', '.mos', '.mrw', '.nrw', '.rwl', '.rwz', '.sr2', '.srf', '.sti'
@@ -26,6 +23,34 @@ SUPPORTED_VIDEO_EXTENSIONS = (
 )
 
 SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS + SUPPORTED_VIDEO_EXTENSIONS
+
+# Приблизительный объём памяти одного воркера с YOLO + PIL + NumPy буферами.
+# Если твои детекторы весят больше — подними это число.
+_RAM_PER_WORKER_MB = 400
+
+
+def _get_safe_worker_count(requested: int) -> int:
+    """
+    Ограничивает число воркеров исходя из доступной RAM.
+    Без psutil просто берёт min(requested, cpu_count).
+    """
+    try:
+        import psutil
+        available_mb = psutil.virtual_memory().available // (1024 * 1024)
+        # Оставляем 20% RAM для системы и основного процесса
+        usable_mb = int(available_mb * 0.8)
+        ram_limit = max(1, usable_mb // _RAM_PER_WORKER_MB)
+        safe = min(requested, ram_limit)
+        if safe < requested:
+            logger.info(
+                f"Воркеров ограничено до {safe} (RAM: {available_mb} МБ доступно, "
+                f"~{_RAM_PER_WORKER_MB} МБ на воркер)"
+            )
+        return safe
+    except ImportError:
+        import os
+        cpu_count = os.cpu_count() or 2
+        return min(requested, cpu_count)
 
 
 class Scanner(QObject):
@@ -52,19 +77,23 @@ class Scanner(QObject):
 
             self.progress_updated.emit(0, total_files)
             processed_count = 0
-            worker_count = settings.get_worker_count()
+
+            requested_workers = settings.get_worker_count()
+            worker_count = _get_safe_worker_count(requested_workers)
 
             self.executor = ProcessPoolExecutor(max_workers=worker_count)
             try:
-                futures = {self.executor.submit(process_single_file, path): path
-                           for path in files_to_process}
+                futures = {
+                    self.executor.submit(process_single_file, path): path
+                    for path in files_to_process
+                }
 
                 for future in as_completed(futures):
-                    if not self.is_running: break
+                    if not self.is_running:
+                        break
                     file_path = futures[future]
                     try:
-                        result_data = future.result(timeout=60) # Увеличим таймаут для больших RAW
-
+                        result_data = future.result(timeout=60)
                         if result_data and result_data.get("thumbnail_path"):
                             self.image_processed.emit(ImageInfo(**result_data))
                         else:
@@ -84,7 +113,6 @@ class Scanner(QObject):
             self.finished.emit()
 
     def stop(self):
-        """Безопасная остановка сканирования"""
         self.is_running = False
         if self.executor:
             self.executor.shutdown(wait=False, cancel_futures=True)
@@ -97,14 +125,11 @@ class Scanner(QObject):
                 for dirpath, _, filenames in os.walk(root_folder):
                     for filename in filenames:
                         if filename.lower().endswith(SUPPORTED_EXTENSIONS):
-                            full_path = os.path.join(dirpath, filename)
-                            # <<< ИСПРАВЛЕНИЕ: Нормализуем путь
-                            files.append(os.path.normpath(full_path))
+                            files.append(os.path.normpath(os.path.join(dirpath, filename)))
             else:
                 for filename in os.listdir(root_folder):
                     path = os.path.join(root_folder, filename)
                     if os.path.isfile(path) and path.lower().endswith(SUPPORTED_EXTENSIONS):
-                        # <<< ИСПРАВЛЕНИЕ: Нормализуем путь
                         files.append(os.path.normpath(path))
         except Exception as e:
             logger.error(f"Ошибка сбора файлов: {e}")
