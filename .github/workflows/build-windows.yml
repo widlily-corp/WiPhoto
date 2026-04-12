@@ -30,7 +30,11 @@ jobs:
           choco install exiftool -y
           New-Item -ItemType Directory -Force -Path exiftool_files
           $src = (Get-Command exiftool.exe).Source
-          Copy-Item $src exiftool_files\exiftool.exe
+          $srcDir = Split-Path $src -Parent
+          Copy-Item $src exiftool_files\exiftool.exe -Force
+          if (Test-Path (Join-Path $srcDir "exiftool_files")) {
+            Copy-Item (Join-Path $srcDir "exiftool_files") exiftool_files\exiftool_files -Recurse -Force
+          }
         shell: pwsh
 
       - name: Get version
@@ -77,6 +81,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist\WiPhoto_Windows
           Copy-Item -Recurse -Force build\main.dist\* dist\WiPhoto_Windows\
           Rename-Item dist\WiPhoto_Windows\main.exe WiPhoto.exe
+          if (Test-Path dist\WiPhoto_Windows\exiftool_files\exiftool_files) {
+            Write-Host "Bundled ExifTool runtime detected."
+          } else {
+            Write-Warning "Bundled ExifTool runtime folder was not found in package."
+          }
           Compress-Archive -Path dist\WiPhoto_Windows -DestinationPath dist\WiPhoto_${{ steps.version.outputs.VERSION }}_Windows.zip -Force
         shell: pwsh
 
