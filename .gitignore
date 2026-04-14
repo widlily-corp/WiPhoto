@@ -33,9 +33,6 @@ logs/
 .wiphoto/
 
 # Build artifacts
-*.exe
-!exiftool.exe
-!exiftool_files/**
 *.msi
 *.zip
 *.tar.gz
@@ -69,10 +66,6 @@ desktop.ini
 assets/models/yolov4-tiny.weights
 assets/models/yolov4-tiny.cfg
 assets/models/coco.names
-
-# ExifTool files (include in releases only)
-exiftool.exe
-exiftool_files/
 
 # ExifTool temporary files
 *.exiftool_tmp
