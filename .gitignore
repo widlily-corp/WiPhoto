@@ -34,6 +34,8 @@ logs/
 
 # Build artifacts
 *.exe
+!exiftool.exe
+!exiftool_files/**
 *.msi
 *.zip
 *.tar.gz

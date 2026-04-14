@@ -27,13 +27,29 @@ jobs:
 
       - name: Download ExifTool
         run: |
-          choco install exiftool -y
-          New-Item -ItemType Directory -Force -Path exiftool_files
-          $src = (Get-Command exiftool.exe).Source
-          $srcDir = Split-Path $src -Parent
-          Copy-Item $src exiftool_files\exiftool.exe -Force
-          if (Test-Path (Join-Path $srcDir "exiftool_files")) {
-            Copy-Item (Join-Path $srcDir "exiftool_files") exiftool_files\exiftool_files -Recurse -Force
+          New-Item -ItemType Directory -Force -Path exiftool_files | Out-Null
+          
+          # Check if exiftool.exe already exists in repo
+          if (Test-Path "exiftool.exe") {
+            Write-Host "✓ Using existing exiftool.exe"
+            Copy-Item exiftool.exe exiftool_files\exiftool.exe -Force
+          } else {
+            # Download from exiftool.org
+            Write-Host "Downloading ExifTool from exiftool.org..."
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri "https://exiftool.org/exiftool-13.52_64.zip" -OutFile exiftool.zip -TimeoutSec 60
+            Expand-Archive exiftool.zip -DestinationPath exiftool_files -Force
+            
+            # Find and rename exiftool.exe
+            $exeFile = Get-ChildItem exiftool_files -Filter "exiftool*.exe" -Recurse | Select-Object -First 1
+            if ($exeFile) {
+              Move-Item $exeFile.FullName exiftool_files\exiftool.exe -Force
+              Write-Host "✓ ExifTool downloaded and extracted"
+            } else {
+              Write-Error "✗ ExifTool.exe not found in archive"
+              exit 1
+            }
+            Remove-Item exiftool.zip -Force -ErrorAction SilentlyContinue
           }
         shell: pwsh
 
@@ -49,6 +65,7 @@ jobs:
             --enable-plugin=pyqt6 `
             --include-data-dir=assets=assets `
             --include-data-dir=exiftool_files=exiftool_files `
+            --include-data-file=exiftool.exe=exiftool.exe `
             --include-data-file=pro_dark.qss=pro_dark.qss `
             --include-package=cv2 `
             --include-package=PIL `
@@ -78,14 +95,25 @@ jobs:
 
       - name: Package
         run: |
-          New-Item -ItemType Directory -Force -Path dist\WiPhoto_Windows
+          New-Item -ItemType Directory -Force -Path dist\WiPhoto_Windows | Out-Null
           Copy-Item -Recurse -Force build\main.dist\* dist\WiPhoto_Windows\
           Rename-Item dist\WiPhoto_Windows\main.exe WiPhoto.exe
-          if (Test-Path dist\WiPhoto_Windows\exiftool_files\exiftool_files) {
-            Write-Host "Bundled ExifTool runtime detected."
+          
+          # Verify ExifTool files are included
+          if (Test-Path dist\WiPhoto_Windows\exiftool.exe) {
+            Write-Host "✓ ExifTool executable bundled"
           } else {
-            Write-Warning "Bundled ExifTool runtime folder was not found in package."
+            Write-Error "✗ ExifTool executable NOT found in bundle!"
+            exit 1
           }
+          
+          if (Test-Path dist\WiPhoto_Windows\exiftool_files) {
+            Write-Host "✓ ExifTool folder bundled"
+            Get-ChildItem dist\WiPhoto_Windows\exiftool_files | Write-Host
+          } else {
+            Write-Warning "⚠ ExifTool folder not found (may be OK if only exe is needed)"
+          }
+          
           Compress-Archive -Path dist\WiPhoto_Windows -DestinationPath dist\WiPhoto_${{ steps.version.outputs.VERSION }}_Windows.zip -Force
         shell: pwsh
 
