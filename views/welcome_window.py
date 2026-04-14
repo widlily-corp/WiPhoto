@@ -30,6 +30,7 @@ class WelcomeWindow(QWidget):
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(15)
+        layout.setContentsMargins(40, 30, 40, 30)
 
         title_label = QLabel("WiPhoto - Ваш умный менеджер фотографий")
         title_label.setObjectName("WelcomeTitle")
@@ -38,6 +39,7 @@ class WelcomeWindow(QWidget):
         info_label = QLabel("Выберите папку с вашими фотографиями")
         info_label.setWordWrap(True)
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setFixedSize(200,60)
 
         self.recursive_checkbox = QCheckBox("Сканировать вложенные папки")
         self.recursive_checkbox.setChecked(True)

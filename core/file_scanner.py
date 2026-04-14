@@ -1,6 +1,6 @@
 import os
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 from models.image_model import ImageInfo
 from core.analyzer import process_single_file, _worker_initializer
@@ -70,12 +70,10 @@ class Scanner(QObject):
 
             worker_count = _get_safe_worker_count(settings.get_worker_count())
 
-            # initializer загружает кэш + ExifTool daemon один раз на воркер.
-            # AI-модели НЕ загружаются — сканирование теперь чисто быстрое.
-            self.executor = ProcessPoolExecutor(
-                max_workers=worker_count,
-                initializer=_worker_initializer,
-            )
+            # ThreadPoolExecutor экономнее по памяти на Windows, чем ProcessPoolExecutor
+            # Инициализируем один раз в главном потоке
+            _worker_initializer()
+            self.executor = ThreadPoolExecutor(max_workers=worker_count)
 
             try:
                 for chunk_start in range(0, total_files, _CHUNK_SIZE):
