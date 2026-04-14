@@ -682,13 +682,13 @@ class MainController(QObject):
             # Правильное завершение потока: quit + wait
             # Используем deleteLater чтобы избежать deadlock'ов
             thread.quit()
-            thread.wait(timeout=5000)  # timeout 5 секунд
+            thread.wait(5000)  # timeout 5 секунд (позиционный аргумент, не keyword)
 
         def on_error(error_msg):
             progress_dialog.add_log(f"[ERROR] {error_msg}")
             progress_dialog.complete("Ошибка!")
             thread.quit()
-            thread.wait(timeout=5000)  # timeout 5 секунд
+            thread.wait(5000)  # timeout 5 секунд (позиционный аргумент)
 
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(self.view, "Ошибка", f"Ошибка при поиске дубликатов:\n{error_msg}")
@@ -696,7 +696,7 @@ class MainController(QObject):
         def on_cancelled():
             worker.stop()
             thread.quit()
-            thread.wait(timeout=5000)  # Ждём завершения потока
+            thread.wait(5000)  # Ждём завершения потока (позиционный аргумент)
             progress_dialog.add_log("[INFO] Операция отменена пользователем")
 
         worker.finished.connect(on_finished)
