@@ -212,21 +212,15 @@ class AdvancedDuplicateFinder:
 
         Критерии (в порядке важности):
         1. Резкость (если доступна)
-        2. Размер файла
+        2. Размер файла (из ImageInfo, БЕЗ disk reads)
         3. Разрешение
         """
 
         def get_quality_score(img: ImageInfo) -> Tuple:
+            # Используем встроенный file_size, БЕЗ дорогих os.path.getsize() вызовов
             sharpness = img.sharpness if hasattr(img, 'sharpness') and img.sharpness else 0
             file_size = img.file_size if hasattr(img, 'file_size') and img.file_size else 0
             resolution = (img.width * img.height) if hasattr(img, 'width') and img.width > 0 else 0
-
-            # Fallback to disk if ImageInfo has no data
-            if file_size == 0:
-                try:
-                    file_size = os.path.getsize(img.path)
-                except OSError:
-                    pass
 
             return (sharpness, file_size, resolution)
 

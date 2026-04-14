@@ -632,12 +632,11 @@ class MainController(QObject):
                     if self.should_stop:
                         return
 
-                    # Применяем результаты
-                    self.finder.apply_groups_to_images(groups, mark_best=True)
-
-                    # Получаем статистику
+                    # Получаем статистику (быстро)
                     stats = self.finder.get_statistics(groups)
 
+                    # ВАЖНО: apply_groups_to_images переместим в главный поток
+                    # чтобы избежать синхронизации и deadlock'ов
                     self.finished.emit(groups, stats)
 
                 except Exception as e:
@@ -667,6 +666,10 @@ class MainController(QObject):
             progress_dialog.show_statistics(stats)
             progress_dialog.complete(f"Найдено групп: {len(groups)}")
 
+            # Применяем результаты В ГЛАВНОМ ПОТОКЕ (не в рабочем потоке)
+            # Это предотвращает deadlock'и при работе с UI
+            self.duplicate_finder.apply_groups_to_images(groups, mark_best=True)
+            
             self.groups = groups
             self.view.update_thumbnail_styles()
 
@@ -677,14 +680,15 @@ class MainController(QObject):
             self.view.statusBar().showMessage(msg)
 
             # Правильное завершение потока: quit + wait
+            # Используем deleteLater чтобы избежать deadlock'ов
             thread.quit()
-            thread.wait()
+            thread.wait(timeout=5000)  # timeout 5 секунд
 
         def on_error(error_msg):
             progress_dialog.add_log(f"[ERROR] {error_msg}")
             progress_dialog.complete("Ошибка!")
             thread.quit()
-            thread.wait()
+            thread.wait(timeout=5000)  # timeout 5 секунд
 
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(self.view, "Ошибка", f"Ошибка при поиске дубликатов:\n{error_msg}")
@@ -692,6 +696,7 @@ class MainController(QObject):
         def on_cancelled():
             worker.stop()
             thread.quit()
+            thread.wait(timeout=5000)  # Ждём завершения потока
             progress_dialog.add_log("[INFO] Операция отменена пользователем")
 
         worker.finished.connect(on_finished)
