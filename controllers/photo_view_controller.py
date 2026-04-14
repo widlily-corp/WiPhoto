@@ -676,12 +676,15 @@ class MainController(QObject):
                    f"Потенциальная экономия: {stats['potential_savings_mb']:.2f} МБ")
             self.view.statusBar().showMessage(msg)
 
+            # Правильное завершение потока: quit + wait
             thread.quit()
+            thread.wait()
 
         def on_error(error_msg):
             progress_dialog.add_log(f"[ERROR] {error_msg}")
             progress_dialog.complete("Ошибка!")
             thread.quit()
+            thread.wait()
 
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(self.view, "Ошибка", f"Ошибка при поиске дубликатов:\n{error_msg}")

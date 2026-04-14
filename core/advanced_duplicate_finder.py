@@ -267,18 +267,22 @@ class AdvancedDuplicateFinder:
         total_duplicates = sum(len(group) for group in groups.values())
         total_groups = len(groups)
 
-        # Потенциальная экономия места
+        # Потенциальная экономия места (используем file_size из ImageInfo если доступен)
         potential_savings = 0
         for group_images in groups.values():
             if len(group_images) > 1:
                 # Оставляем лучший, удаляем остальные
-                import os
                 sizes = []
                 for img in group_images:
-                    try:
-                        sizes.append(os.path.getsize(img.path))
-                    except OSError:
-                        pass
+                    # Используем встроенный file_size если доступен
+                    if hasattr(img, 'file_size') and img.file_size:
+                        sizes.append(img.file_size)
+                    else:
+                        # Fallback на os.path.getsize только если нужно
+                        try:
+                            sizes.append(os.path.getsize(img.path))
+                        except OSError:
+                            pass
 
                 if sizes:
                     # Экономия = сумма всех минус самый большой файл
