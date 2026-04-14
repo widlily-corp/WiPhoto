@@ -168,7 +168,6 @@ class _ExifToolDaemon:
 
     def execute(self, file_path: str) -> str:
         """Читает метаданные файла, возвращает сырой stdout."""
-        sentinel = b"{ready}\n"
         cmd_bytes = f"{file_path}\n-execute\n".encode("utf-8")
 
         with self._io_lock:
@@ -177,11 +176,29 @@ class _ExifToolDaemon:
                 self._proc.stdin.flush()
 
                 output_parts = []
+                timeout = 10  # 10 секунд на чтение EXIF
+                import select
+                
+                if sys.platform.startswith('win'):
+                    # На Windows используем простой fallback — это надёжнее
+                    # Daemon может привести к зависаниям, лучше использовать subprocess
+                    return ""
+                
+                # На Unix используем select с таймаутом
                 while True:
+                    ready, _, _ = select.select([self._proc.stdout], [], [], timeout)
+                    if not ready:
+                        logging.warning(f"ExifTool timeout для {file_path}")
+                        break
+                    
                     line = self._proc.stdout.readline()
-                    if not line or line == sentinel:
+                    if not line:
                         break
                     output_parts.append(line)
+                    
+                    # Проверяем конец вывода (пустая строка с -execute)
+                    if line.strip() == b"":
+                        break
 
                 raw = b"".join(output_parts)
                 if sys.platform.startswith('win'):
@@ -258,9 +275,10 @@ def _run_exiftool_fallback(file_path: str) -> str:
 
 
 def _get_raw_output(file_path: str) -> str:
-    daemon = _ExifToolDaemon.get()
-    if daemon:
-        return daemon.execute(os.path.normpath(file_path))
+    # TEMP: daemon на Windows вызывает зависания, используем fallback
+    # daemon = _ExifToolDaemon.get()
+    # if daemon:
+    #     return daemon.execute(os.path.normpath(file_path))
     return _run_exiftool_fallback(file_path)
 
 
