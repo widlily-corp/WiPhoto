@@ -63,35 +63,61 @@ def get_exiftool_path():
     else:
         exiftool_name = 'exiftool'
 
+    # Определяем base_path (где находится приложение)
     if getattr(sys, 'frozen', False):
+        # Nuitka или PyInstaller
         if hasattr(sys, '_MEIPASS'):
+            # PyInstaller
             base_path = sys._MEIPASS
         else:
+            # Nuitka: exe находится в папке рядом с .dist папкой
             base_path = os.path.dirname(sys.executable)
     else:
+        # Development: находимся в core/ подпапке, поднимаемся на уровень выше
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    for check_dir in [os.path.join(base_path, 'exiftool_files'), base_path]:
-        path = os.path.join(check_dir, exiftool_name)
-        if os.path.exists(path):
-            return path
+    logging.debug(f"ExifTool search - app mode: frozen={getattr(sys, 'frozen', False)}, base_path={base_path}")
 
+    # Порядок поиска в Nuitka builede:
+    # 1. base_path/exiftool.exe (рядом с exe)
+    # 2. base_path/exiftool_files/exiftool.exe
+    # 3. AppData
+    # 4. PATH (Unix)
+    
+    check_paths = [
+        os.path.join(base_path, exiftool_name),  # Рядом с exe
+        os.path.join(base_path, 'exiftool_files', exiftool_name),  # В папке exiftool_files
+    ]
+    
+    for check_path in check_paths:
+        if os.path.exists(check_path):
+            logging.info(f"ExifTool найден: {check_path}")
+            return check_path
+
+    # Fallback на AppData
     data_path = os.path.join(_get_app_data_dir(), 'exiftool_files', exiftool_name)
     if os.path.exists(data_path):
+        logging.info(f"ExifTool найден в AppData: {data_path}")
         return data_path
 
+    # Для Unix ищем в PATH
     if not sys.platform.startswith('win'):
         import shutil
         system_exiftool = shutil.which('exiftool')
         if system_exiftool:
+            logging.info(f"ExifTool найден в PATH: {system_exiftool}")
             return system_exiftool
 
-    if sys.platform.startswith('win'):
+    # Для Windows - пытаемся скачать
+    if sys.platform.startswith('win') and not getattr(sys, 'frozen', False):
+        logging.info("Попытка скачать ExifTool...")
         downloaded = _download_exiftool_windows()
         if downloaded:
             return downloaded
 
-    return data_path
+    # Default return (вернём путь даже если не существует, fallback механизм сработает)
+    logging.warning(f"ExifTool не найден по путям: {check_paths}")
+    return os.path.join(base_path, exiftool_name)
 
 
 EXIFTOOL_PATH = get_exiftool_path()
@@ -254,6 +280,10 @@ def cleanup_exiftool():
 
 def _run_exiftool_fallback(file_path: str) -> str:
     """Старый метод — один subprocess на файл. Используется если daemon упал."""
+    if not EXIFTOOL_AVAILABLE:
+        logging.warning(f"ExifTool не доступен для {file_path}")
+        return ""
+    
     kwargs: dict = {}
     if sys.platform.startswith('win'):
         si = subprocess.STARTUPINFO()
@@ -261,17 +291,27 @@ def _run_exiftool_fallback(file_path: str) -> str:
         si.wShowWindow = subprocess.SW_HIDE
         kwargs['startupinfo'] = si
 
-    result = subprocess.run(
-        [EXIFTOOL_PATH, os.path.normpath(file_path)],
-        capture_output=True,
-        check=False,
-        timeout=10,
-        cwd=os.path.dirname(EXIFTOOL_PATH),
-        **kwargs,
-    )
-    if sys.platform.startswith('win'):
-        return result.stdout.decode('cp1251', errors='ignore')
-    return result.stdout.decode('utf-8', errors='ignore')
+    try:
+        result = subprocess.run(
+            [EXIFTOOL_PATH, os.path.normpath(file_path)],
+            capture_output=True,
+            check=False,
+            timeout=10,
+            cwd=os.path.dirname(EXIFTOOL_PATH),
+            **kwargs,
+        )
+        if sys.platform.startswith('win'):
+            return result.stdout.decode('cp1251', errors='ignore')
+        return result.stdout.decode('utf-8', errors='ignore')
+    except subprocess.TimeoutExpired:
+        logging.warning(f"ExifTool timeout для {file_path}")
+        return ""
+    except FileNotFoundError:
+        logging.error(f"ExifTool не найден: {EXIFTOOL_PATH}")
+        return ""
+    except Exception as e:
+        logging.error(f"ExifTool ошибка для {file_path}: {e}")
+        return ""
 
 
 def _get_raw_output(file_path: str) -> str:

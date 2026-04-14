@@ -31,8 +31,10 @@ jobs:
           
           # Check if exiftool.exe already exists in repo
           if (Test-Path "exiftool.exe") {
-            Write-Host "✓ Using existing exiftool.exe"
-            Copy-Item exiftool.exe exiftool_files\exiftool.exe -Force
+            Write-Host "✓ Using existing exiftool.exe from repo root"
+          } elseif (Test-Path "exiftool_files/exiftool.exe") {
+            Write-Host "✓ Using existing exiftool.exe from exiftool_files"
+            Copy-Item exiftool_files\exiftool.exe exiftool.exe -Force
           } else {
             # Download from exiftool.org
             Write-Host "Downloading ExifTool from exiftool.org..."
@@ -40,16 +42,25 @@ jobs:
             Invoke-WebRequest -Uri "https://exiftool.org/exiftool-13.52_64.zip" -OutFile exiftool.zip -TimeoutSec 60
             Expand-Archive exiftool.zip -DestinationPath exiftool_files -Force
             
-            # Find and rename exiftool.exe
+            # Find and copy exiftool.exe to both locations
             $exeFile = Get-ChildItem exiftool_files -Filter "exiftool*.exe" -Recurse | Select-Object -First 1
             if ($exeFile) {
-              Move-Item $exeFile.FullName exiftool_files\exiftool.exe -Force
-              Write-Host "✓ ExifTool downloaded and extracted"
+              Copy-Item $exeFile.FullName exiftool.exe -Force
+              Copy-Item $exeFile.FullName exiftool_files\exiftool.exe -Force
+              Write-Host "✓ ExifTool downloaded and installed"
             } else {
               Write-Error "✗ ExifTool.exe not found in archive"
               exit 1
             }
             Remove-Item exiftool.zip -Force -ErrorAction SilentlyContinue
+          }
+          
+          # Verify exiftool.exe exists in repo root for Nuitka bundling
+          if (Test-Path "exiftool.exe") {
+            Write-Host "✓ exiftool.exe present in repo root"
+          } else {
+            Write-Error "✗ exiftool.exe missing from repo root - Nuitka bundling will fail"
+            exit 1
           }
         shell: pwsh
 
@@ -99,19 +110,24 @@ jobs:
           Copy-Item -Recurse -Force build\main.dist\* dist\WiPhoto_Windows\
           Rename-Item dist\WiPhoto_Windows\main.exe WiPhoto.exe
           
-          # Verify ExifTool files are included
+          # Critical: Verify ExifTool files are included in final package
+          $errors = @()
+          
           if (Test-Path dist\WiPhoto_Windows\exiftool.exe) {
-            Write-Host "✓ ExifTool executable bundled"
+            Write-Host "✓ exiftool.exe bundled in root"
           } else {
-            Write-Error "✗ ExifTool executable NOT found in bundle!"
-            exit 1
+            $errors += "✗ exiftool.exe NOT found in dist root"
           }
           
           if (Test-Path dist\WiPhoto_Windows\exiftool_files) {
-            Write-Host "✓ ExifTool folder bundled"
-            Get-ChildItem dist\WiPhoto_Windows\exiftool_files | Write-Host
-          } else {
-            Write-Warning "⚠ ExifTool folder not found (may be OK if only exe is needed)"
+            Write-Host "✓ exiftool_files folder bundled"
+            $fileCount = (Get-ChildItem dist\WiPhoto_Windows\exiftool_files -Recurse).Count
+            Write-Host "  Files in exiftool_files: $fileCount"
+          }
+          
+          if ($errors) {
+            Write-Error ($errors -join "`n")
+            exit 1
           }
           
           Compress-Archive -Path dist\WiPhoto_Windows -DestinationPath dist\WiPhoto_${{ steps.version.outputs.VERSION }}_Windows.zip -Force
