@@ -2,9 +2,16 @@
 
 import os
 import io
+import sys
 import logging
 import hashlib
 import atexit
+
+# Подавляем TIFF/libtiff предупреждения от OpenCV ДО импорта cv2.
+# DNG файлы с мобильников (PhotometricInterpretation=32803, Orientation=9)
+# генерируют десятки строк в stderr — они не несут смысла для пользователя.
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
 
 import rawpy
 import numpy as np
@@ -65,10 +72,18 @@ def _worker_initializer():
     """
     global _worker_cache_dir, _worker_calc_sharpness, _worker_exiftool_daemon
 
+    # Глушим все предупреждения OpenCV (TIFF/DNG спам от мобильных файлов)
     try:
         cv2.setLogLevel(0)
     except AttributeError:
         pass
+    # Подавляем TIFF/libtiff ошибки через OpenCV error handler
+    try:
+        cv2.redirectError(lambda *_: None)
+    except Exception:
+        pass
+    # Дополнительно через env — для libtiff внутри OpenCV
+    os.environ.setdefault("TIFF_IGNORE_WARNINGS", "1")
 
     _worker_cache_dir = settings.get_thumbnail_cache_path()
     os.makedirs(_worker_cache_dir, exist_ok=True)
