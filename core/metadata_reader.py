@@ -9,7 +9,6 @@ import time
 
 
 def _get_app_data_dir():
-    """Возвращает директорию данных приложения"""
     if sys.platform.startswith('win'):
         base = os.environ.get('LOCALAPPDATA', os.path.expanduser('~'))
         return os.path.join(base, 'WiPhoto')
@@ -18,7 +17,6 @@ def _get_app_data_dir():
 
 
 def _download_exiftool_windows():
-    """Скачивает ExifTool для Windows автоматически"""
     import zipfile
     import urllib.request
 
@@ -56,21 +54,15 @@ def _download_exiftool_windows():
 
 
 def get_exiftool_path():
-    """Возвращает путь к exiftool, при необходимости скачивает"""
     if sys.platform.startswith('win'):
         exiftool_name = 'exiftool.exe'
     else:
         exiftool_name = 'exiftool'
 
     if getattr(sys, 'frozen', False):
-        if hasattr(sys, '_MEIPASS'):
-            base_path = sys._MEIPASS
-        else:
-            base_path = os.path.dirname(sys.executable)
+        base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
     else:
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    logging.debug(f"ExifTool search - app mode: frozen={getattr(sys, 'frozen', False)}, base_path={base_path}")
 
     check_paths = [
         os.path.join(base_path, exiftool_name),
@@ -79,23 +71,19 @@ def get_exiftool_path():
 
     for check_path in check_paths:
         if os.path.exists(check_path):
-            logging.info(f"ExifTool найден: {check_path}")
             return check_path
 
     data_path = os.path.join(_get_app_data_dir(), 'exiftool_files', exiftool_name)
     if os.path.exists(data_path):
-        logging.info(f"ExifTool найден в AppData: {data_path}")
         return data_path
 
     if not sys.platform.startswith('win'):
         import shutil
         system_exiftool = shutil.which('exiftool')
         if system_exiftool:
-            logging.info(f"ExifTool найден в PATH: {system_exiftool}")
             return system_exiftool
 
     if sys.platform.startswith('win') and not getattr(sys, 'frozen', False):
-        logging.info("Попытка скачать ExifTool...")
         downloaded = _download_exiftool_windows()
         if downloaded:
             return downloaded
@@ -120,18 +108,18 @@ TAG_MAP = {
 }
 TAGS_TO_FIND = list(TAG_MAP.keys())
 
-# Sentinel который ExifTool пишет после каждого -execute в stay_open режиме
 _READY_SENTINEL = b"{ready}"
 
+# Таймаут на один файл в секундах.
+# 5 с достаточно для любого JPEG/RAW; 10 с давало ложные «зависания» при
+# временной нагрузке диска.
+_EXIFTOOL_TIMEOUT = 5.0
 
-# ---------------------------------------------------------------------------
-# ExifTool stay_open daemon — один процесс на весь рантайм воркера
-# ---------------------------------------------------------------------------
 
 class _ExifToolDaemon:
     """
     Держит один процесс ExifTool в режиме -stay_open.
-    Потокобезопасен: защищён локом, один инстанс на PID воркера.
+    Потокобезопасен через _io_lock.
     """
 
     _instance: "_ExifToolDaemon | None" = None
@@ -174,7 +162,7 @@ class _ExifToolDaemon:
             **kwargs,
         )
         self._io_lock = threading.Lock()
-        self._dead = False  # флаг: daemon сломался, не пытаться писать снова
+        self._dead = False
         logging.info(f"ExifToolDaemon запущен (PID {self._proc.pid})")
 
     def _alive(self) -> bool:
@@ -182,17 +170,12 @@ class _ExifToolDaemon:
 
     def execute(self, file_path: str) -> str:
         """
-        Читает метаданные файла через stay_open daemon.
-        Возвращает сырой stdout или пустую строку при любой ошибке.
-
-        Sentinel конца вывода: ExifTool пишет строку «{ready}» после
-        каждого -execute — именно по ней мы останавливаем чтение.
-        Старый код ждал пустую строку — её нет никогда, отсюда таймауты.
+        Читает метаданные через stay_open daemon.
+        Sentinel конца вывода: строка b'{ready}' после каждого -execute.
         """
         if self._dead:
             return ""
 
-        # На Windows daemon может зависать — используем fallback
         if sys.platform.startswith('win'):
             return ""
 
@@ -205,31 +188,25 @@ class _ExifToolDaemon:
                 self._proc.stdin.write(cmd_bytes)
                 self._proc.stdin.flush()
             except (BrokenPipeError, OSError):
-                # Не логируем — это штатная ситуация при shutdown
                 self._dead = True
                 return ""
 
             output_parts: list[bytes] = []
             import select
-            timeout = 10.0  # секунд на один файл
 
             try:
-                deadline = time.monotonic() + timeout
+                deadline = time.monotonic() + _EXIFTOOL_TIMEOUT
                 while True:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        logging.warning(f"ExifTool timeout для {file_path}")
-                        # Процесс завис — убиваем daemon, дальше будет fallback
-                        self._dead = True
-                        try:
-                            self._proc.kill()
-                        except Exception:
-                            pass
-                        return ""
+                    remaining = max(0.0, deadline - time.monotonic())
 
-                    ready, _, _ = select.select([self._proc.stdout], [], [], remaining)
+                    ready, _, _ = select.select(
+                        [self._proc.stdout], [], [], remaining
+                    )
                     if not ready:
-                        logging.warning(f"ExifTool timeout для {file_path}")
+                        # select вернул пустой список — реальный таймаут
+                        logging.warning(
+                            f"ExifTool timeout ({_EXIFTOOL_TIMEOUT:.0f}s) для {file_path}"
+                        )
                         self._dead = True
                         try:
                             self._proc.kill()
@@ -239,11 +216,9 @@ class _ExifToolDaemon:
 
                     line = self._proc.stdout.readline()
                     if not line:
-                        # EOF — процесс умер
                         self._dead = True
                         return ""
 
-                    # ExifTool пишет «{ready}» как последнюю строку после -execute
                     if line.strip() == _READY_SENTINEL:
                         break
 
@@ -253,18 +228,14 @@ class _ExifToolDaemon:
                 self._dead = True
                 return ""
             except Exception as e:
-                # Только неожиданные ошибки логируем
                 logging.debug(f"ExifToolDaemon.execute unexpected error: {e}")
                 self._dead = True
                 return ""
 
-        raw = b"".join(output_parts)
-        return raw.decode("utf-8", errors="ignore")
+        return b"".join(output_parts).decode("utf-8", errors="ignore")
 
     def terminate(self):
         self._dead = True
-        # Закрываем stdin явно — предотвращает "Exception ignored in BufferedWriter"
-        # когда GC пытается закрыть stdin уже убитого процесса (BrokenPipeError)
         try:
             self._proc.stdin.write(b"-stay_open\nFalse\n")
             self._proc.stdin.flush()
@@ -289,7 +260,6 @@ class _ExifToolDaemon:
 
 
 def _parse_exiftool_output(stdout_str: str) -> dict:
-    """Парсит вывод ExifTool в dict."""
     metadata = {}
     for line in stdout_str.splitlines():
         if ":" in line:
@@ -299,7 +269,6 @@ def _parse_exiftool_output(stdout_str: str) -> dict:
 
 
 def startup_exiftool():
-    """Проверяет доступность ExifTool и поднимает daemon."""
     if not os.path.exists(EXIFTOOL_PATH):
         logging.error(f"ExifTool не найден: {EXIFTOOL_PATH}")
         return False
@@ -312,7 +281,6 @@ def startup_exiftool():
 
 
 def cleanup_exiftool():
-    """Завершает daemon при выходе."""
     with _ExifToolDaemon._lock:
         d = _ExifToolDaemon._instance
         if d:
@@ -324,7 +292,6 @@ def cleanup_exiftool():
 
 
 def _run_exiftool_fallback(file_path: str) -> str:
-    """Один subprocess на файл. Используется если daemon упал или недоступен."""
     if not EXIFTOOL_AVAILABLE:
         return ""
 
@@ -340,7 +307,7 @@ def _run_exiftool_fallback(file_path: str) -> str:
             [EXIFTOOL_PATH, os.path.normpath(file_path)],
             capture_output=True,
             check=False,
-            timeout=10,
+            timeout=_EXIFTOOL_TIMEOUT,
             cwd=os.path.dirname(EXIFTOOL_PATH),
             **kwargs,
         )
@@ -348,7 +315,7 @@ def _run_exiftool_fallback(file_path: str) -> str:
             return result.stdout.decode('cp1251', errors='ignore')
         return result.stdout.decode('utf-8', errors='ignore')
     except subprocess.TimeoutExpired:
-        logging.warning(f"ExifTool timeout для {file_path}")
+        logging.warning(f"ExifTool subprocess timeout для {file_path}")
         return ""
     except FileNotFoundError:
         logging.error(f"ExifTool не найден: {EXIFTOOL_PATH}")
@@ -359,20 +326,10 @@ def _run_exiftool_fallback(file_path: str) -> str:
 
 
 def _is_worker_thread() -> bool:
-    """
-    Возвращает True если мы в фоновом воркере сканера, а не в главном потоке Qt.
-    Daemon безопасен только в воркерах — в главном потоке select блокирует event loop.
-    """
-    import threading
     return threading.current_thread() is not threading.main_thread()
 
 
 def _get_raw_output(file_path: str) -> str:
-    """
-    В фоновых потоках (сканер) — daemon (быстро, один процесс).
-    В главном потоке Qt (просмотр EXIF, геолокация) — fallback subprocess
-    чтобы не блокировать event loop и не ловить KeyboardInterrupt в select.
-    """
     if not sys.platform.startswith('win') and _is_worker_thread():
         daemon = _ExifToolDaemon.get()
         if daemon and daemon._alive():
@@ -383,7 +340,6 @@ def _get_raw_output(file_path: str) -> str:
 
 
 def read_metadata(image_path: str) -> dict:
-    """Читает все метаданные из файла (включая GPS)."""
     if not EXIFTOOL_AVAILABLE:
         return {}
     try:
@@ -396,7 +352,6 @@ def read_metadata(image_path: str) -> dict:
 
 
 def read_exif(image_path: str) -> dict:
-    """Читает EXIF данные из изображения (только ключевые теги)."""
     if not EXIFTOOL_AVAILABLE:
         return {"Error": "ExifTool не найден"}
 
@@ -406,7 +361,6 @@ def read_exif(image_path: str) -> dict:
             return {"Info": "EXIF-данные отсутствуют."}
 
         full_metadata = _parse_exiftool_output(stdout_str)
-
         filtered_metadata = {
             display_name: full_metadata[tag_key]
             for tag_key, display_name in TAG_MAP.items()

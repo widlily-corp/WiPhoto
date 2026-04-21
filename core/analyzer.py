@@ -7,9 +7,6 @@ import logging
 import hashlib
 import atexit
 
-# Подавляем TIFF/libtiff предупреждения от OpenCV ДО импорта cv2.
-# DNG файлы с мобильников (PhotometricInterpretation=32803, Orientation=9)
-# генерируют десятки строк в stderr — они не несут смысла для пользователя.
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 os.environ["OPENCV_VIDEOIO_DEBUG"] = "0"
 
@@ -42,7 +39,7 @@ VIDEO_FORMATS = frozenset((
 ))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Состояние воркера — инициализируется ОДИН РАЗ через initializer
+# Состояние воркера
 # ─────────────────────────────────────────────────────────────────────────────
 _worker_cache_dir = None
 _worker_calc_sharpness = True
@@ -50,61 +47,44 @@ _worker_exiftool_daemon = None
 
 
 def _shutdown_exiftool_daemon():
-    """Закрывает ExifTool daemon при завершении процесса."""
     global _worker_exiftool_daemon
     daemon = _worker_exiftool_daemon
-    _worker_exiftool_daemon = None  # обнуляем сразу — новые execute не пройдут
+    _worker_exiftool_daemon = None
     if daemon is not None:
         try:
-            daemon._dead = True  # блокируем новые попытки писать в proc
+            daemon._dead = True
             daemon.terminate()
         except Exception:
             pass
 
 
 def _worker_initializer():
-    """
-    Вызывается один раз при старте каждого воркер-процесса.
-    Загружает только то что нужно для быстрого сканирования:
-    кэш-директорию, настройки и ExifTool daemon.
-    AI-модели (YOLO, YuNet) НЕ загружаются здесь — они нужны только
-    для фонового AI-прохода после сканирования.
-    """
     global _worker_cache_dir, _worker_calc_sharpness, _worker_exiftool_daemon
 
-    # Глушим все предупреждения OpenCV (TIFF/DNG спам от мобильных файлов)
     try:
         cv2.setLogLevel(0)
     except AttributeError:
         pass
-    # Подавляем TIFF/libtiff ошибки через OpenCV error handler
     try:
         cv2.redirectError(lambda *_: None)
     except Exception:
         pass
-    # Дополнительно через env — для libtiff внутри OpenCV
     os.environ.setdefault("TIFF_IGNORE_WARNINGS", "1")
 
     _worker_cache_dir = settings.get_thumbnail_cache_path()
     os.makedirs(_worker_cache_dir, exist_ok=True)
     _worker_calc_sharpness = settings.get_calculate_sharpness()
 
-    # ExifTool daemon — свой для каждого воркера, поднимается один раз
     try:
         from core.metadata_reader import _ExifToolDaemon, EXIFTOOL_AVAILABLE
         if EXIFTOOL_AVAILABLE:
             _worker_exiftool_daemon = _ExifToolDaemon()
-            # Гарантируем завершение процесса при выходе
             atexit.register(_shutdown_exiftool_daemon)
     except Exception as e:
         logger.warning(f"[воркер] ExifTool daemon не запущен: {e}")
 
 
 def close_worker_exiftool():
-    """
-    Явное закрытие daemon — вызывается из Scanner перед shutdown executor'а.
-    Предотвращает Broken pipe после Ctrl+C.
-    """
     _shutdown_exiftool_daemon()
 
 
@@ -176,13 +156,23 @@ def _load_image_optimized(file_path: str, for_thumbnail: bool = True) -> Image.I
         return None
 
 
+def _thumbnail_cache_path(file_path: str, cache_dir: str) -> str | None:
+    """Возвращает путь кэша для файла (без проверки существования)."""
+    try:
+        mtime = os.path.getmtime(file_path)
+        key = f"{file_path}{mtime}".encode('utf-8')
+        name = hashlib.sha1(key).hexdigest() + ".jpg"
+        return os.path.join(cache_dir, name)
+    except OSError:
+        return None
+
+
 def _create_thumbnail(pil_image: Image.Image, file_path: str,
                       cache_dir: str) -> str | None:
     try:
-        mtime = os.path.getmtime(file_path)
-        hash_key = f"{file_path}{mtime}".encode('utf-8')
-        cache_filename = hashlib.sha1(hash_key).hexdigest() + ".jpg"
-        cached_path = os.path.join(cache_dir, cache_filename)
+        cached_path = _thumbnail_cache_path(file_path, cache_dir)
+        if cached_path is None:
+            return None
 
         if os.path.exists(cached_path):
             return cached_path
@@ -199,7 +189,6 @@ def _create_thumbnail(pil_image: Image.Image, file_path: str,
 
 
 def _read_exif_in_worker(file_path: str) -> dict:
-    """Читает EXIF через daemon воркера (уже запущен в _worker_initializer)."""
     global _worker_exiftool_daemon
     if _worker_exiftool_daemon is None:
         return {}
@@ -214,8 +203,6 @@ def _read_exif_in_worker(file_path: str) -> dict:
                 meta[k.strip()] = v.strip()
         return meta
     except Exception:
-        # Daemon сломался (timeout / broken pipe) — убираем его,
-        # чтобы не спамить ошибками по каждому следующему файлу
         logger.warning("ExifTool daemon недоступен, отключаем для этого сеанса")
         _shutdown_exiftool_daemon()
         return {}
@@ -248,8 +235,12 @@ def _parse_gps_coord(coord_str: str, ref: str) -> float | None:
 def process_single_file(file_path: str) -> dict | None:
     """
     Быстрая обработка файла при сканировании.
-    НЕ запускает детекцию лиц и животных — это делается отдельно
-    в фоновом AI-проходе после того как все фото показаны в галерее.
+
+    Оптимизация ресканирования: если thumbnail уже закэширован, оригинальный
+    файл не декодируется. Для JPEG/PNG PIL читает только заголовок (< 1 мс),
+    phash и sharpness считаются по маленькому thumbnail (256×256).
+    Результат phash идентичен полному изображению — imagehash всё равно
+    уменьшает картинку до 8×8 внутри.
     """
     global _worker_cache_dir, _worker_calc_sharpness
 
@@ -258,24 +249,58 @@ def process_single_file(file_path: str) -> dict | None:
         cache_dir = settings.get_thumbnail_cache_path()
         os.makedirs(cache_dir, exist_ok=True)
 
+    ext = os.path.splitext(file_path)[1].lower()
+    is_raw   = ext in RAW_FORMATS
+    is_video = ext in VIDEO_FORMATS
+
     try:
-        # ── 1. Загрузка (один раз) ────────────────────────────────────────
-        pil_image = _load_image_optimized(file_path, for_thumbnail=True)
+        pil_image    : Image.Image | None = None
+        thumbnail_path: str | None = None
+        img_width  = 0
+        img_height = 0
+
+        # ── 0. Early cache hit (только для не-RAW / не-video) ────────────────
+        # RAW пропускаем: PIL не может прочитать заголовок RAW без rawpy,
+        # а rawpy.imread — это тот же полный decode.
+        if not is_raw and not is_video:
+            cached = _thumbnail_cache_path(file_path, cache_dir)
+            if cached and os.path.exists(cached):
+                try:
+                    # PIL.Image.open — ленивый: читает только заголовок файла,
+                    # пиксели не декодируются. Для 12 МП JPEG это < 1 мс.
+                    with Image.open(file_path) as _hdr:
+                        img_width, img_height = _hdr.width, _hdr.height
+
+                    # Thumbnail маленький (≤256×256) — загружается мгновенно
+                    _t = Image.open(cached)
+                    _t.load()
+                    pil_image = _t.convert('RGB') if _t.mode != 'RGB' else _t
+                    thumbnail_path = cached
+                except Exception:
+                    # Кэш повреждён или оригинал нечитаем — сбрасываем, пойдём
+                    # полным путём
+                    pil_image = None
+                    thumbnail_path = None
+                    img_width = img_height = 0
+
+        # ── 1. Полная загрузка (нет кэша, RAW, видео) ────────────────────────
         if pil_image is None:
-            return None
+            pil_image = _load_image_optimized(file_path, for_thumbnail=True)
+            if pil_image is None:
+                return None
+            img_width, img_height = pil_image.width, pil_image.height
 
-        # ── 2. Thumbnail ──────────────────────────────────────────────────
-        thumbnail_path = _create_thumbnail(pil_image, file_path, cache_dir)
-        if not thumbnail_path:
-            pil_image.close()
-            return None
+            # ── 2. Thumbnail ──────────────────────────────────────────────────
+            thumbnail_path = _create_thumbnail(pil_image, file_path, cache_dir)
+            if not thumbnail_path:
+                pil_image.close()
+                return None
 
-        # ── 3. Хеш и резкость ────────────────────────────────────────────
-        phash = calculate_phash(pil_image)
+        # ── 3. Хеш и резкость ────────────────────────────────────────────────
+        phash     = calculate_phash(pil_image)
         sharpness = calculate_sharpness(pil_image) if _worker_calc_sharpness else 0.0
 
-        # ── 4. Размеры ────────────────────────────────────────────────────
-        img_width, img_height = pil_image.width, pil_image.height
+        # ── 4. Размеры и размер файла ─────────────────────────────────────────
         aspect_ratio = img_width / img_height if img_height > 0 else 0.0
         try:
             file_size = os.path.getsize(file_path)
@@ -284,10 +309,10 @@ def process_single_file(file_path: str) -> dict | None:
 
         pil_image.close()
 
-        # ── 5. EXIF через daemon (без нового subprocess) ──────────────────
-        meta = _read_exif_in_worker(file_path)
+        # ── 5. EXIF через daemon (без нового subprocess) ──────────────────────
+        meta         = _read_exif_in_worker(file_path)
         camera_model = meta.get("Camera Model Name", "")
-        date_taken = meta.get("Date/Time Original", "")
+        date_taken   = meta.get("Date/Time Original", "")
 
         gps_location = None
         try:
@@ -306,8 +331,8 @@ def process_single_file(file_path: str) -> dict | None:
             "phash":          phash,
             "sharpness":      sharpness,
             "thumbnail_path": thumbnail_path,
-            "faces_count":    0,       # заполнится в AI-проходе
-            "animals_count":  0,       # заполнится в AI-проходе
+            "faces_count":    0,
+            "animals_count":  0,
             "gps_location":   gps_location,
             "aspect_ratio":   aspect_ratio,
             "camera_model":   camera_model,
@@ -315,8 +340,8 @@ def process_single_file(file_path: str) -> dict | None:
             "width":          img_width,
             "height":         img_height,
             "file_size":      file_size,
-            "animal_species": [],      # заполнится в AI-проходе
-            "tags":           [],      # заполнится в AI-проходе
+            "animal_species": [],
+            "tags":           [],
         }
 
     except Exception as e:
@@ -325,21 +350,16 @@ def process_single_file(file_path: str) -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AI-обработка — только детекция лиц и животных, для уже показанных фото
+# AI-обработка — только детекция лиц и животных
 # ─────────────────────────────────────────────────────────────────────────────
 
 def process_ai_for_file(file_path: str) -> dict:
-    """
-    Запускается в фоне ПОСЛЕ сканирования.
-    Возвращает только AI-поля: faces_count, animals_count, animal_species, tags.
-    Вызывается из AIWorker по одному файлу за раз в отдельном потоке.
-    """
     result = {
-        "path": file_path,
-        "faces_count": 0,
-        "animals_count": 0,
+        "path":           file_path,
+        "faces_count":    0,
+        "animals_count":  0,
         "animal_species": [],
-        "tags": [],
+        "tags":           [],
     }
 
     try:
@@ -347,7 +367,6 @@ def process_ai_for_file(file_path: str) -> dict:
         if pil_image is None:
             return result
 
-        # Face detection
         try:
             from core.face_detector import FaceDetector
             fd = FaceDetector.get_instance()
@@ -359,7 +378,6 @@ def process_ai_for_file(file_path: str) -> dict:
         except Exception as e:
             logger.warning(f"FaceDetector error {file_path}: {e}")
 
-        # Animal detection
         try:
             from core.animal_detector import AnimalDetector
             ad = AnimalDetector.get_instance()

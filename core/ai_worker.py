@@ -1,9 +1,4 @@
 # core/ai_worker.py
-#
-# Фоновый AI-проход после сканирования.
-# Запускается когда все фото уже показаны в галерее.
-# Обрабатывает по одному файлу за раз в отдельном потоке —
-# не грузит RAM как ProcessPoolExecutor с YOLO в каждом воркере.
 
 import logging
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
@@ -12,12 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class AIWorker(QObject):
-    """
-    Обрабатывает AI-детекцию (лица, животные) в фоне после сканирования.
-    Эмитит ai_result с результатами для каждого файла —
-    контроллер обновляет соответствующий ImageInfo и бейдж на миниатюре.
-    """
-    ai_result = pyqtSignal(dict)   # {path, faces_count, animals_count, ...}
+    ai_result = pyqtSignal(dict)
     progress  = pyqtSignal(int, int)
     finished  = pyqtSignal()
 
@@ -49,21 +39,16 @@ class AIWorker(QObject):
 
 
 class AIProcessingManager:
-    """
-    Управляет запуском и остановкой фонового AI-прохода.
-    Используется из MainController.
-    """
 
     def __init__(self):
         self._thread: QThread | None = None
         self._worker: AIWorker | None = None
 
     def start(self, image_paths: list[str],
-              on_result,      # callable(dict)
-              on_progress,    # callable(int, int)
-              on_finished):   # callable()
-        """Запускает фоновый AI-проход."""
-        self.stop()  # на случай если предыдущий ещё идёт
+              on_result,
+              on_progress,
+              on_finished):
+        self.stop()
 
         if not image_paths:
             return
@@ -82,12 +67,20 @@ class AIProcessingManager:
         logger.info(f"AIProcessingManager: запущен для {len(image_paths)} файлов")
 
     def stop(self):
-        """Останавливает текущий AI-проход если он идёт."""
+        """Останавливает текущий AI-проход."""
         if self._worker:
             self._worker.stop()
+
         if self._thread and self._thread.isRunning():
             self._thread.quit()
-            self._thread.wait(3000)
+            if not self._thread.wait(3000):
+                # Поток не успел остановиться за 3 сек (например, тяжёлая AI-инференция).
+                # terminate() — принудительное завершение; безопасно только потому что
+                # AIWorker не держит мьютексов и не пишет в разделяемые структуры.
+                logger.warning("AIWorker не остановился за 3 с — принудительное завершение")
+                self._thread.terminate()
+                self._thread.wait(1000)
+
         self._thread = None
         self._worker = None
 

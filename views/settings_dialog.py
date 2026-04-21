@@ -66,7 +66,7 @@ class SettingsDialog(QDialog):
         layout.addRow("", QLabel(""))
         info_group = QGroupBox("О программе")
         info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel("WiPhoto v2.1.0"))
+        info_layout.addWidget(QLabel("WiPhoto v2.4.4"))
         info_layout.addWidget(QLabel("Профессиональный фотоменеджер"))
         info_layout.addWidget(QLabel("\u00a9 2026 Widlily Corporation"))
         layout.addRow(info_group)
