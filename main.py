@@ -22,9 +22,13 @@ class _TiffStderrFilter:
     def write(self, text):
         # Строки от libtiff/grfmt — молча отбрасываем
         _TIFF_MARKERS = (
+            # libtiff / OpenCV DNG warnings
             "TIFF_Warning", "TIFF_Error", "grfmt_tiff",
             "TIFFRead", "TIFFRGBAImage", "_TIFFVSetField",
             "PhotometricInterpretation", "Bad value",
+            # Wayland Qt noise
+            "qt.qpa.wayland", "zwp_text_input",
+            "This plugin supports grabbing",
         )
         if any(m in text for m in _TIFF_MARKERS):
             return
