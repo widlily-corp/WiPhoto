@@ -2,6 +2,51 @@
 
 import sys
 import os
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ВАЖНО: перенаправляем stderr на уровне OS ДО любых импортов cv2/libtiff.
+# DNG файлы с мобильников генерируют сотни строк TIFF WARN/ERROR через
+# libtiff напрямую в fd=2 — это невозможно заглушить через Python logging
+# или OPENCV_LOG_LEVEL после того как библиотека уже загружена.
+# Фильтруем: пропускаем только строки не содержащие TIFF/grfmt меток.
+# ─────────────────────────────────────────────────────────────────────────────
+class _TiffStderrFilter:
+    """
+    Фильтрует libtiff/OpenCV TIFF предупреждения из stderr.
+    Все остальные сообщения пропускает без изменений.
+    """
+    def __init__(self, real_stderr):
+        self._real = real_stderr
+        self._buf = ""
+
+    def write(self, text):
+        # Строки от libtiff/grfmt — молча отбрасываем
+        _TIFF_MARKERS = (
+            "TIFF_Warning", "TIFF_Error", "grfmt_tiff",
+            "TIFFRead", "TIFFRGBAImage", "_TIFFVSetField",
+            "PhotometricInterpretation", "Bad value",
+        )
+        if any(m in text for m in _TIFF_MARKERS):
+            return
+        self._real.write(text)
+
+    def flush(self):
+        self._real.flush()
+
+    def fileno(self):
+        return self._real.fileno()
+
+    def isatty(self):
+        return self._real.isatty()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+sys.stderr = _TiffStderrFilter(sys.stderr)
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 import multiprocessing
 import traceback
 import logging
@@ -16,7 +61,6 @@ from controllers.app_controller import AppController
 from utils import resource_path
 
 
-# Настройка логирования
 def setup_logging():
     """Настраивает систему логирования для отладки"""
     log_dir = os.path.join(os.path.expanduser("~"), ".wiphoto", "logs")
@@ -33,7 +77,6 @@ def setup_logging():
                 logging.StreamHandler(sys.stdout)
             ]
         )
-
 
         logging.info("=" * 50)
         logging.info("WiPhoto запущен")
@@ -55,7 +98,6 @@ def log_system_info():
     logging.info(f"  Архитектура: {platform.machine()}")
     logging.info(f"  Процессор: {platform.processor()}")
 
-    # Проверяем зависимости
     dependencies = {
         'PyQt6': 'PyQt6.QtCore',
         'Pillow': 'PIL',
@@ -77,11 +119,6 @@ def log_system_info():
 
 
 def exception_hook(exc_type, exc_value, exc_traceback):
-    """
-    Глобальный перехватчик необработанных исключений.
-    Логирует все критические ошибки.
-    """
-    # Игнорируем KeyboardInterrupt
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
@@ -94,7 +131,6 @@ def exception_hook(exc_type, exc_value, exc_traceback):
     )
     logging.error("=" * 50 + "\n")
 
-    # Показываем пользователю диалог с ошибкой
     try:
         error_msg = f"{exc_type.__name__}: {exc_value}"
         QMessageBox.critical(
@@ -108,7 +144,6 @@ def exception_hook(exc_type, exc_value, exc_traceback):
 
 
 def check_critical_files():
-    """Проверяет наличие критически важных файлов"""
     critical_files = [
         "assets/icon.ico",
         "pro_dark.qss"
@@ -125,23 +160,19 @@ def check_critical_files():
 
 
 def set_dark_palette(app):
-    """
-    Принудительно устанавливает темную палитру (Fusion).
-    """
     try:
         app.setStyle("Fusion")
 
         palette = QPalette()
 
-        # Базовые цвета
-        color_window = QColor(30, 35, 45)  # Темно-синий/серый фон окна
-        color_window_text = QColor(224, 224, 224)  # Светло-серый текст
-        color_base = QColor(37, 41, 53)  # Фон полей ввода
-        color_alternate = QColor(45, 50, 65)  # Чередующийся фон
-        color_text = QColor(224, 224, 224)  # Текст
-        color_button = QColor(58, 64, 80)  # Фон кнопок
+        color_window = QColor(30, 35, 45)
+        color_window_text = QColor(224, 224, 224)
+        color_base = QColor(37, 41, 53)
+        color_alternate = QColor(45, 50, 65)
+        color_text = QColor(224, 224, 224)
+        color_button = QColor(58, 64, 80)
         color_button_text = QColor(224, 224, 224)
-        color_highlight = QColor(61, 142, 201)  # Синий (акцент)
+        color_highlight = QColor(61, 142, 201)
         color_highlight_text = QColor(255, 255, 255)
 
         palette.setColor(QPalette.ColorRole.Window, color_window)
@@ -158,7 +189,6 @@ def set_dark_palette(app):
         palette.setColor(QPalette.ColorRole.Highlight, color_highlight)
         palette.setColor(QPalette.ColorRole.HighlightedText, color_highlight_text)
 
-        # Отключенные элементы (важно для читаемости!)
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor(128, 128, 128))
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText, QColor(128, 128, 128))
         palette.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText, QColor(128, 128, 128))
@@ -172,10 +202,6 @@ def set_dark_palette(app):
 
 
 def load_stylesheet(app):
-    """
-    Загружает таблицу стилей.
-    Использует .replace вместо .format во избежание конфликтов с фигурными скобками CSS.
-    """
     try:
         stylesheet_path = resource_path("pro_dark.qss")
         if not os.path.exists(stylesheet_path):
@@ -185,12 +211,8 @@ def load_stylesheet(app):
         with open(stylesheet_path, "r", encoding='utf-8') as f:
             stylesheet_template = f.read()
 
-
         assets_path = resource_path("assets")
-
         assets_uri = Path(assets_path).as_uri()
-
-
         final_stylesheet = stylesheet_template.replace("{ASSETS_PATH}", assets_uri)
 
         app.setStyleSheet(final_stylesheet)
@@ -204,15 +226,17 @@ def load_stylesheet(app):
 def main():
     """Главная функция приложения"""
 
-    # Настройка multiprocessing для Windows
+    # multiprocessing.freeze_support() должен быть первым на Windows
     multiprocessing.freeze_support()
-    multiprocessing.set_start_method('spawn', force=True)
+
+    # На Linux 'spawn' не нужен и замедляет старт — используем 'fork'
+    if sys.platform.startswith('win'):
+        multiprocessing.set_start_method('spawn', force=True)
+
     # Настраиваем логирование
     log_path = setup_logging()
-    # Логируем системную информацию
     log_system_info()
 
-    # Проверяем ExifTool (на Windows — авто-скачивание, на Linux — подсказка apt)
     logging.info("\nПроверка ExifTool...")
     try:
         from core.metadata_reader import EXIFTOOL_AVAILABLE, EXIFTOOL_PATH
@@ -225,17 +249,13 @@ def main():
     except Exception as e:
         logging.error(f"Ошибка проверки ExifTool: {e}")
 
-    # Устанавливаем глобальный обработчик исключений
     sys.excepthook = exception_hook
 
-    # Проверяем критические файлы
     missing_files = check_critical_files()
     if missing_files:
         logging.warning(f"Отсутствуют файлы: {', '.join(missing_files)}")
 
-    # Создаем приложение
     try:
-        # Включаем высокое разрешение для дисплеев с высоким DPI
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
         )
@@ -252,19 +272,15 @@ def main():
         logging.critical(traceback.format_exc())
         return 1
 
-    # Apply dark palette as base, then load QSS on top
     set_dark_palette(app)
     load_stylesheet(app)
 
-    # Создаем контроллер приложения
     try:
         app_controller = AppController()
         logging.info("AppController создан успешно")
 
-        # Подключаем очистку ресурсов при выходе
         app.aboutToQuit.connect(app_controller.cleanup)
 
-        # Показываем главное окно
         app_controller.show()
         logging.info("Интерфейс отображен")
 
@@ -280,14 +296,11 @@ def main():
         )
         return 1
 
-    # Запускаем главный цикл приложения
     try:
         logging.info("Запуск главного цикла приложения")
         exit_code = app.exec()
-
         logging.info(f"Приложение завершено с кодом: {exit_code}")
         logging.info("=" * 50)
-
         return exit_code
 
     except Exception as e:

@@ -263,14 +263,27 @@ class _ExifToolDaemon:
 
     def terminate(self):
         self._dead = True
+        # Закрываем stdin явно — предотвращает "Exception ignored in BufferedWriter"
+        # когда GC пытается закрыть stdin уже убитого процесса (BrokenPipeError)
         try:
             self._proc.stdin.write(b"-stay_open\nFalse\n")
             self._proc.stdin.flush()
-            self._proc.wait(timeout=3)
+        except Exception:
+            pass
+        try:
+            self._proc.stdin.close()
+        except Exception:
+            pass
+        try:
+            self._proc.wait(timeout=2)
         except Exception:
             pass
         try:
             self._proc.kill()
+        except Exception:
+            pass
+        try:
+            self._proc.stdout.close()
         except Exception:
             pass
 
