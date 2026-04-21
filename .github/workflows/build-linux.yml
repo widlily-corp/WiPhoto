@@ -1,0 +1,119 @@
+name: Build Linux
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            libgl1 \
+            libglib2.0-0 \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libimage-exiftool-perl \
+            patchelf \
+            ccache
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip wheel
+          pip install -r requirements.txt
+          pip install pillow-heif nuitka ordered-set zstandard
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+
+      - name: Build with Nuitka
+        run: |
+          python -m nuitka \
+            --standalone \
+            --onefile \
+            --enable-plugin=pyqt6 \
+            --include-data-dir=assets=assets \
+            --include-data-file=pro_dark.qss=pro_dark.qss \
+            --include-package=cv2 \
+            --include-package=PIL \
+            --include-package=numpy \
+            --include-package=rawpy \
+            --include-package=imagehash \
+            --include-package=skimage \
+            --include-package=pillow_heif \
+            --include-package-data=cv2 \
+            --nofollow-import-to=matplotlib \
+            --nofollow-import-to=scipy \
+            --nofollow-import-to=tkinter \
+            --nofollow-import-to=torch \
+            --nofollow-import-to=torchvision \
+            --nofollow-import-to=simple_lama_inpainting \
+            --linux-icon=assets/icon.ico \
+            --output-dir=build \
+            main.py
+
+      - name: Package
+        run: |
+          mkdir -p dist/WiPhoto_Linux
+          cp build/main.bin dist/WiPhoto_Linux/WiPhoto
+          chmod +x dist/WiPhoto_Linux/WiPhoto
+          cp -r assets dist/WiPhoto_Linux/
+          cp pro_dark.qss dist/WiPhoto_Linux/
+
+          cat > dist/WiPhoto_Linux/wiphoto.sh << 'EOF'
+          #!/bin/bash
+          SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+          cd "$SCRIPT_DIR"
+          export LD_LIBRARY_PATH="$SCRIPT_DIR:$LD_LIBRARY_PATH"
+          if [ -n "$WAYLAND_DISPLAY" ] && [ -z "$FORCE_X11" ]; then
+              export QT_QPA_PLATFORM=wayland
+          else
+              export QT_QPA_PLATFORM=xcb
+          fi
+          exec ./WiPhoto "$@"
+          EOF
+          chmod +x dist/WiPhoto_Linux/wiphoto.sh
+
+          cat > dist/WiPhoto_Linux/README.txt << 'EOF'
+          WiPhoto for Linux
+
+          Dependencies:
+            sudo apt install libgl1 libimage-exiftool-perl libxcb-xinerama0 libxcb-cursor0
+
+          Run:
+            ./wiphoto.sh
+
+          https://github.com/widlily-corp/WiPhoto
+          EOF
+
+          cd dist
+          tar -czf WiPhoto_${{ steps.version.outputs.VERSION }}_Linux.tar.gz WiPhoto_Linux/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiPhoto-Linux
+          path: dist/WiPhoto_${{ steps.version.outputs.VERSION }}_Linux.tar.gz
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/WiPhoto_${{ steps.version.outputs.VERSION }}_Linux.tar.gz
+          draft: false
+          prerelease: false
