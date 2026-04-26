@@ -735,6 +735,7 @@ class MainWindow(QMainWindow):
     def clear_thumbnails(self):
         self.gallery_widget.thumbnail_view.clear()
         self.gallery_widget.thumbnail_view.delegate.clear_cache()
+        self._preview_cache.clear()
         self.clear_preview_and_metadata()
 
     def set_thumbnail_size(self, size: int):
@@ -781,7 +782,7 @@ class MainWindow(QMainWindow):
                 )
             )
 
-            # Prefetch neighbors in background
+            # Префетч соседей (синхронно, на GUI-потоке)
             self._prefetch_neighbors(image_path)
 
         except Exception as e:
