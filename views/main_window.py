@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLi
                              QHeaderView, QPushButton, QComboBox, QLineEdit)
 
 from models.image_model import ImageInfo, RAW_EXTENSIONS, VIDEO_EXTENSIONS
+from views._pixmap_cache import PixmapLRUCache
 from views.editor_widget import EditorWidget
 from views.gallery_widget import GalleryWidget
 from views.about_dialog import AboutDialog
@@ -53,8 +54,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
         self.setGeometry(100, 100, 1600, 900)
         self.current_preview_pixmap = None
-        self._preview_cache = {}  # path → QPixmap (prefetch cache)
-        self._preview_cache_limit = 5
+        self._preview_cache = PixmapLRUCache(max_bytes=256 * 1024 * 1024)
 
         self.setAcceptDrops(True)
 
@@ -761,13 +761,14 @@ class MainWindow(QMainWindow):
             self.color_palette.set_image_path(image_path)
 
             # Check prefetch cache first
-            if image_path in self._preview_cache:
-                self.current_preview_pixmap = self._preview_cache[image_path]
+            cached = self._preview_cache.get(image_path)
+            if cached is not None:
+                self.current_preview_pixmap = cached
             else:
                 pixmap = self._load_preview_pixmap(image_path)
                 if pixmap:
                     self.current_preview_pixmap = pixmap
-                    self._preview_cache[image_path] = pixmap
+                    self._preview_cache.put(image_path, pixmap)
                 else:
                     self.preview_area.setText("Не удалось загрузить")
                     return
@@ -782,14 +783,6 @@ class MainWindow(QMainWindow):
 
             # Prefetch neighbors in background
             self._prefetch_neighbors(image_path)
-
-            # Evict old cache entries
-            while len(self._preview_cache) > self._preview_cache_limit:
-                oldest = next(iter(self._preview_cache))
-                if oldest != image_path:
-                    del self._preview_cache[oldest]
-                else:
-                    break
 
         except Exception as e:
             self.preview_area.setText(f"Ошибка: {e}")
@@ -851,10 +844,10 @@ class MainWindow(QMainWindow):
                     item = gallery.item(neighbor_row)
                     if item:
                         info = item.data(Qt.ItemDataRole.UserRole)
-                        if isinstance(info, ImageInfo) and info.path not in self._preview_cache:
+                        if isinstance(info, ImageInfo) and self._preview_cache.get(info.path) is None:
                             pixmap = self._load_preview_pixmap(info.path)
                             if pixmap:
-                                self._preview_cache[info.path] = pixmap
+                                self._preview_cache.put(info.path, pixmap)
         except Exception:
             pass
 
