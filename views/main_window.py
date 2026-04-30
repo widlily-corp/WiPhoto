@@ -67,6 +67,28 @@ class MainWindow(QMainWindow):
         self.map_widget = MapWidget(self)
         self.timeline_widget = TimelineWidget(self)
 
+        # AI analysis overlay
+        self.ai_overlay = QWidget(self)
+        self.ai_overlay.setVisible(False)
+        self.ai_overlay.setStyleSheet("""
+            QWidget {
+                background-color: rgba(0, 0, 0, 0.7);
+                border-radius: 10px;
+            }
+        """)
+        overlay_layout = QVBoxLayout(self.ai_overlay)
+        overlay_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ai_label = QLabel("ИИ анализ в процессе - пожалуйста подождите...")
+        ai_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 20px;
+            }
+        """)
+        overlay_layout.addWidget(ai_label)
+
         # --- Build layout ---
         self._build_layout()
         self._create_actions()
@@ -333,6 +355,22 @@ class MainWindow(QMainWindow):
 
     def switch_to_timeline(self):
         self.center_stack.setCurrentIndex(4)
+
+    def show_ai_overlay(self):
+        """Показать overlay блокировки UI во время AI анализа"""
+        if not self.ai_overlay.isVisible():
+            # Position overlay in center of main window
+            overlay_size = self.ai_overlay.sizeHint()
+            window_size = self.size()
+            x = (window_size.width() - overlay_size.width()) // 2
+            y = (window_size.height() - overlay_size.height()) // 2
+            self.ai_overlay.move(x, y)
+            self.ai_overlay.setVisible(True)
+            self.ai_overlay.raise_()
+
+    def hide_ai_overlay(self):
+        """Скрыть overlay блокировки UI"""
+        self.ai_overlay.setVisible(False)
 
     def _create_actions(self):
         try:

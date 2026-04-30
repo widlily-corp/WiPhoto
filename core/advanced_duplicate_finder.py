@@ -94,9 +94,11 @@ class AdvancedDuplicateFinder:
         groups = defaultdict(list)
         unassigned = list(images)
         group_counter = 0
+        total_images = len(images)
 
         logger.info(f"Поиск дубликатов методом {method}, порог={threshold}")
 
+        processed = 0
         while unassigned:
             base_image = unassigned.pop(0)
             # ОПТИМИЗАЦИЯ: Передаем уже вычисленный хеш если доступен
@@ -104,11 +106,13 @@ class AdvancedDuplicateFinder:
             base_hash = self.calculate_hash(base_image.path, method, existing_hash)
 
             if not base_hash:
+                processed += 1
                 continue
 
             try:
                 base_hash_int = int(base_hash, 16)
             except (ValueError, TypeError):
+                processed += 1
                 continue
 
             current_group = [base_image]
@@ -141,6 +145,12 @@ class AdvancedDuplicateFinder:
                 group_id = f"group_{method}_{group_counter}"
                 groups[group_id] = current_group
                 group_counter += 1
+
+            processed += len(current_group)  # Count all images in group as processed
+            # Yield control every 50 processed images to prevent UI hang
+            if processed % 50 == 0:
+                from PyQt6.QtWidgets import QApplication
+                QApplication.processEvents()
 
         logger.info(f"Найдено групп: {len(groups)}")
         return dict(groups)

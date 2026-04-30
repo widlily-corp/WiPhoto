@@ -19,6 +19,10 @@ class ThumbnailListWidget(QListWidget):
     rating_changed = pyqtSignal(object, int)  # ImageInfo, rating
     color_label_changed = pyqtSignal(object, str)  # ImageInfo, color
     flag_changed = pyqtSignal(object, str)  # ImageInfo, flag_status
+    video_play_requested = pyqtSignal(str)  # path
+    preview_requested = pyqtSignal(str)  # path (for photos)
+    restore_from_trash_requested = pyqtSignal(list)  # ImageInfo list
+    delete_forever_requested = pyqtSignal(list)  # ImageInfo list
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -55,8 +59,21 @@ class ThumbnailListWidget(QListWidget):
         self.setGridSize(QSize(total, total))
 
     def keyPressEvent(self, event: QKeyEvent):
-        """Handle rating keys (0-5) and color label keys (6-9)"""
+        """Handle Space (video/preview), rating keys (0-5), color labels (6-9), flags (P/X/U)"""
         key = event.key()
+        
+        # Space: play video or open preview
+        if key == Qt.Key.Key_Space:
+            items = self.selectedItems()
+            if items:
+                info = items[0].data(Qt.ItemDataRole.UserRole)
+                if isinstance(info, ImageInfo):
+                    if info.is_video():
+                        self.video_play_requested.emit(info.path)
+                    else:
+                        self.preview_requested.emit(info.path)
+            return
+        
         # Rating: 0-5
         if Qt.Key.Key_0 <= key <= Qt.Key.Key_5:
             rating = key - Qt.Key.Key_0
@@ -95,6 +112,29 @@ class ThumbnailListWidget(QListWidget):
                 self.setCurrentRow(current + 1)
             return
         super().keyPressEvent(event)
+    
+    def contextMenuEvent(self, event):
+        """Context menu with trash operations"""
+        items = self.selectedItems()
+        if not items:
+            return
+        
+        menu = QMenu(self)
+        
+        # Trash operations
+        infos = [item.data(Qt.ItemDataRole.UserRole) for item in items]
+        infos = [i for i in infos if isinstance(i, ImageInfo)]
+        if infos:
+            restore_action = QAction("Восстановить из корзины", self)
+            restore_action.triggered.connect(lambda: self.restore_from_trash_requested.emit(infos))
+            menu.addAction(restore_action)
+            
+            delete_action = QAction("Удалить навсегда", self)
+            delete_action.triggered.connect(lambda: self.delete_forever_requested.emit(infos))
+            menu.addAction(delete_action)
+        
+        if menu.actions():
+            menu.exec(event.globalPos())
 
     def startDrag(self, supportedActions):
         """Drag selected images out of the app as file URLs"""

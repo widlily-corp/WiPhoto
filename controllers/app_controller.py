@@ -36,6 +36,10 @@ class AppController(QObject):
             self.main_window = MainWindow()
             self.photo_view_controller = PhotoViewController(self.main_window)
 
+            # Connect AI analysis signals for UI blocking
+            self.photo_view_controller.ai_analysis_started.connect(self.main_window.show_ai_overlay)
+            self.photo_view_controller.ai_analysis_finished.connect(self.main_window.hide_ai_overlay)
+
             # Connect progress with file path info
             self.photo_view_controller.scanner.progress_updated.connect(self._on_progress)
             self.photo_view_controller.scanner.finished.connect(self.on_scan_finished)

@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QListWidgetItem, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QHBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from models.image_model import ImageInfo, RAW_EXTENSIONS
@@ -15,6 +15,8 @@ class SmartCollectionsWidget(QWidget):
 
     collection_selected = pyqtSignal(list)  # emits filtered list of ImageInfo
     collection_changed = pyqtSignal(str)    # emits collection_id
+    delete_all_from_trash_requested = pyqtSignal()  # delete all trash items
+    restore_all_from_trash_requested = pyqtSignal()  # restore all trash items
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -39,6 +41,49 @@ class SmartCollectionsWidget(QWidget):
         self.collections_list = QListWidget()
         self.collections_list.itemClicked.connect(self._on_collection_clicked)
         layout.addWidget(self.collections_list)
+
+        # Trash management buttons (hidden by default)
+        self.trash_buttons_widget = QWidget()
+        self.trash_buttons_widget.setVisible(False)
+        trash_layout = QHBoxLayout(self.trash_buttons_widget)
+        trash_layout.setContentsMargins(8, 4, 8, 8)
+        trash_layout.setSpacing(4)
+
+        self.delete_all_btn = QPushButton("Очистить всё")
+        self.delete_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff4444;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #ff6666;
+            }
+        """)
+        self.delete_all_btn.clicked.connect(lambda: self.delete_all_from_trash_requested.emit())
+
+        self.restore_all_btn = QPushButton("Восстановить всё")
+        self.restore_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #44aa44;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #66cc66;
+            }
+        """)
+        self.restore_all_btn.clicked.connect(lambda: self.restore_all_from_trash_requested.emit())
+
+        trash_layout.addWidget(self.restore_all_btn)
+        trash_layout.addWidget(self.delete_all_btn)
+        layout.addWidget(self.trash_buttons_widget)
 
         self._add_standard_collections()
 
@@ -83,6 +128,9 @@ class SmartCollectionsWidget(QWidget):
 
         filtered = self._filter_by_collection(collection_id)
         self.collection_selected.emit(filtered)
+
+        # Show/hide trash buttons
+        self.trash_buttons_widget.setVisible(collection_id == "trash")
 
     def _filter_by_collection(self, collection_id: str) -> list:
         if collection_id == "all":

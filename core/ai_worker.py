@@ -1,6 +1,7 @@
 # core/ai_worker.py
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 logger = logging.getLogger(__name__)
@@ -11,9 +12,10 @@ class AIWorker(QObject):
     progress  = pyqtSignal(int, int)
     finished  = pyqtSignal()
 
-    def __init__(self, image_paths: list[str]):
+    def __init__(self, image_paths: list[str], batch_size: int = 5):
         super().__init__()
         self._paths = image_paths
+        self._batch_size = batch_size
         self._stop = False
 
     def stop(self):
@@ -22,18 +24,36 @@ class AIWorker(QObject):
     def run(self):
         total = len(self._paths)
         from core.analyzer import process_ai_for_file
-
-        for i, path in enumerate(self._paths):
+        
+        processed = 0
+        
+        # Process in batches
+        for i in range(0, total, self._batch_size):
             if self._stop:
                 break
-            try:
-                result = process_ai_for_file(path)
-                self.ai_result.emit(result)
-            except Exception as e:
-                logger.warning(f"AIWorker error {path}: {e}")
-
-            if (i + 1) % 10 == 0 or (i + 1) == total:
-                self.progress.emit(i + 1, total)
+                
+            batch = self._paths[i:i + self._batch_size]
+            
+            # Process batch in parallel
+            with ThreadPoolExecutor(max_workers=self._batch_size) as executor:
+                future_to_path = {executor.submit(process_ai_for_file, path): path for path in batch}
+                
+                for future in as_completed(future_to_path):
+                    if self._stop:
+                        break
+                    try:
+                        result = future.result()
+                        self.ai_result.emit(result)
+                        processed += 1
+                        
+                        # Emit progress more frequently (every 5 images instead of every 10)
+                        if processed % 5 == 0 or processed == total:
+                            self.progress.emit(processed, total)
+                            
+                    except Exception as e:
+                        path = future_to_path[future]
+                        logger.warning(f"AIWorker error {path}: {e}")
+                        processed += 1
 
         self.finished.emit()
 
@@ -47,14 +67,15 @@ class AIProcessingManager:
     def start(self, image_paths: list[str],
               on_result,
               on_progress,
-              on_finished):
+              on_finished,
+              batch_size: int = 5):
         self.stop()
 
         if not image_paths:
             return
 
         self._thread = QThread()
-        self._worker = AIWorker(image_paths)
+        self._worker = AIWorker(image_paths, batch_size=batch_size)
         self._worker.moveToThread(self._thread)
 
         self._worker.ai_result.connect(on_result)
@@ -64,7 +85,7 @@ class AIProcessingManager:
         self._thread.started.connect(self._worker.run)
 
         self._thread.start()
-        logger.info(f"AIProcessingManager: запущен для {len(image_paths)} файлов")
+        logger.info(f"AIProcessingManager: запущен для {len(image_paths)} файлов (batch_size={batch_size})")
 
     def stop(self):
         """Останавливает текущий AI-проход."""

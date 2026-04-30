@@ -26,6 +26,8 @@ from core.ai_worker import AIProcessingManager
 class MainController(QObject):
     start_scanning_signal = pyqtSignal(str, bool)
     request_editor_display = pyqtSignal(ImageInfo)
+    ai_analysis_started = pyqtSignal()
+    ai_analysis_finished = pyqtSignal()
 
     def __init__(self, main_window):
         super().__init__()
@@ -108,6 +110,8 @@ class MainController(QObject):
         if hasattr(main_win, 'smart_collections'):
             main_win.smart_collections.collection_selected.connect(self._on_collection_filter_applied)
             main_win.smart_collections.collection_changed.connect(self._on_collection_changed)
+            main_win.smart_collections.delete_all_from_trash_requested.connect(self._on_delete_all_from_trash)
+            main_win.smart_collections.restore_all_from_trash_requested.connect(self._on_restore_all_from_trash)
 
         if hasattr(main_win, 'sort_changed'):
             main_win.sort_changed.connect(self._apply_sort)
@@ -120,6 +124,10 @@ class MainController(QObject):
         if hasattr(gallery, 'thumbnail_view'):
             gallery.thumbnail_view.rating_changed.connect(self._on_rating_changed)
             gallery.thumbnail_view.color_label_changed.connect(self._on_color_label_changed)
+            gallery.thumbnail_view.video_play_requested.connect(self._on_video_play_requested)
+            gallery.thumbnail_view.preview_requested.connect(self._on_preview_requested)
+            gallery.thumbnail_view.restore_from_trash_requested.connect(self._on_restore_from_trash)
+            gallery.thumbnail_view.delete_forever_requested.connect(self._on_delete_forever)
 
         if hasattr(main_win, 'map_widget'):
             main_win.map_widget.image_selected.connect(self._on_map_image_selected)
@@ -398,11 +406,13 @@ class MainController(QObject):
         if not self.image_data:
             return
         paths = [info.path for info in self.image_data]
+        self.ai_analysis_started.emit()  # Signal UI to show blocking overlay
         self._ai_manager.start(
             image_paths=paths,
             on_result=self._on_ai_result,
             on_progress=self._on_ai_progress,
             on_finished=self._on_ai_finished,
+            batch_size=8,  # Process 8 images in parallel for better speed
         )
         self.view.statusBar().showMessage(f"Анализ ИИ: запущен для {len(paths)} фото...")
 
@@ -427,6 +437,7 @@ class MainController(QObject):
     def _on_ai_finished(self):
         logging.info("AIProcessingManager: анализ завершён")
         self.view.statusBar().showMessage(f"ИИ анализ завершён. Обработано: {len(self.image_data)} фото.")
+        self.ai_analysis_finished.emit()  # Signal UI to hide blocking overlay
         self._update_collections()
 
     def _show_duplicate_finder_dialog(self):
@@ -506,7 +517,8 @@ class MainController(QObject):
                             self.images, methods=["phash", "dhash"], threshold=self.threshold)
                     else:
                         groups = self.finder.find_duplicates_single_method(
-                            self.images, method=self.method, threshold=self.threshold)
+                            self.images, method=self.method, threshold=self.threshold,
+                            progress_callback=self.progress.emit)
 
                     if self.should_stop: return
                     stats = self.finder.get_statistics(groups)
@@ -566,6 +578,7 @@ class MainController(QObject):
 
         worker.finished.connect(on_finished)
         worker.error.connect(on_error)
+        worker.progress.connect(progress_dialog.update_progress)
         progress_dialog.cancelled.connect(on_cancelled)
 
         progress_dialog.show()
@@ -583,6 +596,167 @@ class MainController(QObject):
         logging.info(f"Color label: {os.path.basename(info.path)} → {color or 'none'}")
         self._save_sidecar(info)
         self._update_collections()
+
+    def _on_video_play_requested(self, path: str):
+        """Запуск видео плеера"""
+        try:
+            from views.video_player_widget import VideoPlayerWidget
+            player = VideoPlayerWidget(path)
+            player.show()
+        except Exception as e:
+            logging.error(f"Ошибка запуска видео плеера: {e}")
+            QMessageBox.warning(self.view, "Ошибка", f"Не удалось открыть видео: {e}")
+
+    def _on_preview_requested(self, path: str):
+        """Открытие preview фото"""
+        try:
+            self.view.show_preview(path)
+        except Exception as e:
+            logging.error(f"Ошибка открытия preview: {e}")
+
+    def _on_restore_from_trash(self, infos: list[ImageInfo]):
+        """Восстановление файлов из корзины"""
+        try:
+            restored = []
+            for info in infos:
+                # Для простоты восстанавливаем в текущую рабочую директорию
+                # В будущем можно хранить оригинальный путь в метаданных
+                basename = os.path.basename(info.path)
+                current_dir = os.getcwd()
+                dest_path = os.path.join(current_dir, basename)
+                
+                # Если файл уже существует, добавляем индекс
+                counter = 1
+                name, ext = os.path.splitext(basename)
+                while os.path.exists(dest_path):
+                    dest_path = os.path.join(current_dir, f"{name}_{counter}{ext}")
+                    counter += 1
+                
+                try:
+                    shutil.move(info.path, dest_path)
+                    # Создаем новый ImageInfo для восстановленного файла
+                    new_info = ImageInfo(path=dest_path, thumbnail_path=dest_path)
+                    restored.append(new_info)
+                    logging.info(f"Восстановлен из корзины: {basename} → {dest_path}")
+                except Exception as e:
+                    logging.error(f"Ошибка восстановления {info.path}: {e}")
+            
+            if restored:
+                self.image_data.extend(restored)
+                self._update_collections()
+                QMessageBox.information(self.view, "Восстановление", 
+                                      f"Восстановлено {len(restored)} файл(ов)")
+        except Exception as e:
+            logging.error(f"Ошибка восстановления из корзины: {e}")
+            QMessageBox.warning(self.view, "Ошибка", f"Не удалось восстановить файлы: {e}")
+
+    def _on_delete_forever(self, infos: list[ImageInfo]):
+        """Полное удаление файлов из корзины"""
+        try:
+            count = len(infos)
+            reply = QMessageBox.question(
+                self.view, "Подтверждение удаления",
+                f"Удалить навсегда {count} файл(ов)? Это действие нельзя отменить.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                deleted = []
+                for info in infos:
+                    try:
+                        os.remove(info.path)
+                        deleted.append(info)
+                        logging.info(f"Удален навсегда: {info.path}")
+                    except Exception as e:
+                        logging.error(f"Ошибка удаления {info.path}: {e}")
+                
+                if deleted:
+                    self.view.remove_thumbnails(deleted)
+                    deleted_set = set(id(i) for i in deleted)
+                    self.image_data = [info for info in self.image_data if id(info) not in deleted_set]
+                    self._update_collections()
+                    QMessageBox.information(self.view, "Удаление", 
+                                          f"Удалено {len(deleted)} файл(ов)")
+        except Exception as e:
+            logging.error(f"Ошибка полного удаления: {e}")
+            QMessageBox.warning(self.view, "Ошибка", f"Не удалось удалить файлы: {e}")
+
+    def _on_delete_all_from_trash(self):
+        """Удалить все файлы из корзины"""
+        try:
+            trash_items = self.view.smart_collections._filter_by_collection("trash")
+            if not trash_items:
+                QMessageBox.information(self.view, "Корзина пуста", "В корзине нет файлов для удаления.")
+                return
+            
+            count = len(trash_items)
+            reply = QMessageBox.question(
+                self.view, "Подтверждение удаления",
+                f"Удалить навсегда все {count} файл(ов) из корзины? Это действие нельзя отменить.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                deleted = []
+                for info in trash_items:
+                    try:
+                        os.remove(info.path)
+                        deleted.append(info)
+                        logging.info(f"Удален навсегда из корзины: {info.path}")
+                    except Exception as e:
+                        logging.error(f"Ошибка удаления {info.path}: {e}")
+                
+                if deleted:
+                    self.view.remove_thumbnails(deleted)
+                    deleted_set = set(id(i) for i in deleted)
+                    self.image_data = [info for info in self.image_data if id(info) not in deleted_set]
+                    self._update_collections()
+                    QMessageBox.information(self.view, "Удаление", 
+                                          f"Удалено {len(deleted)} файл(ов) из корзины")
+        except Exception as e:
+            logging.error(f"Ошибка удаления всех из корзины: {e}")
+            QMessageBox.warning(self.view, "Ошибка", f"Не удалось очистить корзину: {e}")
+
+    def _on_restore_all_from_trash(self):
+        """Восстановить все файлы из корзины"""
+        try:
+            trash_items = self.view.smart_collections._filter_by_collection("trash")
+            if not trash_items:
+                QMessageBox.information(self.view, "Корзина пуста", "В корзине нет файлов для восстановления.")
+                return
+            
+            restored = []
+            current_dir = os.getcwd()
+            
+            for info in trash_items:
+                basename = os.path.basename(info.path)
+                dest_path = os.path.join(current_dir, basename)
+                
+                # Если файл уже существует, добавляем индекс
+                counter = 1
+                name, ext = os.path.splitext(basename)
+                while os.path.exists(dest_path):
+                    dest_path = os.path.join(current_dir, f"{name}_{counter}{ext}")
+                    counter += 1
+                
+                try:
+                    shutil.move(info.path, dest_path)
+                    new_info = ImageInfo(path=dest_path, thumbnail_path=dest_path)
+                    restored.append(new_info)
+                    logging.info(f"Восстановлен из корзины: {basename} → {dest_path}")
+                except Exception as e:
+                    logging.error(f"Ошибка восстановления {info.path}: {e}")
+            
+            if restored:
+                self.image_data.extend(restored)
+                self._update_collections()
+                QMessageBox.information(self.view, "Восстановление", 
+                                      f"Восстановлено {len(restored)} файл(ов) из корзины")
+        except Exception as e:
+            logging.error(f"Ошибка восстановления всех из корзины: {e}")
+            QMessageBox.warning(self.view, "Ошибка", f"Не удалось восстановить файлы: {e}")
 
     def _save_sidecar(self, info: ImageInfo):
         try:
