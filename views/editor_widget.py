@@ -275,7 +275,7 @@ class EditorWidget(QWidget):
             tool_name = temp_tool.name
             tool_instance = self.tools[tool_name]
 
-            icon_path = resource_path(f"assets/{tool_instance.name}.png")
+            icon_path = resource_path(f"assets/{tool_instance.name}.png", warn_if_missing=False)
             # Если иконки нет, ставим заглушку, чтобы не падало
             if not os.path.exists(icon_path):
                 icon_path = resource_path("assets/icon.ico")

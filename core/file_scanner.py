@@ -30,17 +30,24 @@ _RAM_PER_WORKER_MB = 200  # Без AI моделей воркеры лёгкие
 
 
 def _get_safe_worker_count(requested: int) -> int:
+    cpu_count = os.cpu_count() or 2
+    max_cpu_workers = max(1, cpu_count - 1)
+    hard_limit = 8
+
     try:
         import psutil
         available_mb = psutil.virtual_memory().available // (1024 * 1024)
-        usable_mb = int(available_mb * 0.8)
+        usable_mb = max(512, int(available_mb * 0.5))
         ram_limit = max(1, usable_mb // _RAM_PER_WORKER_MB)
-        safe = min(requested, ram_limit)
+        safe = min(requested, ram_limit, max_cpu_workers, hard_limit)
         if safe < requested:
-            logger.info(f"Воркеров ограничено до {safe} (RAM: {available_mb} МБ)")
+            logger.info(f"Воркеров ограничено до {safe} (RAM: {available_mb} МБ, cpu={cpu_count})")
         return safe
     except ImportError:
-        return min(requested, os.cpu_count() or 2)
+        safe = min(requested, max_cpu_workers, hard_limit)
+        if safe < requested:
+            logger.info(f"Воркеров ограничено до {safe} (cpu={cpu_count})")
+        return safe
 
 
 class Scanner(QObject):

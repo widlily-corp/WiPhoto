@@ -279,9 +279,9 @@ def process_single_file(file_path: str) -> dict | None:
                         img_width, img_height = _hdr.width, _hdr.height
 
                     # Thumbnail маленький (≤256×256) — загружается мгновенно
-                    _t = Image.open(cached)
-                    _t.load()
-                    pil_image = _t.convert('RGB') if _t.mode != 'RGB' else _t
+                    with Image.open(cached) as _t:
+                        _t.load()
+                        pil_image = _t.convert('RGB') if _t.mode != 'RGB' else _t.copy()
                     thumbnail_path = cached
                 except Exception:
                     # Кэш повреждён или оригинал нечитаем — сбрасываем, пойдём

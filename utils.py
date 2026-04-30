@@ -9,7 +9,7 @@ from PyQt6.QtGui import QColor
 logger = logging.getLogger(__name__)
 
 
-def resource_path(relative_path):
+def resource_path(relative_path, warn_if_missing=True):
     """
     Получает абсолютный путь к ресурсу, работает как для dev, так и для PyInstaller.
     """
@@ -26,7 +26,7 @@ def resource_path(relative_path):
     full_path = os.path.join(base_path, relative_path)
 
     # Проверка существования файла (для отладки)
-    if not os.path.exists(full_path):
+    if warn_if_missing and not os.path.exists(full_path):
         logger.warning(f"Ресурс не найден: {full_path}")
 
     return full_path
