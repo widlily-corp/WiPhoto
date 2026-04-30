@@ -369,19 +369,30 @@ def process_ai_for_file(file_path: str) -> dict:
         "tags":           [],
     }
 
+    # Пропускаем слишком маленькие файлы (< 10KB) и системные пути
     try:
+        file_size = os.path.getsize(file_path)
+        if file_size < 10 * 1024:  # < 10KB
+            return result
+        # Пропускаем файлы из venv, системные директории
+        if 'venv' in file_path or 'site-packages' in file_path or 'Qt6' in file_path:
+            return result
+    except OSError:
+        return result
+
+    try:
+        # Проверяем, что файл изображение и может быть загружен
         pil_image = _load_image_optimized(file_path, for_thumbnail=True)
         if pil_image is None:
             return result
+        pil_image.close()
 
+        # Используем file_path для детекторов (они используют cv2.imread)
         try:
             from core.face_detector import FaceDetector
             fd = FaceDetector.get_instance()
             if fd.available:
-                if hasattr(fd, 'count_faces_from_image'):
-                    result["faces_count"] = fd.count_faces_from_image(pil_image)
-                else:
-                    result["faces_count"] = fd.count_faces(file_path)
+                result["faces_count"] = fd.count_faces(file_path)
         except Exception as e:
             logger.warning(f"FaceDetector error {file_path}: {e}")
 
@@ -389,21 +400,14 @@ def process_ai_for_file(file_path: str) -> dict:
             from core.animal_detector import AnimalDetector
             ad = AnimalDetector.get_instance()
             if ad.available:
-                if hasattr(ad, 'count_animals_from_image'):
-                    result["animals_count"]  = ad.count_animals_from_image(pil_image)
-                    result["animal_species"] = ad.get_animal_species_from_image(pil_image)
-                    result["tags"]           = ad.get_tags_from_image(pil_image)
-                else:
-                    result["animals_count"]  = ad.count_animals(file_path)
-                    result["animal_species"] = ad.get_animal_species(file_path)
-                    result["tags"]           = ad.get_tags(file_path)
+                result["animals_count"]  = ad.count_animals(file_path)
+                result["animal_species"] = ad.get_animal_species(file_path)
+                result["tags"]           = ad.get_tags(file_path)
         except Exception as e:
             logger.warning(f"AnimalDetector error {file_path}: {e}")
 
-        pil_image.close()
-
     except Exception as e:
-        logger.error(f"AI error {file_path}: {e}")
+        logger.warning(f"AI processing error {file_path}: {e}")
 
     return result
 

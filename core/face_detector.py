@@ -2,7 +2,9 @@
 
 import cv2
 import os
+import math
 import logging
+import threading
 from typing import List, Optional
 from dataclasses import dataclass
 
@@ -20,16 +22,25 @@ class FaceDetector:
     """YuNet DNN face detector with multi-scale support. Singleton."""
 
     _instance: Optional['FaceDetector'] = None
+    # Singleton creation lock
+    _class_lock = threading.Lock()
 
     @classmethod
     def get_instance(cls) -> 'FaceDetector':
+        # FIX: double-checked locking to prevent race on singleton init
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._class_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self):
         self.available = False
         self._detector = None
+        # FIX: serialize all detector calls — cv2.FaceDetectorYN is NOT thread-safe:
+        # concurrent setInputSize()+detect() calls cause assertion failures and
+        # memory corruption inside OpenCV DNN backend.
+        self._lock = threading.Lock()
         self._init_detector()
 
     def _init_detector(self):
@@ -41,7 +52,7 @@ class FaceDetector:
         try:
             self._detector = cv2.FaceDetectorYN.create(
                 model_path, "", (320, 320),
-                score_threshold=0.5,  # lowered from 0.6 — catch more faces
+                score_threshold=0.5,
                 nms_threshold=0.3,
                 top_k=5000
             )
@@ -81,8 +92,6 @@ class FaceDetector:
         h, w = img.shape[:2]
         all_faces = []
 
-        # For very large images, process at multiple scales
-        # to catch both large foreground and small background faces
         scales = self._get_scales(w, h)
 
         for scale in scales:
@@ -96,26 +105,34 @@ class FaceDetector:
             else:
                 scaled = img
 
-            self._detector.setInputSize((sw, sh))
-            _, detections = self._detector.detect(scaled)
+            # FIX: hold lock for the entire setInputSize+detect sequence so
+            # concurrent threads cannot interleave calls on the shared detector.
+            with self._lock:
+                self._detector.setInputSize((sw, sh))
+                _, detections = self._detector.detect(scaled)
 
             if detections is None:
                 continue
 
             inv_scale = 1.0 / scale
             for d in detections:
+                # FIX: guard against inf/nan values returned by the detector
+                # for degenerate images — int(math.inf) raises OverflowError
+                # which can segfault on some OpenCV builds.
+                raw = [float(d[0]), float(d[1]), float(d[2]), float(d[3]), float(d[-1])]
+                if any(not math.isfinite(v) for v in raw):
+                    continue
+
                 face = Face(
-                    x=int(d[0] * inv_scale),
-                    y=int(d[1] * inv_scale),
-                    width=int(d[2] * inv_scale),
-                    height=int(d[3] * inv_scale),
-                    confidence=float(d[-1])
+                    x=int(raw[0] * inv_scale),
+                    y=int(raw[1] * inv_scale),
+                    width=int(raw[2] * inv_scale),
+                    height=int(raw[3] * inv_scale),
+                    confidence=raw[4]
                 )
-                # Filter out tiny detections (likely false positives)
                 if face.width >= 20 and face.height >= 20:
                     all_faces.append(face)
 
-        # Deduplicate overlapping faces from different scales
         return self._nms_faces(all_faces)
 
     def _get_scales(self, w: int, h: int) -> List[float]:
@@ -123,13 +140,10 @@ class FaceDetector:
         max_dim = max(w, h)
 
         if max_dim <= 640:
-            # Small image — process at original size
             return [1.0]
         elif max_dim <= 1920:
-            # Medium — original + downscaled
             return [1.0, 640 / max_dim]
         else:
-            # Large — 3 scales for comprehensive coverage
             return [1.0, 1920 / max_dim, 640 / max_dim]
 
     def _nms_faces(self, faces: List[Face], iou_thresh: float = 0.4) -> List[Face]:
@@ -137,7 +151,6 @@ class FaceDetector:
         if len(faces) <= 1:
             return faces
 
-        # Sort by confidence descending
         faces.sort(key=lambda f: f.confidence, reverse=True)
         keep = []
 

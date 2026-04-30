@@ -4,6 +4,7 @@ import cv2
 import os
 import logging
 import urllib.request
+import threading
 from typing import List, Optional, Dict
 from dataclasses import dataclass
 
@@ -58,6 +59,7 @@ class AnimalDetector:
     """YOLO v4-tiny animal/object detector via OpenCV DNN. Singleton."""
 
     _instance: Optional['AnimalDetector'] = None
+    _lock = threading.Lock()  # Protect singleton creation and DNN inference
 
     @classmethod
     def get_instance(cls) -> 'AnimalDetector':
@@ -73,6 +75,7 @@ class AnimalDetector:
         self._conf_threshold = 0.4
         self._nms_threshold = 0.4
         self._input_size = (416, 416)
+        self._inference_lock = threading.Lock()  # Serialize cv2.dnn inference
         self._init_detector()
 
     def _get_model_path(self, filename: str) -> str:
@@ -151,59 +154,63 @@ class AnimalDetector:
             self.available = False
 
     def _run_inference(self, img) -> List[DetectedObject]:
-        """Run YOLO inference and return all detections"""
-        h, w = img.shape[:2]
+        """Run YOLO inference and return all detections. Thread-safe via lock."""
+        # Serialize access to OpenCV DNN to prevent segmentation faults
+        with self._inference_lock:
+            h, w = img.shape[:2]
 
-        # Prepare input blob
-        blob = cv2.dnn.blobFromImage(img, 1/255.0, self._input_size, swapRB=True, crop=False)
-        self._net.setInput(blob)
-        outputs = self._net.forward(self._output_layers)
+            # Prepare input blob
+            blob = cv2.dnn.blobFromImage(img, 1/255.0, self._input_size, swapRB=True, crop=False)
+            self._net.setInput(blob)
+            outputs = self._net.forward(self._output_layers)
 
-        # Parse detections
-        boxes = []
-        confidences = []
-        class_ids = []
+            # Parse detections
+            boxes = []
+            confidences = []
+            class_ids = []
 
-        for output in outputs:
-            for detection in output:
-                scores = detection[5:]
-                class_id = int(scores.argmax())
-                confidence = float(scores[class_id])
+            for output in outputs:
+                for detection in output:
+                    scores = detection[5:]
+                    class_id = int(scores.argmax())
+                    confidence = float(scores[class_id])
 
-                if confidence < self._conf_threshold:
-                    continue
+                    if confidence < self._conf_threshold:
+                        continue
 
-                # YOLO returns center_x, center_y, width, height (normalized)
-                cx = int(detection[0] * w)
-                cy = int(detection[1] * h)
-                bw = int(detection[2] * w)
-                bh = int(detection[3] * h)
-                x = cx - bw // 2
-                y = cy - bh // 2
+                    # YOLO returns center_x, center_y, width, height (normalized)
+                    cx = int(detection[0] * w)
+                    cy = int(detection[1] * h)
+                    bw = int(detection[2] * w)
+                    bh = int(detection[3] * h)
+                    x = cx - bw // 2
+                    y = cy - bh // 2
 
-                boxes.append([x, y, bw, bh])
-                confidences.append(confidence)
-                class_ids.append(class_id)
+                    boxes.append([x, y, bw, bh])
+                    confidences.append(confidence)
+                    class_ids.append(class_id)
 
-        # Apply NMS
-        if not boxes:
-            return []
+            # Apply NMS
+            if not boxes:
+                return []
 
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, self._conf_threshold, self._nms_threshold)
-        if indices is None or len(indices) == 0:
-            return []
+            indices = cv2.dnn.NMSBoxes(boxes, confidences, self._conf_threshold, self._nms_threshold)
+            if indices is None or len(indices) == 0:
+                return []
 
-        results = []
-        for i in indices.flatten():
-            label = self._class_names[class_ids[i]] if class_ids[i] < len(self._class_names) else f"class_{class_ids[i]}"
-            results.append(DetectedObject(
-                label=label,
-                x=max(0, boxes[i][0]),
-                y=max(0, boxes[i][1]),
-                width=boxes[i][2],
-                height=boxes[i][3],
-                confidence=confidences[i]
-            ))
+            results = []
+            for i in indices.flatten():
+                label = self._class_names[class_ids[i]] if class_ids[i] < len(self._class_names) else f"class_{class_ids[i]}"
+                results.append(DetectedObject(
+                    label=label,
+                    x=max(0, boxes[i][0]),
+                    y=max(0, boxes[i][1]),
+                    width=boxes[i][2],
+                    height=boxes[i][3],
+                    confidence=confidences[i]
+                ))
+
+            return results
 
         return results
 

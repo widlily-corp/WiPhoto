@@ -79,7 +79,8 @@ class AdvancedDuplicateFinder:
     def find_duplicates_single_method(self,
                                       images: List[ImageInfo],
                                       method: str = "phash",
-                                      threshold: int = 5) -> Dict[str, List[ImageInfo]]:
+                                      threshold: int = 5,
+                                      progress_callback=None) -> Dict[str, List[ImageInfo]]:
         """
         Находит дубликаты используя один метод
 
@@ -87,6 +88,7 @@ class AdvancedDuplicateFinder:
             images: Список изображений
             method: Метод хеширования (average, phash, dhash, whash, colorhash)
             threshold: Порог различия (чем меньше - тем более похожими должны быть)
+            progress_callback: Опциональный callback(processed, total) для отчета о прогрессе
 
         Returns:
             Словарь {group_id: [ImageInfo, ...]}
@@ -147,6 +149,14 @@ class AdvancedDuplicateFinder:
                 group_counter += 1
 
             processed += len(current_group)  # Count all images in group as processed
+            
+            # Emit progress callback if provided
+            if progress_callback and processed % 50 == 0:
+                try:
+                    progress_callback(processed, total_images)
+                except Exception as e:
+                    logger.warning(f"Progress callback error: {e}")
+            
             # Yield control every 50 processed images to prevent UI hang
             if processed % 50 == 0:
                 from PyQt6.QtWidgets import QApplication
