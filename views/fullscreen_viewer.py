@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QKeyEvent, QPainter, QColor, QIcon
 from PIL import Image
 
+from core.analyzer import _load_image_optimized
 from models.image_model import ImageInfo, RAW_EXTENSIONS
 from utils import resource_path
 
@@ -178,27 +179,9 @@ class FullscreenViewer(QWidget):
 
     def _load_pixmap(self, path: str) -> QPixmap:
         try:
-            is_raw = path.lower().endswith(RAW_EXTENSIONS)
-            is_video = path.lower().endswith(VIDEO_EXTENSIONS)
-
-            if is_video:
-                import cv2
-                cap = cv2.VideoCapture(path)
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None:
-                    import cv2
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    pil_img = Image.fromarray(rgb)
-                else:
-                    return None
-            elif is_raw:
-                import rawpy
-                with rawpy.imread(path) as raw:
-                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-                pil_img = Image.fromarray(rgb)
-            else:
-                pil_img = Image.open(path)
+            pil_img = _load_image_optimized(path, for_thumbnail=False)
+            if pil_img is None:
+                return None
 
             if pil_img.mode != 'RGB':
                 pil_img = pil_img.convert('RGB')

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QKeyEvent, QImage
 from PIL import Image
 
+from core.analyzer import _load_image_optimized
 from models.image_model import ImageInfo, RAW_EXTENSIONS, VIDEO_EXTENSIONS
 
 RAW_FORMATS = RAW_EXTENSIONS
@@ -53,13 +54,10 @@ class SlideshowWindow(QWidget):
 
         try:
             path = info.path
-            if path.lower().endswith(RAW_FORMATS):
-                import rawpy
-                with rawpy.imread(path) as raw:
-                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-                pil_img = Image.fromarray(rgb)
-            else:
-                pil_img = Image.open(path)
+            pil_img = _load_image_optimized(path, for_thumbnail=False)
+            if pil_img is None:
+                self._current_pixmap = None
+                return
 
             try:
                 if pil_img.mode != 'RGB':

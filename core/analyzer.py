@@ -152,8 +152,15 @@ def _load_image_optimized(file_path: str, for_thumbnail: bool = True) -> Image.I
         logger.error(f"Неизвестный формат: {file_path}")
         return None
     except Exception as e:
-        logger.error(f"Ошибка загрузки {file_path}: {e}")
-        return None
+        logger.warning(f"Ошибка загрузки RAW {file_path}: {e}, выполняем fallback к Pillow")
+        try:
+            with Image.open(file_path) as img:
+                if img.mode not in ('RGB', 'L'):
+                    return img.convert('RGB').copy()
+                return img.copy()
+        except Exception as fallback_e:
+            logger.error(f"Ошибка fallback загрузки {file_path}: {fallback_e}")
+            return None
 
 
 def _thumbnail_cache_path(file_path: str, cache_dir: str) -> str | None:

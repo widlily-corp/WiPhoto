@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLi
                              QSplitter, QStackedWidget, QLabel, QTableWidget, QAbstractItemView,
                              QHeaderView, QPushButton, QComboBox, QLineEdit)
 
+from core.analyzer import _load_image_optimized
 from models.image_model import ImageInfo, RAW_EXTENSIONS, VIDEO_EXTENSIONS
 from views._pixmap_cache import PixmapLRUCache
 from views.editor_widget import EditorWidget
@@ -795,38 +796,22 @@ class MainWindow(QMainWindow):
         is_video = image_path.lower().endswith(VIDEO_FORMATS)
 
         try:
-            if is_video:
-                import cv2
-                cap = cv2.VideoCapture(image_path)
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None:
-                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    pil_image = Image.fromarray(rgb)
-                else:
-                    return None
-            elif is_raw:
-                import rawpy
-                with rawpy.imread(image_path) as raw:
-                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-                pil_image = Image.fromarray(rgb)
-            else:
-                pil_image = Image.open(image_path)
-
-            if pil_image:
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
-                img_bytes = pil_image.tobytes()
-                q_image = QImage(
-                    img_bytes,
-                    pil_image.width,
-                    pil_image.height,
-                    pil_image.width * 3,
-                    QImage.Format.Format_RGB888
-                )
-                pixmap = QPixmap.fromImage(q_image)
-                pil_image.close()
-                return pixmap
+            pil_image = _load_image_optimized(image_path, for_thumbnail=False)
+            if pil_image is None:
+                return None
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            img_bytes = pil_image.tobytes()
+            q_image = QImage(
+                img_bytes,
+                pil_image.width,
+                pil_image.height,
+                pil_image.width * 3,
+                QImage.Format.Format_RGB888
+            )
+            pixmap = QPixmap.fromImage(q_image)
+            pil_image.close()
+            return pixmap
         except Exception:
             pass
         return None

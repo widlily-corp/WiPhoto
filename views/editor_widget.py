@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView, Q
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QPixmap, QImage, QAction, QIcon, QPainter, QWheelEvent, QActionGroup
 from PIL import Image
-import rawpy
+from core.analyzer import _load_image_optimized
 
 from models.image_model import ImageInfo, RAW_EXTENSIONS
 from utils import resource_path
@@ -386,13 +386,10 @@ class EditorWidget(QWidget):
         self._render_image()
 
     def _load_pil_image(self, path: str) -> Image:
-        if path.lower().endswith(RAW_EXTENSIONS):
-            with rawpy.imread(path) as raw:
-                rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-            return Image.fromarray(rgb)
-        else:
-            img = Image.open(path)
-            return img.convert('RGB') if img.mode != 'RGB' else img
+        pil_image = _load_image_optimized(path, for_thumbnail=False)
+        if pil_image is None:
+            raise IOError(f"Не удалось загрузить изображение: {path}")
+        return pil_image
 
     def _on_adjustment_changed(self, tool_name, param_name, value, is_preview):
         if not self.processor:

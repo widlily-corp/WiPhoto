@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushBut
 from PyQt6.QtCore import Qt, pyqtSignal, QRectF
 from PyQt6.QtGui import QPixmap, QImage, QWheelEvent, QTransform, QIcon
 from PIL import Image
-import rawpy
+from core.analyzer import _load_image_optimized
 
 from models.image_model import ImageInfo, RAW_EXTENSIONS
 from utils import resource_path
@@ -277,14 +277,9 @@ class ComparisonView(QWidget):
     def _load_pixmap(self, image_path: str) -> QPixmap:
         """Загружает изображение как QPixmap"""
         try:
-            is_raw = image_path.lower().endswith(RAW_FORMATS)
-
-            if is_raw:
-                with rawpy.imread(image_path) as raw:
-                    rgb = raw.postprocess(use_camera_wb=True, output_bps=8)
-                pil_image = Image.fromarray(rgb)
-            else:
-                pil_image = Image.open(image_path)
+            pil_image = _load_image_optimized(image_path, for_thumbnail=False)
+            if pil_image is None:
+                return None
 
             try:
                 if pil_image.mode != 'RGB':

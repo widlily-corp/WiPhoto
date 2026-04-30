@@ -21,7 +21,7 @@ def resource_path(relative_path):
             # Nuitka standalone
             base_path = os.path.dirname(sys.executable)
         else:
-            base_path = os.path.abspath(".")
+            base_path = os.path.dirname(os.path.abspath(__file__))
 
     full_path = os.path.join(base_path, relative_path)
 
