@@ -581,7 +581,8 @@ class GalleryWidget(QWidget):
         view.delegate.clear_cache()
         total_size = view.gridSize()
         for info in items:
-            if info.thumbnail_path and os.path.exists(info.thumbnail_path):
+            thumb_path = info.thumbnail_path or info.path
+            if thumb_path and os.path.exists(thumb_path):
                 item = QListWidgetItem(os.path.basename(info.path))
                 item.setData(Qt.ItemDataRole.UserRole, info)
                 item.setSizeHint(total_size)

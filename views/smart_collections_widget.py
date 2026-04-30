@@ -142,7 +142,11 @@ class SmartCollectionsWidget(QWidget):
         for f in os.listdir(trash_dir):
             path = os.path.join(trash_dir, f)
             if os.path.isfile(path):
-                items.append(ImageInfo(path=path))
+                items.append(ImageInfo(
+                    path=path,
+                    thumbnail_path=path,
+                    file_size=os.path.getsize(path)
+                ))
         return items
 
     def _filter_by_date(self, date_condition) -> list:
