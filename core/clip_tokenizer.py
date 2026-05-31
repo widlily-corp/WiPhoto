@@ -9,7 +9,8 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-VOCAB_URL = "https://huggingface.co/garavv/clip-vit-b-32-onnx/resolve/main/bpe_simple_vocab_16e6.txt.gz"
+# Полностью публичный URL без ограничений авторизации
+VOCAB_URL = "https://raw.githubusercontent.com/openai/CLIP/main/clip/bpe_simple_vocab_16e6.txt.gz"
 
 @lru_cache()
 def bytes_to_unicode():
@@ -38,7 +39,7 @@ class SimpleTokenizer:
         os.makedirs(models_dir, exist_ok=True)
         self.vocab_path = os.path.join(models_dir, "bpe_simple_vocab_16e6.txt.gz")
         
-        if not os.path.exists(self.vocab_path):
+        if not os.path.exists(self.vocab_path) or os.path.getsize(self.vocab_path) < 1000:
             logger.info("Скачивание словаря BPE для CLIP...")
             try:
                 urllib.request.urlretrieve(VOCAB_URL, self.vocab_path)

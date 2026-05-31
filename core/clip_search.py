@@ -3,6 +3,7 @@
 import os
 import urllib.request
 import logging
+import threading
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
@@ -11,16 +12,20 @@ from core.clip_tokenizer import SimpleTokenizer
 
 logger = logging.getLogger(__name__)
 
-VISUAL_URL = "https://huggingface.co/garavv/clip-vit-b-32-onnx/resolve/main/visual.onnx"
-TEXTUAL_URL = "https://huggingface.co/garavv/clip-vit-b-32-onnx/resolve/main/textual.onnx"
+# Полностью открытые и стабильные URL из официального репозитория Xenova
+VISUAL_URL = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model.onnx"
+TEXTUAL_URL = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/text_model.onnx"
 
 class ClipSearchEngine:
     _instance = None
+    _lock = threading.Lock()  # Блокировка для безопасного создания синглтона в многопоточной среде
     
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
         
     def __init__(self):
@@ -42,6 +47,11 @@ class ClipSearchEngine:
                     urllib.request.urlretrieve(url, path)
                 except Exception as e:
                     logger.error(f"Не удалось скачать {path}: {e}")
+                    if os.path.exists(path):
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
                     
     def _init_sessions(self):
         if os.path.exists(self.visual_path) and os.path.exists(self.textual_path):
@@ -76,8 +86,16 @@ class ClipSearchEngine:
             arr = np.transpose(arr, (2, 0, 1)) # (3, 224, 224)
             arr = np.expand_dims(arr, axis=0)  # (1, 3, 224, 224)
             
-            input_name = self.visual_sess.get_inputs()[0].name
+            # Динамически получаем имя входного тензора
+            inputs_meta = self.visual_sess.get_inputs()
+            input_name = inputs_meta[0].name
             outputs = self.visual_sess.run(None, {input_name: arr})
+            
+            # Динамически сопоставляем имя выходного тензора
+            output_names = [out.name for out in self.visual_sess.get_outputs()]
+            if 'image_embeds' in output_names:
+                idx = output_names.index('image_embeds')
+                return outputs[idx][0]
             return outputs[0][0]
         except Exception as e:
             logger.error(f"Ошибка расчета CLIP вектора для {image_path}: {e}")
@@ -94,8 +112,23 @@ class ClipSearchEngine:
                 tokens = tokens + [0] * (77 - len(tokens))
                 
             tokens_arr = np.array([tokens], dtype=np.int32)
-            input_name = self.textual_sess.get_inputs()[0].name
-            outputs = self.textual_sess.run(None, {input_name: tokens_arr})
+            attn_mask = np.ones_like(tokens_arr)
+            
+            # Динамически формируем входы для Optimum-формата
+            inputs = {}
+            for inp in self.textual_sess.get_inputs():
+                if inp.name == "input_ids":
+                    inputs["input_ids"] = tokens_arr
+                elif inp.name == "attention_mask":
+                    inputs["attention_mask"] = attn_mask
+                    
+            outputs = self.textual_sess.run(None, inputs)
+            
+            # Динамически извлекаем выходной вектор
+            output_names = [out.name for out in self.textual_sess.get_outputs()]
+            if 'text_embeds' in output_names:
+                idx = output_names.index('text_embeds')
+                return outputs[idx][0]
             return outputs[0][0]
         except Exception as e:
             logger.error(f"Ошибка токенизации/эмбеддинга текста '{query}': {e}")

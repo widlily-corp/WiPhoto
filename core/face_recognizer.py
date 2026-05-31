@@ -4,20 +4,25 @@ import os
 import cv2
 import urllib.request
 import logging
+import threading
 import numpy as np
 import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
-ARCFACE_URL = "https://huggingface.co/garavv/arcface-onnx/resolve/main/arc.onnx?download=true"
+# Стабильная, полностью открытая ArcFace модель без ограничений авторизации
+ARCFACE_URL = "https://huggingface.co/biometric-ai-lab/Face_Recognition/resolve/main/arcface.onnx"
 
 class FaceRecognizer:
     _instance = None
+    _lock = threading.Lock()  # Блокировка для защиты от одновременных скачиваний/инициализации
     
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
         
     def __init__(self):
@@ -36,6 +41,11 @@ class FaceRecognizer:
                 urllib.request.urlretrieve(ARCFACE_URL, self.model_path)
             except Exception as e:
                 logger.error(f"Не удалось скачать ArcFace ONNX: {e}")
+                if os.path.exists(self.model_path):
+                    try:
+                        os.remove(self.model_path)
+                    except Exception:
+                        pass
                 
     def _init_session(self):
         if os.path.exists(self.model_path):
@@ -46,6 +56,13 @@ class FaceRecognizer:
                 logger.info("Распознавание лиц ArcFace (ONNX) успешно запущено.")
             except Exception as e:
                 logger.error(f"Ошибка запуска ArcFace: {e}")
+                # Если файл поврежден, удаляем его, чтобы при следующем запуске скачать заново
+                if "INVALID_PROTOBUF" in str(e) or "failed" in str(e):
+                    try:
+                        os.remove(self.model_path)
+                        logger.warning(f"Удален поврежденный файл модели: {self.model_path}")
+                    except Exception:
+                        pass
                 
     def get_face_embedding(self, face_chip: np.ndarray) -> np.ndarray | None:
         """Извлечение 512-мерного вектора из вырезанной области лица"""
