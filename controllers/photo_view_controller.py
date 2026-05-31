@@ -449,6 +449,10 @@ class MainController(QObject):
         logging.info("AIProcessingManager: анализ завершён")
         self.view.statusBar().showMessage(f"ИИ анализ завершён. Обработано: {len(self.image_data)} фото.")
         self.ai_analysis_finished.emit()  # Signal UI to hide blocking overlay
+        
+        # ─── НОВОЕ: Автоматически группируем найденные лица ───
+        self.cluster_and_group_faces()
+        
         self._update_collections()
 
     def _show_duplicate_finder_dialog(self):
@@ -823,14 +827,22 @@ class MainController(QObject):
 
     def _apply_search(self, text: str):
         try:
-            text = text.lower().strip()
+            text = text.strip()
+            # Проверяем, является ли запрос семантическим
+            if text.lower().startswith("sem:") or text.startswith("?"):
+                query = text[4:].strip() if text.lower().startswith("sem:") else text[1:].strip()
+                if query:
+                    self._apply_semantic_search(query)
+                    return
+
+            text_lower = text.lower()
             view = self.view.gallery_widget.thumbnail_view
             visible = 0
             for i in range(view.count()):
                 item = view.item(i)
                 info = item.data(Qt.ItemDataRole.UserRole)
                 if isinstance(info, ImageInfo):
-                    match = not text or text in os.path.basename(info.path).lower()
+                    match = not text_lower or text_lower in os.path.basename(info.path).lower()
                     item.setHidden(not match)
                     if match:
                         visible += 1
@@ -1336,3 +1348,90 @@ class MainController(QObject):
             logging.info("Контроллер: Поток сканера завершен.")
         except Exception as e:
             logging.error(f"Ошибка при остановке сканера: {e}")
+
+    def _apply_semantic_search(self, query: str):
+        """Выполняет локальный векторный поиск по текстовому запросу"""
+        import numpy as np
+        try:
+            from core.clip_search import ClipSearchEngine
+            from core.database import DatabaseManager
+            
+            clip_engine = ClipSearchEngine.get_instance()
+            db = DatabaseManager.get_instance()
+            
+            if not clip_engine.available:
+                self.view.statusBar().showMessage("Семантический поиск недоступен (модели ONNX загружаются)...")
+                return
+                
+            # Кодируем текст в вектор
+            query_emb = clip_engine.get_text_embedding(query)
+            if query_emb is None:
+                return
+                
+            # Получаем все сохраненные векторы изображений
+            embeddings = db.get_all_embeddings()
+            if not embeddings:
+                self.view.statusBar().showMessage("База векторов пуста. Запустите анализ ИИ.")
+                return
+                
+            # Вычисляем косинусное сходство
+            scored_images = []
+            query_norm = query_emb / (np.linalg.norm(query_emb) + 1e-8)
+            
+            for info in self.image_data:
+                img_emb = embeddings.get(info.path)
+                if img_emb is not None:
+                    img_norm = img_emb / (np.linalg.norm(img_emb) + 1e-8)
+                    score = float(np.dot(query_norm, img_norm))
+                    scored_images.append((score, info))
+                    
+            # Сортируем по убыванию сходства
+            scored_images.sort(key=lambda x: x[0], reverse=True)
+            
+            # Порог семантической схожести (обычно >0.15 для CLIP)
+            results = [info for score, info in scored_images if score >= 0.16]
+            
+            # Показываем top-25 лучших совпадений, если ничего не прошло порог
+            if not results and scored_images:
+                results = [info for score, info in scored_images[:25]]
+                
+            self.view.clear_thumbnails()
+            self.view.add_thumbnails_batch(results)
+            self.view.statusBar().showMessage(f"Семантический поиск по '{query}': найдено {len(results)} лучших фото")
+        except Exception as e:
+            logging.error(f"Ошибка семантического поиска: {e}")
+
+    def cluster_and_group_faces(self):
+        """Локальная кластеризация ArcFace векторов лиц методом DBSCAN"""
+        import numpy as np
+        try:
+            from core.database import DatabaseManager
+            from core.face_recognizer import dbscan_numpy
+            
+            db = DatabaseManager.get_instance()
+            faces = db.get_all_faces()
+            if not faces:
+                return
+                
+            embeddings = [f["embedding"] for f in faces]
+            emb_matrix = np.array(embeddings, dtype=np.float32)
+            
+            # Кластеризуем векторы
+            labels = dbscan_numpy(emb_matrix, eps=0.55, min_samples=2)
+            
+            # Группируем id по кластерам
+            clusters = {}
+            for idx, label in enumerate(labels):
+                if label == -1:
+                    continue  # Пропускаем шум
+                if label not in clusters:
+                    clusters[label] = []
+                clusters[label].append(faces[idx]["id"])
+                
+            # Обновляем имена в базе данных
+            for label, face_ids in clusters.items():
+                db.update_faces_by_ids(face_ids, f"Человек {label + 1}")
+                
+            logging.info(f"Успешно кластеризовано лиц. Сформировано {len(clusters)} групп.")
+        except Exception as e:
+            logging.error(f"Ошибка кластеризации лиц: {e}")

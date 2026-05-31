@@ -380,33 +380,69 @@ def process_ai_for_file(file_path: str) -> dict:
         "tags":           [],
     }
 
-    # Пропускаем слишком маленькие файлы (< 10KB) и системные пути
     try:
         file_size = os.path.getsize(file_path)
-        if file_size < 10 * 1024:  # < 10KB
+        if file_size < 10 * 1024:
             return result
-        # Пропускаем файлы из venv, системные директории
         if 'venv' in file_path or 'site-packages' in file_path or 'Qt6' in file_path:
             return result
     except OSError:
         return result
 
     try:
-        # Проверяем, что файл изображение и может быть загружен
         pil_image = _load_image_optimized(file_path, for_thumbnail=True)
         if pil_image is None:
             return result
         pil_image.close()
 
-        # Используем file_path для детекторов (они используют cv2.imread)
+        # ─── 1. НОВОЕ: Извлечение вектора CLIP ───
+        try:
+            from core.clip_search import ClipSearchEngine
+            from core.database import DatabaseManager
+            
+            clip_engine = ClipSearchEngine.get_instance()
+            if clip_engine.available:
+                emb = clip_engine.get_image_embedding(file_path)
+                if emb is not None:
+                    DatabaseManager.get_instance().save_image_embedding(file_path, emb)
+        except Exception as e:
+            logger.warning(f"Ошибка CLIP для {file_path}: {e}")
+
+        # ─── 2. ОБНОВЛЕННОЕ: Детекция лиц и ArcFace вектора ───
         try:
             from core.face_detector import FaceDetector
             fd = FaceDetector.get_instance()
             if fd.available:
-                result["faces_count"] = fd.count_faces(file_path)
+                faces = fd.detect_faces(file_path)
+                result["faces_count"] = len(faces)
+                
+                # Если лица найдены, рассчитываем ArcFace вектор
+                if faces:
+                    from core.face_recognizer import FaceRecognizer
+                    from core.database import DatabaseManager
+                    
+                    fr = FaceRecognizer.get_instance()
+                    if fr.available:
+                        img_cv = cv2.imread(file_path)
+                        if img_cv is not None:
+                            h, w = img_cv.shape[:2]
+                            for face in faces:
+                                # Ограничиваем координаты границами изображения
+                                x1 = max(0, face.x)
+                                y1 = max(0, face.y)
+                                x2 = min(w, face.x + face.width)
+                                y2 = min(h, face.y + face.height)
+                                
+                                if x2 > x1 and y2 > y1:
+                                    face_chip = img_cv[y1:y2, x1:x2]
+                                    face_emb = fr.get_face_embedding(face_chip)
+                                    if face_emb is not None:
+                                        bbox = (face.x, face.y, face.width, face.height)
+                                        DatabaseManager.get_instance().save_face(file_path, bbox, face_emb)
         except Exception as e:
-            logger.warning(f"FaceDetector error {file_path}: {e}")
+            logger.warning(f"FaceDetector/ArcFace error {file_path}: {e}")
 
+        # Детекция животных (оставляем без изменений)
         try:
             from core.animal_detector import AnimalDetector
             ad = AnimalDetector.get_instance()

@@ -1,10 +1,12 @@
 # utils.py
 
+# utils.py
+
 import sys
 import os
 import logging
-from PyQt6.QtWidgets import QGraphicsDropShadowEffect
-from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QGraphicsDropShadowEffect, QApplication
+from PyQt6.QtGui import QColor, QImage, QPixmap, QColorSpace
 
 logger = logging.getLogger(__name__)
 
