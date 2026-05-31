@@ -16,6 +16,7 @@ import cv2
 import imagehash
 from PIL import Image, UnidentifiedImageError
 from skimage.exposure import match_histograms
+from core.metadata_reader import read_xmp_sidecar
 from core.settings_manager import settings
 
 logger = logging.getLogger(__name__)
@@ -333,6 +334,12 @@ def process_single_file(file_path: str) -> dict | None:
         except Exception:
             pass
 
+        sidecar = read_xmp_sidecar(file_path)
+        if sidecar:
+            sidecar_tags = sidecar.get("tags", []) or []
+        else:
+            sidecar_tags = []
+
         return {
             "path":           file_path,
             "phash":          phash,
@@ -348,7 +355,11 @@ def process_single_file(file_path: str) -> dict | None:
             "height":         img_height,
             "file_size":      file_size,
             "animal_species": [],
-            "tags":           [],
+            "tags":           sidecar_tags,
+            "rating":         sidecar.get("rating") if sidecar.get("rating") is not None else 0,
+            "color_label":    sidecar.get("color_label", ""),
+            "flag_status":    sidecar.get("flag_status", ""),
+            "history":        sidecar.get("history", []),
         }
 
     except Exception as e:

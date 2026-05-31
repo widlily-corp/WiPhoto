@@ -4,6 +4,7 @@ import os
 import shutil
 import logging
 from collections import defaultdict
+from datetime import datetime
 
 from PIL import Image
 from PyQt6.QtCore import QThread, QObject, pyqtSignal, QTimer, Qt
@@ -16,7 +17,7 @@ from PyQt6.QtWidgets import (
 from views.progress_dialog import DuplicateSearchDialog, ScanProgressDialog
 from core.analyzer import transfer_style, _load_image_optimized, RAW_FORMATS
 from core.file_scanner import Scanner
-from core.metadata_reader import read_exif
+from core.metadata_reader import read_exif, read_xmp_sidecar, write_xmp_sidecar
 from core.advanced_duplicate_finder import AdvancedDuplicateFinder
 from models.image_model import ImageInfo
 from views.style_preview_dialog import StylePreviewDialog
@@ -124,6 +125,7 @@ class MainController(QObject):
         if hasattr(gallery, 'thumbnail_view'):
             gallery.thumbnail_view.rating_changed.connect(self._on_rating_changed)
             gallery.thumbnail_view.color_label_changed.connect(self._on_color_label_changed)
+            gallery.thumbnail_view.flag_changed.connect(self._on_flag_changed)
             gallery.thumbnail_view.video_play_requested.connect(self._on_video_play_requested)
             gallery.thumbnail_view.preview_requested.connect(self._on_preview_requested)
             gallery.thumbnail_view.restore_from_trash_requested.connect(self._on_restore_from_trash)
@@ -418,13 +420,22 @@ class MainController(QObject):
 
     def _on_ai_result(self, result: dict):
         path = result.get("path")
-        if not path: return
+        if not path:
+            return
         for info in self.image_data:
             if info.path == path:
-                info.faces_count   = result.get("faces_count", 0)
+                info.faces_count = result.get("faces_count", 0)
                 info.animals_count = result.get("animals_count", 0)
                 info.animal_species = result.get("animal_species", [])
-                info.tags          = result.get("tags",[])
+                existing_tags = info.tags or []
+                ai_tags = result.get("tags", []) or []
+                merged_tags = []
+                for tag in existing_tags + ai_tags:
+                    if tag and tag not in merged_tags:
+                        merged_tags.append(tag)
+                if merged_tags != info.tags:
+                    info.tags = merged_tags
+                    self._save_sidecar(info)
                 break
         try:
             self.view.update_thumbnail_badge(path, result)
@@ -597,6 +608,12 @@ class MainController(QObject):
         self._save_sidecar(info)
         self._update_collections()
 
+    def _on_flag_changed(self, info: ImageInfo, status: str):
+        info.flag_status = status
+        logging.info(f"Flag status: {os.path.basename(info.path)} → {status or 'none'}")
+        self._save_sidecar(info)
+        self._update_collections()
+
     def _on_video_play_requested(self, path: str):
         """Запуск видео плеера"""
         try:
@@ -760,27 +777,21 @@ class MainController(QObject):
 
     def _save_sidecar(self, info: ImageInfo):
         try:
-            base, _ = os.path.splitext(info.path)
-            xmp_path = base + ".xmp"
-            lines =[
-                '<?xml version="1.0" encoding="UTF-8"?>',
-                '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
-                '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
-                '<rdf:Description',
-                ' xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
-                ' xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/">',
-                f' <xmp:Rating>{info.rating}</xmp:Rating>',
-                f' <xmp:Label>{info.color_label}</xmp:Label>',
-            ]
-            if info.flag_status:
-                lines.append(f' <xmp:Flag>{info.flag_status}</xmp:Flag>')
-            lines +=[
-                '</rdf:Description>',
-                '</rdf:RDF>',
-                '</x:xmpmeta>',
-            ]
-            with open(xmp_path, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines))
+            action = (
+                f"{datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')} - "
+                f"rating={info.rating}, color_label={info.color_label or 'none'}, "
+                f"flag_status={info.flag_status or 'none'}"
+            )
+            success = write_xmp_sidecar(
+                info.path,
+                rating=info.rating,
+                color_label=info.color_label,
+                flag_status=info.flag_status,
+                tags=info.tags,
+                history_entries=[action],
+            )
+            if not success:
+                logging.error(f"XMP sidecar write failed for {info.path}")
         except Exception as e:
             logging.error(f"XMP sidecar write error: {e}")
 
@@ -989,6 +1000,24 @@ class MainController(QObject):
         shutil.move(file_path, dest)
         return True
 
+    def _copy_sidecar(self, source_path: str, dest_path: str) -> None:
+        src = os.path.splitext(source_path)[0] + ".xmp"
+        if os.path.exists(src):
+            dst = os.path.splitext(dest_path)[0] + ".xmp"
+            try:
+                shutil.copy2(src, dst)
+            except Exception as e:
+                logging.warning(f"Не удалось скопировать XMP sidecar: {src} -> {dst}: {e}")
+
+    def _move_sidecar(self, source_path: str, dest_path: str) -> None:
+        src = os.path.splitext(source_path)[0] + ".xmp"
+        if os.path.exists(src):
+            dst = os.path.splitext(dest_path)[0] + ".xmp"
+            try:
+                shutil.move(src, dst)
+            except Exception as e:
+                logging.warning(f"Не удалось переместить XMP sidecar: {src} -> {dst}: {e}")
+
     def handle_delete(self, infos_to_delete: list[ImageInfo]):
         """Удаляет выбранные файлы в корзину с обновлением коллекций"""
         try:
@@ -1060,6 +1089,7 @@ class MainController(QObject):
 
                     try:
                         shutil.copy2(info.path, dest_path)
+                        self._copy_sidecar(info.path, dest_path)
                         succeeded += 1
                     except Exception as e:
                         logging.error(f"Не удалось скопировать {info.path}: {e}")
@@ -1097,6 +1127,7 @@ class MainController(QObject):
                             continue
                     try:
                         shutil.move(info.path, dest_path)
+                        self._move_sidecar(info.path, dest_path)
                         succeeded.append(info)
                     except Exception as e:
                         logging.error(f"Не удалось переместить {info.path}: {e}")
@@ -1169,11 +1200,13 @@ class MainController(QObject):
                         img = _load_image_optimized(info.path, for_thumbnail=False)
                         if img:
                             img.save(dest_path, "JPEG", quality=95)
+                            self._copy_sidecar(info.path, dest_path)
                             succeeded += 1
                         else:
                             failed_files.append(info.path)
                     else:
                         shutil.copy2(info.path, dest_path)
+                        self._copy_sidecar(info.path, dest_path)
                         succeeded += 1
                 except Exception as e:
                     logging.error(f"Export error {info.path}: {e}")
@@ -1197,9 +1230,17 @@ class MainController(QObject):
                 renamed = 0
                 errors =[]
                 for old_path, new_path in rename_map.items():
-                    if old_path == new_path: continue
+                    if old_path == new_path:
+                        continue
                     try:
                         os.rename(old_path, new_path)
+                        xmp_old = os.path.splitext(old_path)[0] + ".xmp"
+                        xmp_new = os.path.splitext(new_path)[0] + ".xmp"
+                        if os.path.exists(xmp_old):
+                            try:
+                                os.rename(xmp_old, xmp_new)
+                            except Exception as e:
+                                logging.warning(f"Не удалось переименовать XMP sidecar: {xmp_old} -> {xmp_new}: {e}")
                         for info in self.image_data:
                             if info.path == old_path:
                                 info.path = new_path

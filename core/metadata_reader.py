@@ -6,6 +6,9 @@ import sys
 import logging
 import threading
 import time
+from datetime import datetime
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 
 
 def _get_app_data_dir():
@@ -349,6 +352,147 @@ def read_metadata(image_path: str) -> dict:
         return _parse_exiftool_output(stdout_str)
     except Exception:
         return {}
+
+
+def get_sidecar_path(image_path: str) -> str:
+    base, _ = os.path.splitext(image_path)
+    return base + ".xmp"
+
+
+def _normalize_text(text: str | None) -> str:
+    return text.strip() if isinstance(text, str) else ""
+
+
+def read_xmp_sidecar(image_path: str) -> dict:
+    xmp_path = get_sidecar_path(image_path)
+    if not os.path.exists(xmp_path):
+        return {}
+
+    result = {
+        "rating": None,
+        "color_label": "",
+        "flag_status": "",
+        "tags": [],
+        "history": [],
+        "modify_date": "",
+        "pipeline": "",  # Поле для хранения параметров ползунков редактирования
+    }
+
+    try:
+        tree = ET.parse(xmp_path)
+        root = tree.getroot()
+        for elem in root.iter():
+            tag = elem.tag
+            if not isinstance(tag, str):
+                continue
+            if tag.endswith("Rating"):
+                text = _normalize_text(elem.text)
+                if text.isdigit():
+                    result["rating"] = int(text)
+            elif tag.endswith("Label"):
+                result["color_label"] = _normalize_text(elem.text)
+            elif tag.endswith("Flag"):
+                result["flag_status"] = _normalize_text(elem.text)
+            elif tag.endswith("History"):
+                text = _normalize_text(elem.text)
+                if text:
+                    result["history"].append(text)
+            elif tag.endswith("ModifyDate"):
+                result["modify_date"] = _normalize_text(elem.text)
+            elif tag.endswith("Pipeline"):
+                result["pipeline"] = _normalize_text(elem.text)
+            elif tag.endswith("li"):
+                text = _normalize_text(elem.text)
+                if text:
+                    result["tags"].append(text)
+    except Exception as e:
+        logging.warning(f"Не удалось прочитать XMP-sidecar {xmp_path}: {e}")
+
+    # Deduplicate while preserving order
+    result["tags"] = list(dict.fromkeys(result["tags"]))
+    result["history"] = list(dict.fromkeys(result["history"]))
+    return result
+
+
+def write_xmp_sidecar(
+    image_path: str,
+    rating: int = 0,
+    color_label: str = "",
+    flag_status: str = "",
+    tags: list[str] | None = None,
+    history_entries: list[str] | None = None,
+    pipeline: dict | None = None,  # Добавляем передачу состояния ползунков
+) -> bool:
+    xmp_path = get_sidecar_path(image_path)
+    existing = read_xmp_sidecar(image_path)
+
+    if tags is None:
+        merged_tags = existing.get("tags", [])
+    else:
+        merged_tags = [t for t in tags if t]
+
+    merged_history = list(existing.get("history", []))
+    if history_entries:
+        merged_history.extend([h for h in history_entries if h])
+    merged_history = list(dict.fromkeys(merged_history))
+
+    # Пытаемся сохранить существующий пайплайн, если новый не передан
+    if pipeline is None:
+        pipeline_data = existing.get("pipeline", "")
+    else:
+        import json
+        pipeline_data = json.dumps(pipeline)
+
+    try:
+        lines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
+            ' <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
+            '  <rdf:Description rdf:about=""',
+            '    xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
+            '    xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/"',
+            '    xmlns:dc="http://purl.org/dc/elements/1.1/"',
+            '    xmlns:wiphoto="http://ns.widlily.com/wiphoto/1.0/">',  # Задаем пространство имен wiphoto
+            f'    <xmp:Rating>{rating}</xmp:Rating>',
+        ]
+
+        if color_label:
+            lines.append(f'    <xmp:Label>{escape(color_label)}</xmp:Label>')
+        if flag_status:
+            lines.append(f'    <xmp:Flag>{escape(flag_status)}</xmp:Flag>')
+        if merged_tags:
+            lines.extend([
+                '    <dc:subject>',
+                '      <rdf:Bag>',
+            ])
+            for tag in merged_tags:
+                lines.append(f'        <rdf:li>{escape(tag)}</rdf:li>')
+            lines.extend([
+                '      </rdf:Bag>',
+                '    </dc:subject>',
+            ])
+        if merged_history:
+            for entry in merged_history:
+                lines.append(f'    <xmp:History>{escape(entry)}</xmp:History>')
+
+        # Сохраняем состояние обработки в XMP
+        if pipeline_data:
+            lines.append(f'    <wiphoto:Pipeline>{escape(pipeline_data)}</wiphoto:Pipeline>')
+
+        lines.extend([
+            f'    <xmp:ModifyDate>{datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")}</xmp:ModifyDate>',
+            '  </rdf:Description>',
+            ' </rdf:RDF>',
+            '</x:xmpmeta>',
+        ])
+
+        os.makedirs(os.path.dirname(xmp_path) or ".", exist_ok=True)
+        with open(xmp_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        return True
+    except Exception as e:
+        logging.error(f"XMP sidecar write error: {e}")
+        return False
 
 
 def read_exif(image_path: str) -> dict:

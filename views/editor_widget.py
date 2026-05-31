@@ -337,6 +337,103 @@ class EditorWidget(QWidget):
         self._add_to_history(state)
         self._render_image()
 
+
+
+    def _load_state_from_xmp(self):
+        """Пытается прочесть и восстановить параметры редактирования из XMP-сайдкара."""
+        if not self.current_image_info or not self.processor:
+            return
+
+        try:
+            from core.metadata_reader import read_xmp_sidecar
+            import json
+            from collections import OrderedDict
+
+            # Сначала полностью сбрасываем состояние ползунков
+            self.processor.reset_all()
+            for tool in self.tools.values():
+                tool.reset()
+
+            # Читаем сайдкар
+            sidecar = read_xmp_sidecar(self.current_image_info.path)
+            pipeline_data = sidecar.get("pipeline", "")
+
+            if pipeline_data:
+                state_dict = json.loads(pipeline_data)
+                state = OrderedDict(state_dict)
+
+                # Загружаем параметры в процессор и обновляем слайдеры в UI
+                self.processor.set_state(state)
+                for tool in self.tools.values():
+                    tool_state = state.get(tool.name, None)
+                    if tool_state:
+                        tool.set_params(tool_state)
+                    else:
+                        tool.reset()
+
+                # Инициализируем историю редактора считанным состоянием
+                self.history = [state]
+                self.history_index = 0
+                self._render_image()
+                self._update_history_buttons()
+                self._update_history_widgets()
+            else:
+                # Если файла XMP нет или он пуст — начинаем с чистого листа
+                initial_state = self.processor.get_state()
+                self.history = [initial_state]
+                self.history_index = 0
+                self._render_image()
+                self._update_history_buttons()
+                self._update_history_widgets()
+
+        except Exception as e:
+            import logging
+            logging.warning(f"Не удалось загрузить историю редактирования из XMP: {e}")
+            # Безопасный fallback при ошибке разбора
+            initial_state = self.processor.get_state()
+            self.history = [initial_state]
+            self.history_index = 0
+            self._render_image()
+            self._update_history_buttons()
+            self._update_history_widgets()
+
+    def _save_state_to_xmp(self):
+        """Сохраняет текущий пайплайн и базовые метаданные в XMP-сайдкар."""
+        if not self.current_image_info or not self.processor:
+            return
+
+        try:
+            from core.metadata_reader import write_xmp_sidecar, read_xmp_sidecar
+            from datetime import datetime
+
+            # Извлекаем текущие метаданные для сохранения рейтингов и тегов
+            sidecar_data = read_xmp_sidecar(self.current_image_info.path)
+            rating = self.current_image_info.rating if self.current_image_info.rating > 0 else sidecar_data.get("rating", 0)
+            color_label = self.current_image_info.color_label or sidecar_data.get("color_label", "")
+            flag_status = self.current_image_info.flag_status or sidecar_data.get("flag_status", "")
+            tags = self.current_image_info.tags or sidecar_data.get("tags", [])
+
+            # Текущее состояние пайплайна
+            pipeline_state = self.processor.get_state()
+
+            # Добавляем запись в журнал истории XMP
+            timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            history_entry = f"{timestamp} - Edit Session: {len(pipeline_state)} tools active"
+
+            write_xmp_sidecar(
+                image_path=self.current_image_info.path,
+                rating=rating,
+                color_label=color_label,
+                flag_status=flag_status,
+                tags=tags,
+                history_entries=[history_entry],
+                pipeline=dict(pipeline_state)
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Не удалось сохранить историю редактирования в XMP: {e}")
+
+    
     def load_image(self, image_info: ImageInfo):
         self._deactivate_current_modal_tool()
         try:
@@ -345,7 +442,7 @@ class EditorWidget(QWidget):
             pil_image = self._load_pil_image(path)
             if pil_image:
                 self.processor = ImageProcessor(pil_image)
-                self._reset_all()
+                self._load_state_from_xmp()  # Загружаем настройки из XMP вместо сброса
             else:
                 QMessageBox.critical(self, "Ошибка", "Не удалось загрузить изображение.")
         except Exception as e:
@@ -545,6 +642,7 @@ class EditorWidget(QWidget):
             self.history_index -= 1
         self._update_history_buttons()
         self._update_history_widgets()
+        self._save_state_to_xmp()
 
     def _reset_all(self):
         if not self.processor:
@@ -583,6 +681,7 @@ class EditorWidget(QWidget):
         self._render_image()
         self._update_history_buttons()
         self._update_history_widgets()
+        self._save_state_to_xmp() 
 
     def _on_history_cleared(self):
         """Reset editor history when tree widget clears"""
@@ -591,6 +690,7 @@ class EditorWidget(QWidget):
             self.history_index = 0
             self._render_image()
             self._update_history_buttons()
+            self._save_state_to_xmp()
 
     def _update_history_buttons(self):
         self.undo_action.setEnabled(self.history_index > 0)

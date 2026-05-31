@@ -40,6 +40,7 @@ class ImageInfo:
     color_label: str = ""  # red, yellow, green, blue, purple
     flag_status: str = ""  # "" = unflagged, "picked" = picked, "rejected" = rejected
     tags: list = field(default_factory=list)  # AI-generated tags (YOLO: person, car, cat, ...)
+    history: list = field(default_factory=list)  # XMP sidecar history entries
 
     def is_video(self) -> bool:
         """Проверяет, является ли файл видео"""
