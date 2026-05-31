@@ -275,25 +275,15 @@ class ComparisonView(QWidget):
         self._calculate_differences()
 
     def _load_pixmap(self, image_path: str) -> QPixmap:
-        """Загружает изображение как QPixmap"""
+        """Загружает изображение как QPixmap с управлением цветом"""
         try:
             pil_image = _load_image_optimized(image_path, for_thumbnail=False)
             if pil_image is None:
                 return None
 
             try:
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
-
-                q_image = QImage(
-                    pil_image.tobytes(),
-                    pil_image.width,
-                    pil_image.height,
-                    pil_image.width * 3,
-                    QImage.Format.Format_RGB888
-                )
-
-                return QPixmap.fromImage(q_image)
+                from utils import pil_to_color_managed_pixmap
+                return pil_to_color_managed_pixmap(pil_image)
             finally:
                 pil_image.close()
 

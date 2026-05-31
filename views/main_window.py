@@ -828,26 +828,14 @@ class MainWindow(QMainWindow):
             self.preview_area.setText(f"Ошибка: {e}")
 
     def _load_preview_pixmap(self, image_path: str) -> QPixmap:
-        """Load image from path and return QPixmap"""
-        pil_image = None
-        is_raw = image_path.lower().endswith(RAW_FORMATS)
-        is_video = image_path.lower().endswith(VIDEO_FORMATS)
-
+        """Загружает изображение и возвращает QPixmap с точным управлением цветом"""
         try:
             pil_image = _load_image_optimized(image_path, for_thumbnail=False)
             if pil_image is None:
                 return None
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            img_bytes = pil_image.tobytes()
-            q_image = QImage(
-                img_bytes,
-                pil_image.width,
-                pil_image.height,
-                pil_image.width * 3,
-                QImage.Format.Format_RGB888
-            )
-            pixmap = QPixmap.fromImage(q_image)
+            
+            from utils import pil_to_color_managed_pixmap
+            pixmap = pil_to_color_managed_pixmap(pil_image)
             pil_image.close()
             return pixmap
         except Exception:

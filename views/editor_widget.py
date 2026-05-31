@@ -709,9 +709,11 @@ class EditorWidget(QWidget):
         self._fit_to_view()
 
     def _pil_to_pixmap(self, pil_image: Image) -> QPixmap:
-        img_data = pil_image.tobytes("raw", "RGB")
-        q_image = QImage(img_data, pil_image.width, pil_image.height, pil_image.width * 3, QImage.Format.Format_RGB888)
-        return QPixmap.fromImage(q_image)
+        """Преобразует обрабатываемое изображение с сохранением исходного ICC-профиля широкого охвата"""
+        from utils import pil_to_color_managed_pixmap
+        # Запрашиваем оригинальный профиль исходной фотографии, чтобы избежать его потери при фильтрации
+        original_icc = self.processor.original_image.info.get('icc_profile') if self.processor else None
+        return pil_to_color_managed_pixmap(pil_image, original_icc_profile=original_icc)
 
     def _open_document_scanner(self):
         """Открывает диалог сканирования документа для текущего изображения"""

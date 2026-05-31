@@ -115,3 +115,69 @@ def ensure_directory_exists(directory_path):
     except Exception as e:
         logger.error(f"Не удалось создать директорию {directory_path}: {e}")
         return False
+    
+def pil_to_color_managed_pixmap(pil_image, original_icc_profile: bytes = None) -> QPixmap:
+    """
+    Преобразует PIL Image в QPixmap с точным сопоставлением встроенного ICC-профиля
+    изображения и цветового пространства текущего системного монитора.
+    """
+    from PyQt6.QtGui import QImage, QPixmap, QColorSpace
+    from PyQt6.QtWidgets import QApplication
+
+    try:
+        # 1. Извлекаем ICC профиль (приоритет у явно переданного оригинального)
+        icc_profile = original_icc_profile
+        if not icc_profile and hasattr(pil_image, 'info'):
+            icc_profile = pil_image.info.get('icc_profile')
+        
+        # 2. Приводим к формату RGB
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+        
+        img_data = pil_image.tobytes("raw", "RGB")
+        q_image = QImage(
+            img_data, 
+            pil_image.width, 
+            pil_image.height, 
+            pil_image.width * 3, 
+            QImage.Format.Format_RGB888
+        )
+        
+        # 3. Назначаем исходное цветовое пространство изображения
+        q_color_space = None
+        if icc_profile:
+            try:
+                q_color_space = QColorSpace.fromIccProfile(icc_profile)
+            except Exception:
+                pass
+        
+        # Если профиль не найден или некорректен, считаем изображение стандартным sRGB
+        if q_color_space is None or not q_color_space.isValid():
+            q_color_space = QColorSpace(QColorSpace.NamedColorSpace.SRgb)
+            
+        q_image.setColorSpace(q_color_space)
+        
+        # 4. Выполняем точную конвертацию в цветовой профиль текущего активного экрана
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_color_space = screen.colorSpace()
+            if screen_color_space and screen_color_space.isValid():
+                q_image.convertToColorSpace(screen_color_space)
+                
+        return QPixmap.fromImage(q_image)
+    except Exception:
+        # Безопасный fallback-режим на случай непредвиденных сбоев
+        try:
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            img_data = pil_image.tobytes("raw", "RGB")
+            q_image = QImage(
+                img_data, 
+                pil_image.width, 
+                pil_image.height, 
+                pil_image.width * 3, 
+                QImage.Format.Format_RGB888
+            )
+            return QPixmap.fromImage(q_image)
+        except Exception:
+            return QPixmap()

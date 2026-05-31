@@ -178,18 +178,14 @@ class FullscreenViewer(QWidget):
         self.setWindowTitle(f"WiPhoto — {name}")
 
     def _load_pixmap(self, path: str) -> QPixmap:
+        """Загружает изображение с точным управлением цветом для полноэкранного режима"""
         try:
             pil_img = _load_image_optimized(path, for_thumbnail=False)
             if pil_img is None:
                 return None
 
-            if pil_img.mode != 'RGB':
-                pil_img = pil_img.convert('RGB')
-
-            data = pil_img.tobytes()
-            q_img = QImage(data, pil_img.width, pil_img.height,
-                           pil_img.width * 3, QImage.Format.Format_RGB888)
-            pixmap = QPixmap.fromImage(q_img)
+            from utils import pil_to_color_managed_pixmap
+            pixmap = pil_to_color_managed_pixmap(pil_img)
             pil_img.close()
             return pixmap
         except Exception:
