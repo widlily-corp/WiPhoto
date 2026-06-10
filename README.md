@@ -1,5 +1,5 @@
 # WiPhoto
-
+I'm starting a major update, and it's going to be powerful! Get ready, because it's going to take some time... (development will begin on 10/06/2026)
 ![WiPhoto Logo](assets/icon.ico)
 
 **Professional Photo Manager & Editor** | **Профессиональный менеджер и редактор фотографий**
