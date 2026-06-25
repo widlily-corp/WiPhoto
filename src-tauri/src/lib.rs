@@ -1,0 +1,53 @@
+mod commands;
+mod models;
+
+use commands::{
+    duplicates, editor, file_ops, metadata, scanner, settings, thumbnails, xmp,
+};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            // Scanner
+            scanner::scan_folder,
+            scanner::count_files,
+            // Thumbnails
+            thumbnails::get_thumbnail,
+            thumbnails::load_full_image,
+            thumbnails::clear_thumbnail_cache,
+            // Metadata
+            metadata::read_exif,
+            // File operations
+            file_ops::delete_files,
+            file_ops::copy_files,
+            file_ops::move_files,
+            file_ops::delete_permanently,
+            file_ops::batch_rename,
+            file_ops::get_folder_tree,
+            // Duplicates
+            duplicates::find_duplicates,
+            duplicates::get_duplicate_stats,
+            duplicates::compute_phash,
+            // Editor
+            editor::apply_edit,
+            editor::save_edited,
+            editor::crop_image,
+            editor::get_histogram,
+            editor::get_color_palette,
+            // Settings
+            settings::load_settings,
+            settings::save_settings,
+            settings::get_app_version,
+            settings::get_app_info,
+            // XMP
+            xmp::read_xmp_sidecar,
+            xmp::write_xmp_sidecar,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
