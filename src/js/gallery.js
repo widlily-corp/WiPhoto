@@ -253,13 +253,13 @@ const Gallery = (() => {
       draggable: 'true',
     });
 
-    // Thumbnail image (lazy loaded via IntersectionObserver in VirtualGrid)
+    // Thumbnail image (rendered directly since grid is virtualized)
     const imgEl = Utils.el('img', {
-      className: 'thumb-img loading',
+      className: 'thumb-img',
       alt: img.filename,
     });
     if (img.thumbnail) {
-      imgEl.dataset.src = Utils.base64Src(img.thumbnail);
+      imgEl.src = Utils.base64Src(img.thumbnail);
     }
     card.appendChild(imgEl);
 

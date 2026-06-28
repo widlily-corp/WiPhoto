@@ -154,14 +154,6 @@ const VirtualGrid = (() => {
     for (let i = startIdx; i < endIdx; i++) {
       const card = cardRenderer(items[i], i);
       fragment.appendChild(card);
-
-      // Lazy load observation
-      if (lazyObserver) {
-        const imgEl = card.querySelector('.thumb-img');
-        if (imgEl && imgEl.dataset.src) {
-          lazyObserver.observe(imgEl);
-        }
-      }
     }
 
     contentArea.innerHTML = '';
