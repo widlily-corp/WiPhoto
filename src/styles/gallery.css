@@ -3,6 +3,8 @@
 /* ── Gallery Grid ── */
 #view-gallery {
   height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 8px;
   position: relative;
