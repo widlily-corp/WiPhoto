@@ -1,41 +1,41 @@
 /* ═══ WiPhoto Design Tokens ═══ */
 :root {
   /* ─── Core Colors ─── */
-  --bg-primary: #121318;
-  --bg-secondary: #1a1b23;
-  --bg-tertiary: #22232e;
-  --bg-elevated: #282a36;
-  --bg-hover: #2f3142;
-  --bg-active: #363849;
+  --bg-primary: #08090A;
+  --bg-secondary: #1B1C1F;
+  --bg-tertiary: #222326;
+  --bg-elevated: #26272B;
+  --bg-hover: #2F3034;
+  --bg-active: #3A3C42;
 
   /* ─── Accent ─── */
-  --accent-primary: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-soft: rgba(99, 102, 241, 0.15);
-  --accent-glow: rgba(99, 102, 241, 0.4);
-  --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+  --accent-primary: #5E6AD2;
+  --accent-hover: #7176E0;
+  --accent-soft: rgba(94, 106, 210, 0.14);
+  --accent-glow: rgba(94, 106, 210, 0.3);
+  --accent-gradient: linear-gradient(135deg, #5E6AD2, #7176E0, #9c9ffd);
 
   /* ─── Text ─── */
-  --text-primary: #e4e4ef;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --text-accent: #a78bfa;
+  --text-primary: #F7F8F8;
+  --text-secondary: #8A8F98;
+  --text-muted: #62666D;
+  --text-accent: #7176E0;
 
   /* ─── Borders ─── */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-normal: rgba(255, 255, 255, 0.1);
-  --border-hover: rgba(255, 255, 255, 0.18);
-  --border-accent: rgba(99, 102, 241, 0.5);
+  --border-subtle: #1F2024;
+  --border-normal: #2C2D31;
+  --border-hover: #3A3C42;
+  --border-accent: #5E6AD2;
 
   /* ─── Status Colors ─── */
   --color-success: #10b981;
-  --color-warning: #f59e0b;
+  --color-warning: #fbbf24;
   --color-danger: #ef4444;
-  --color-info: #3b82f6;
+  --color-info: #5E6AD2;
 
   /* ─── Rating Stars ─── */
   --star-active: #fbbf24;
-  --star-inactive: #4b5563;
+  --star-inactive: #3e4049;
 
   /* ─── Flag Colors ─── */
   --flag-picked: #10b981;
@@ -56,6 +56,7 @@
 
   /* ─── Typography ─── */
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-md: 13px;

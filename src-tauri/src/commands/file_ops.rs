@@ -15,6 +15,15 @@ pub fn delete_files(paths: Vec<String>) -> Result<Vec<String>, String> {
     let trash_dir = get_trash_dir();
     let mut deleted = Vec::new();
 
+    // Load existing metadata
+    let metadata_path = trash_dir.join(".trash_metadata.json");
+    let mut metadata_map: std::collections::HashMap<String, String> = if metadata_path.exists() {
+        let content = fs::read_to_string(&metadata_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    };
+
     for path in &paths {
         let src = Path::new(path);
         if !src.exists() {
@@ -46,6 +55,9 @@ pub fn delete_files(paths: Vec<String>) -> Result<Vec<String>, String> {
         if fs::rename(src, &dest).is_ok() || fs::copy(src, &dest).map(|_| fs::remove_file(src)).is_ok() {
             deleted.push(path.clone());
 
+            let trash_filename = dest.file_name().unwrap_or_default().to_string_lossy().to_string();
+            metadata_map.insert(trash_filename, path.clone());
+
             // Also move XMP sidecar if exists
             let xmp_src = Path::new(path).with_extension("xmp");
             if xmp_src.exists() {
@@ -53,6 +65,11 @@ pub fn delete_files(paths: Vec<String>) -> Result<Vec<String>, String> {
                 let _ = fs::rename(&xmp_src, &xmp_dest);
             }
         }
+    }
+
+    if !deleted.is_empty() {
+        let content = serde_json::to_string_pretty(&metadata_map).unwrap_or_default();
+        let _ = fs::write(&metadata_path, content);
     }
 
     Ok(deleted)
@@ -230,4 +247,132 @@ fn count_images_in_dir(dir: &Path) -> u32 {
         }
     }
     count
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct TrashItem {
+    pub filename: String,
+    pub path: String,
+    pub original_path: String,
+    pub file_size: u64,
+    pub thumbnail: String,
+    pub is_video: bool,
+    pub is_raw: bool,
+}
+
+/// List all files in the trash with metadata and thumbnails
+#[tauri::command]
+pub fn list_trash() -> Result<Vec<TrashItem>, String> {
+    let trash_dir = get_trash_dir();
+    let metadata_path = trash_dir.join(".trash_metadata.json");
+
+    let metadata_map: std::collections::HashMap<String, String> = if metadata_path.exists() {
+        let content = fs::read_to_string(&metadata_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let mut items = Vec::new();
+    if let Ok(entries) = fs::read_dir(&trash_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if filename == ".trash_metadata.json" || filename.ends_with(".xmp") {
+                    continue;
+                }
+
+                let file_size = path.metadata().map(|m| m.len()).unwrap_or(0);
+                let original_path = metadata_map.get(&filename).cloned().unwrap_or_else(|| filename.clone());
+
+                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                let is_video = crate::models::image_info::VIDEO_EXTENSIONS.contains(&ext.as_str());
+                let is_raw = crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str());
+
+                // Generate/load cached thumbnail
+                let thumbnail = super::thumbnails::get_thumbnail(path.to_string_lossy().to_string()).unwrap_or_default();
+
+                items.push(TrashItem {
+                    filename,
+                    path: path.to_string_lossy().to_string(),
+                    original_path,
+                    file_size,
+                    thumbnail,
+                    is_video,
+                    is_raw,
+                });
+            }
+        }
+    }
+
+    Ok(items)
+}
+
+/// Restore a file from trash back to its original path
+#[tauri::command]
+pub fn restore_from_trash(filename: String) -> Result<(), String> {
+    let trash_dir = get_trash_dir();
+    let src_file = trash_dir.join(&filename);
+    if !src_file.exists() {
+        return Err("File does not exist in trash".into());
+    }
+
+    let metadata_path = trash_dir.join(".trash_metadata.json");
+    let mut metadata_map: std::collections::HashMap<String, String> = if metadata_path.exists() {
+        let content = fs::read_to_string(&metadata_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    let original_path = metadata_map.get(&filename)
+        .ok_or_else(|| "Original path not found in metadata".to_string())?;
+
+    let dest_file = Path::new(original_path);
+
+    if let Some(parent) = dest_file.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    if fs::rename(&src_file, dest_file).is_ok() || (fs::copy(&src_file, dest_file).is_ok() && fs::remove_file(&src_file).is_ok()) {
+        // Also restore XMP sidecar if it exists
+        let xmp_src = src_file.with_extension("xmp");
+        if xmp_src.exists() {
+            let xmp_dest = dest_file.with_extension("xmp");
+            let _ = fs::rename(&xmp_src, &xmp_dest);
+        }
+
+        // Remove from metadata map
+        metadata_map.remove(&filename);
+        let _ = fs::write(&metadata_path, serde_json::to_string_pretty(&metadata_map).unwrap_or_default());
+
+        Ok(())
+    } else {
+        Err("Failed to restore file".into())
+    }
+}
+
+/// Clear trash completely
+#[tauri::command]
+pub fn empty_trash() -> Result<(), String> {
+    let trash_dir = get_trash_dir();
+    if let Ok(entries) = fs::read_dir(&trash_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if filename == ".trash_metadata.json" {
+                    continue;
+                }
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+    // Clear metadata file
+    let metadata_path = trash_dir.join(".trash_metadata.json");
+    if metadata_path.exists() {
+        let _ = fs::remove_file(metadata_path);
+    }
+    Ok(())
 }

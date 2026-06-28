@@ -1,6 +1,6 @@
 [package]
 name = "wiphoto"
-version = "2.4.4"
+version = "3.0.0"
 description = "WiPhoto - Professional Photo Manager & Editor"
 authors = ["Widlily Corporation <widlily.corp@gmail.com>"]
 edition = "2021"
@@ -24,6 +24,7 @@ serde_json = "1"
 # Image processing
 image = { version = "0.25", features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "ico"] }
 imageproc = "0.25"
+ab_glyph = "0.2"
 base64 = "0.22"
 
 # File system

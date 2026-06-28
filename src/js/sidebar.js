@@ -9,6 +9,10 @@ const Sidebar = (() => {
     document.getElementById('toggle-right')?.addEventListener('click', () => {
       document.getElementById('right-sidebar').classList.toggle('collapsed');
     });
+
+    if (typeof Tags !== 'undefined') {
+      Tags.init();
+    }
   }
 
   async function showPreview(imageInfo) {
@@ -33,6 +37,10 @@ const Sidebar = (() => {
     // Load metadata and AI info
     loadMetadata(imageInfo.path);
     showAiInfo(imageInfo);
+
+    if (typeof Tags !== 'undefined') {
+      Tags.updateSelectedImage(imageInfo);
+    }
   }
 
   async function loadMetadata(path) {
@@ -242,6 +250,9 @@ const Sidebar = (() => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
+    if (typeof Tags !== 'undefined') {
+      Tags.clear();
+    }
   }
 
   async function loadFolderTree(rootPath) {
@@ -261,16 +272,91 @@ const Sidebar = (() => {
     nodes.forEach(node => {
       const item = Utils.el('div', {
         className: 'folder-tree-item',
+        'data-path': node.path,
         onClick: () => {
-          // Scan this subfolder
           document.querySelectorAll('.folder-tree-item').forEach(i => i.classList.remove('active'));
           item.classList.add('active');
+          if (typeof Gallery !== 'undefined') {
+            Gallery.filterByFolder(node.path);
+          }
         },
       }, [
         Utils.el('span', { className: 'folder-icon', textContent: '📁' }),
         document.createTextNode(` ${node.name}`),
-        Utils.el('span', { className: 'folder-count', textContent: node.file_count || '' }),
+        Utils.el('span', { className: 'folder-count', textContent: node.file_count || '0' }),
       ]);
+
+      // Drag and drop events for folder targets
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        item.classList.add('drag-over');
+      });
+
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over');
+      });
+
+      item.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        item.classList.remove('drag-over');
+
+        try {
+          const rawData = e.dataTransfer.getData('application/json');
+          if (!rawData) return;
+          const sourcePaths = JSON.parse(rawData);
+          if (!Array.isArray(sourcePaths) || sourcePaths.length === 0) return;
+
+          // Check if dropping onto the same folder
+          const isSameFolder = sourcePaths.every(p => {
+            const sep = p.includes('/') ? '/' : '\\';
+            const dir = p.substring(0, p.lastIndexOf(sep));
+            return dir.toLowerCase() === node.path.toLowerCase();
+          });
+
+          if (isSameFolder) {
+            Utils.toast('Файлы уже находятся в этой папке', 'warning');
+            return;
+          }
+
+          const doMove = await API.askConfirm(
+            `Переместить ${sourcePaths.length} файл(ов) в папку "${node.name}"? (Нажмите ОК для Перемещения, Отмена для Копирования)`,
+            'Перемещение или копирование'
+          );
+
+          if (doMove) {
+            Utils.toast('Перемещение файлов...', 'info');
+            const count = await API.moveFiles(sourcePaths, node.path);
+            if (count > 0) {
+              if (typeof Gallery !== 'undefined') {
+                Gallery.removeImages(sourcePaths);
+              }
+              // Reload tree
+              if (typeof App !== 'undefined' && App.currentFolder) {
+                loadFolderTree(App.currentFolder);
+              }
+              Utils.toast(`Успешно перемещено файлов: ${count}`, 'success');
+            }
+          } else {
+            const doCopy = await API.askConfirm(
+              `Скопировать ${sourcePaths.length} файл(ов) в папку "${node.name}"?`,
+              'Копирование'
+            );
+            if (doCopy) {
+              Utils.toast('Копирование файлов...', 'info');
+              const count = await API.copyFiles(sourcePaths, node.path);
+              if (count > 0) {
+                if (typeof App !== 'undefined' && App.currentFolder) {
+                  loadFolderTree(App.currentFolder);
+                }
+                Utils.toast(`Успешно скопировано файлов: ${count}`, 'success');
+              }
+            }
+          }
+        } catch (err) {
+          Utils.toast(`Ошибка перетаскивания: ${err}`, 'error');
+        }
+      });
+
       parent.appendChild(item);
 
       if (node.children && node.children.length) {
@@ -281,7 +367,126 @@ const Sidebar = (() => {
     });
   }
 
-  return { init, showPreview, clearPreview, loadFolderTree };
+  function updateLibraryStats(images) {
+    const statsContainer = document.getElementById('stats-content');
+    if (!statsContainer) return;
+
+    if (!images || images.length === 0) {
+      statsContainer.innerHTML = '<div class="stats-placeholder">Нет данных</div>';
+      return;
+    }
+
+    const totalCount = images.length;
+    const totalBytes = images.reduce((sum, img) => sum + (img.file_size || 0), 0);
+    const formattedSize = Utils.formatSize(totalBytes);
+
+    const formats = {};
+    const cameras = {};
+    let minDate = null;
+    let maxDate = null;
+    const monthlyCounts = {};
+
+    images.forEach(img => {
+      const ext = Utils.getExtension(img.path).toUpperCase() || 'UNKNOWN';
+      formats[ext] = (formats[ext] || 0) + 1;
+
+      const camera = img.camera_model ? img.camera_model.trim() : null;
+      if (camera) {
+        cameras[camera] = (cameras[camera] || 0) + 1;
+      }
+
+      const date = Utils.parseExifDate(img.date_taken);
+      if (date) {
+        if (!minDate || date < minDate) minDate = date;
+        if (!maxDate || date > maxDate) maxDate = date;
+
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${year}-${month}`;
+        monthlyCounts[monthKey] = (monthlyCounts[monthKey] || 0) + 1;
+      }
+    });
+
+    let dateRangeStr = 'Нет дат';
+    if (minDate && maxDate) {
+      const options = { year: 'numeric', month: 'short' };
+      dateRangeStr = `${minDate.toLocaleDateString('ru-RU', options)} — ${maxDate.toLocaleDateString('ru-RU', options)}`;
+    }
+
+    const topFormats = Object.entries(formats)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([name, count]) => `${name}: ${count}`)
+      .join(', ');
+
+    const topCameras = Object.entries(cameras)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([name, count]) => `${name.substring(0, 18)} (${count})`)
+      .join(', ') || 'Нет данных';
+
+    const sparklineHtml = generateSparkline(monthlyCounts, minDate, maxDate);
+
+    statsContainer.innerHTML = '';
+    const statsList = Utils.el('div', { className: 'stats-list' }, [
+      createStatRow('Всего файлов', `${totalCount} (${formattedSize})`),
+      createStatRow('Форматы', topFormats || 'Нет данных'),
+      createStatRow('Камеры', topCameras),
+      createStatRow('Период', dateRangeStr),
+      Utils.el('div', { className: 'stats-sparkline-title', textContent: 'АКТИВНОСТЬ ПО МЕСЯЦАМ' }),
+      Utils.el('div', { className: 'stats-sparkline-wrapper', innerHTML: sparklineHtml })
+    ]);
+
+    statsContainer.appendChild(statsList);
+  }
+
+  function createStatRow(label, value) {
+    return Utils.el('div', { className: 'stats-row' }, [
+      Utils.el('span', { className: 'stats-key', textContent: label }),
+      Utils.el('span', { className: 'stats-val', textContent: value })
+    ]);
+  }
+
+  function generateSparkline(monthlyCounts, minDate, maxDate) {
+    if (!minDate || !maxDate) return '<div class="sparkline-empty">Нет временных данных</div>';
+
+    const months = [];
+    let current = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+
+    while (current <= end) {
+      const y = current.getFullYear();
+      const m = String(current.getMonth() + 1).padStart(2, '0');
+      months.push(`${y}-${m}`);
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    const displayMonths = months.slice(-18);
+    const values = displayMonths.map(m => monthlyCounts[m] || 0);
+    const maxVal = Math.max(...values, 1);
+
+    const svgWidth = 180;
+    const svgHeight = 28;
+    const barWidth = Math.max(2, Math.floor(svgWidth / displayMonths.length) - 2);
+    const actualWidth = displayMonths.length * (barWidth + 2);
+
+    let bars = '';
+    values.forEach((val, i) => {
+      const height = (val / maxVal) * svgHeight;
+      const x = i * (barWidth + 2);
+      const y = svgHeight - height;
+      const label = displayMonths[i];
+      bars += `<rect x="${x}" y="${y}" width="${barWidth}" height="${height}" fill="var(--accent-primary)" opacity="0.85" rx="1">
+        <title>${label}: ${val} фото</title>
+      </rect>`;
+    });
+
+    return `<svg width="${actualWidth}" height="${svgHeight}" style="overflow: visible;">
+      ${bars}
+    </svg>`;
+  }
+
+  return { init, showPreview, clearPreview, loadFolderTree, updateLibraryStats };
 })();
 
 window.Sidebar = Sidebar;

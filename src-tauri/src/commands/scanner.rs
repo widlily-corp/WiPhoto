@@ -312,10 +312,12 @@ pub async fn scan_folder(
     files.par_iter().for_each(|file_path| {
         if let Some(info) = process_single_file(file_path, &cache_dir) {
             let mut r = results.lock().unwrap();
-            r.push(info);
+            r.push(info.clone());
 
             let mut c = counter.lock().unwrap();
             *c += 1;
+
+            let _ = app.emit("image-scanned", info);
 
             if *c % 5 == 0 || *c == total {
                 let _ = app.emit("scan-progress", serde_json::json!({

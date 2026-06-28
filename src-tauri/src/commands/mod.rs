@@ -7,3 +7,4 @@ pub mod editor;
 pub mod settings;
 pub mod xmp;
 pub mod raw_utils;
+pub mod export;

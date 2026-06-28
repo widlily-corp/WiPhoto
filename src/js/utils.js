@@ -94,18 +94,44 @@ const Utils = {
   },
 
   /** Show toast notification */
-  toast(message, type = 'info', duration = 4000) {
+  toast(message, type = 'info', duration = 4000, action = null) {
     let container = document.querySelector('.toast-container');
     if (!container) {
       container = Utils.el('div', { className: 'toast-container' });
       document.body.appendChild(container);
     }
-    const toast = Utils.el('div', { className: `toast ${type}` }, [
-      document.createTextNode(message),
-      Utils.el('button', { className: 'toast-close', textContent: '✕', onClick: () => toast.remove() }),
-    ]);
+
+    const children = [
+      Utils.el('div', { className: 'toast-indicator' }),
+      Utils.el('div', { className: 'toast-text', textContent: message })
+    ];
+
+    if (action) {
+      children.push(Utils.el('button', {
+        className: 'toast-action',
+        textContent: action.label,
+        onClick: () => {
+          action.callback();
+          toast.remove();
+        }
+      }));
+    }
+
+    children.push(Utils.el('button', { className: 'toast-close', textContent: '✕', onClick: () => toast.remove() }));
+
+    const progress = Utils.el('div', { className: 'toast-progress' });
+    progress.style.animationDuration = `${duration}ms`;
+    children.push(progress);
+
+    const toast = Utils.el('div', { className: `toast ${type}` }, children);
     container.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
+
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 200);
+      }
+    }, duration);
   },
 
   /** Clone selected images paths */

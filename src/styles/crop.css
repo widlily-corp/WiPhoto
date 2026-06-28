@@ -1,0 +1,48 @@
+/* ═══ Visual Crop Overlay Styles ═══ */
+
+.editor-canvas-wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.crop-box {
+  position: absolute;
+  border: 1.5px dashed rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 9999px rgba(8, 9, 10, 0.65); /* Darkens outside crop area */
+  cursor: move;
+  box-sizing: border-box;
+  z-index: 10;
+}
+
+.crop-box.hidden {
+  display: none !important;
+}
+
+/* Crop handles */
+.crop-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border: 1px solid #1b1c1f;
+  border-radius: 20%;
+  box-sizing: border-box;
+}
+
+.crop-handle.nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.crop-handle.n  { top: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.crop-handle.ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.crop-handle.e  { top: calc(50% - 5px); right: -5px; cursor: ew-resize; }
+.crop-handle.se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.crop-handle.s  { bottom: -5px; left: calc(50% - 5px); cursor: ns-resize; }
+.crop-handle.sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.crop-handle.w  { top: calc(50% - 5px); left: -5px; cursor: ew-resize; }
+
+.crop-ratio-toolbar {
+  margin-top: 4px;
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}

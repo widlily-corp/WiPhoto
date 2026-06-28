@@ -91,7 +91,7 @@ pub struct EditOp {
 
 fn apply_single_edit(img: DynamicImage, op: &EditOp) -> DynamicImage {
     match op.tool.as_str() {
-        "exposure" => adjust_exposure(img, op.value),
+        "exposure" => adjust_exposure(img, op.value / 100.0),
         "contrast" => adjust_contrast(img, op.value),
         "brightness" => adjust_brightness(img, op.value),
         "highlights" => adjust_highlights(img, op.value),
@@ -490,4 +490,71 @@ fn hue(c: &[f64; 3]) -> f64 {
         60.0 * ((r - g) / (max - min)) + 240.0
     };
     if h < 0.0 { h + 360.0 } else { h }
+}
+
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct CropRect {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Save edited image with an optional crop rect to disk
+#[tauri::command]
+pub fn save_cropped_edited_image(
+    path: String,
+    crop_rect: Option<CropRect>,
+    operations: Vec<EditOp>,
+    output_path: Option<String>,
+    quality: Option<u8>,
+) -> Result<String, String> {
+    let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
+
+    // 1. Apply crop first if present
+    if let Some(rect) = crop_rect {
+        img = img.crop(rect.x, rect.y, rect.width, rect.height);
+    }
+
+    // 2. Apply editing operations
+    for op in &operations {
+        img = apply_single_edit(img, op);
+    }
+
+    // 3. Save file path logic
+    let save_path = output_path.unwrap_or_else(|| {
+        let p = Path::new(&path);
+        let stem = p.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = p.extension().unwrap_or_default().to_string_lossy();
+        let parent = p.parent().unwrap_or(Path::new("."));
+        parent
+            .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+            .to_string_lossy()
+            .to_string()
+    });
+
+    let save_ext = Path::new(&save_path)
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_lowercase();
+
+    match save_ext.as_str() {
+        "jpg" | "jpeg" => {
+            let q = quality.unwrap_or(95);
+            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+                std::fs::File::create(&save_path).map_err(|e| e.to_string())?,
+                q,
+            );
+            img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
+        }
+        "png" => {
+            img.save(&save_path).map_err(|e| e.to_string())?;
+        }
+        _ => {
+            img.save(&save_path).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(save_path)
 }

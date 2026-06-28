@@ -38,14 +38,14 @@ pub fn save_settings(settings: AppSettings) -> Result<(), String> {
 /// Get app version
 #[tauri::command]
 pub fn get_app_version() -> String {
-    "2.4.4".to_string()
+    "3.0.0".to_string()
 }
 
 /// Get app info
 #[tauri::command]
 pub fn get_app_info() -> AppInfo {
     AppInfo {
-        version: "2.4.4".to_string(),
+        version: "3.0.0".to_string(),
         author: "Widlily Corporation".to_string(),
         email: "widlily.corp@gmail.com".to_string(),
         description: "WiPhoto - Ваш умный менеджер фотографий.".to_string(),

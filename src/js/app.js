@@ -22,6 +22,13 @@ const App = (() => {
     Shortcuts.init();
     Slideshow.init();
     Timeline.init();
+    CommandPalette.init();
+    if (typeof Trash !== 'undefined') {
+      Trash.init();
+    }
+    if (typeof BatchOps !== 'undefined') {
+      BatchOps.init();
+    }
 
     // 2. View Mode Switchers
     document.querySelectorAll('.view-modes button.toolbar-btn').forEach(btn => {

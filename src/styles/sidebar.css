@@ -330,3 +330,42 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
 }
+
+/* ── Folder Tree Styles ── */
+.folder-tree-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px var(--space-sm);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.folder-tree-item:hover,
+.folder-tree-item.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.folder-tree-item.drag-over {
+  background: var(--bg-hover) !important;
+  outline: 1.5px dashed var(--accent-color) !important;
+}
+
+.folder-tree-children {
+  padding-left: 14px;
+}
+
+.folder-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}

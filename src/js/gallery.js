@@ -1,4 +1,5 @@
 // ═══ Gallery Module ═══
+// v3.0 — VirtualGrid integration, folder filtering, drag support
 
 const Gallery = (() => {
   let allImages = [];
@@ -10,17 +11,49 @@ const Gallery = (() => {
   let searchQuery = '';
   let thumbSize = 180;
   let duplicateGroups = [];
+  let currentFolderFilter = '';  // v3: folder-level filtering
+  let currentTagFilter = '';     // v3: tag filtering
 
   const grid = () => document.getElementById('gallery-grid');
   const emptyState = () => document.getElementById('gallery-empty');
 
   function init() {
+    // Initialize VirtualGrid
+    const scrollContainer = document.getElementById('view-gallery');
+    if (scrollContainer && grid()) {
+      VirtualGrid.init({
+        container: grid(),
+        scrollContainer: scrollContainer,
+        cardRenderer: createThumbCard,
+      });
+
+      // Bind dragstart using event delegation
+      grid().addEventListener('dragstart', (e) => {
+        const card = e.target.closest('.thumb-card');
+        if (!card) return;
+
+        const path = card.dataset.path;
+        const idx = parseInt(card.dataset.index);
+        
+        let dragPaths = [];
+        if (selectedIndices.has(idx)) {
+          dragPaths = getSelectedImages().map(img => img.path);
+        } else {
+          dragPaths = [path];
+        }
+
+        e.dataTransfer.setData('application/json', JSON.stringify(dragPaths));
+        e.dataTransfer.effectAllowed = 'copyMove';
+      });
+    }
+
     // Zoom slider
     const zoomSlider = document.getElementById('zoom-slider');
     if (zoomSlider) {
       zoomSlider.addEventListener('input', (e) => {
         thumbSize = parseInt(e.target.value);
         grid().style.setProperty('--thumb-size', `${thumbSize}px`);
+        VirtualGrid.updateThumbSize(thumbSize);
       });
     }
 
@@ -48,6 +81,7 @@ const Gallery = (() => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentFilter = btn.dataset.filter;
+        currentFolderFilter = '';
         applyFilters();
       });
     });
@@ -55,14 +89,21 @@ const Gallery = (() => {
     // Collection buttons
     document.querySelectorAll('.collection-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.dataset.collection === 'trash') {
+          if (typeof Trash !== 'undefined') {
+            Trash.open();
+          }
+          return;
+        }
         currentFilter = btn.dataset.collection;
+        currentFolderFilter = '';
         applyFilters();
       });
     });
 
     // Click outside to deselect
     grid().addEventListener('click', (e) => {
-      if (e.target === grid()) {
+      if (e.target === grid() || e.target.classList.contains('vgrid-spacer-top') || e.target.classList.contains('vgrid-spacer-bottom')) {
         clearSelection();
       }
     });
@@ -72,11 +113,25 @@ const Gallery = (() => {
     allImages = images;
     updateBadges();
     applyFilters();
+    if (typeof Sidebar !== 'undefined') {
+      Sidebar.updateLibraryStats(allImages);
+    }
   }
 
   function addImage(info) {
     allImages.push(info);
     applyFilters();
+    if (typeof Sidebar !== 'undefined') {
+      Sidebar.updateLibraryStats(allImages);
+    }
+  }
+
+  function addImageBatch(batch) {
+    allImages.push(...batch);
+    applyFilters();
+    if (typeof Sidebar !== 'undefined') {
+      Sidebar.updateLibraryStats(allImages);
+    }
   }
 
   function updateBadges() {
@@ -94,6 +149,15 @@ const Gallery = (() => {
 
   function applyFilters() {
     let images = [...allImages];
+
+    // Folder filter (v3)
+    if (currentFolderFilter) {
+      images = images.filter(i => {
+        const sep = i.path.includes('/') ? '/' : '\\';
+        const dir = i.path.substring(0, i.path.lastIndexOf(sep));
+        return dir === currentFolderFilter || dir.startsWith(currentFolderFilter + sep);
+      });
+    }
 
     // Filter
     switch (currentFilter) {
@@ -124,11 +188,24 @@ const Gallery = (() => {
       case 'rated':
         images = images.filter(i => i.rating > 0);
         break;
+      case 'trash':
+        // Handled separately via trash modal
+        break;
+    }
+
+    // Tag filter (v3)
+    if (currentTagFilter) {
+      images = images.filter(i => i.tags && i.tags.includes(currentTagFilter));
     }
 
     // Search
     if (searchQuery) {
-      images = images.filter(i => i.filename.toLowerCase().includes(searchQuery));
+      images = images.filter(i => {
+        const nameMatch = i.filename.toLowerCase().includes(searchQuery);
+        const tagMatch = i.tags && i.tags.some(t => t.toLowerCase().includes(searchQuery));
+        const cameraMatch = i.camera_model && i.camera_model.toLowerCase().includes(searchQuery);
+        return nameMatch || tagMatch || cameraMatch;
+      });
     }
 
     // Sort
@@ -144,56 +221,52 @@ const Gallery = (() => {
 
     filteredImages = images;
     renderGrid();
+    if (typeof Tags !== 'undefined') {
+      Tags.renderGlobalTags();
+    }
   }
 
   function renderGrid() {
-    const container = grid();
-    container.innerHTML = '';
     selectedIndices.clear();
 
     if (filteredImages.length === 0) {
       emptyState().classList.remove('hidden');
-      container.classList.add('hidden');
+      grid().classList.add('hidden');
+      updateStatusBar();
       return;
     }
 
     emptyState().classList.add('hidden');
-    container.classList.remove('hidden');
-    container.style.setProperty('--thumb-size', `${thumbSize}px`);
+    grid().classList.remove('hidden');
+    grid().style.setProperty('--thumb-size', `${thumbSize}px`);
 
-    // Use document fragment for performance
-    const fragment = document.createDocumentFragment();
-
-    filteredImages.forEach((img, index) => {
-      const card = createThumbCard(img, index);
-      fragment.appendChild(card);
-    });
-
-    container.appendChild(fragment);
+    // Use VirtualGrid for rendering
+    VirtualGrid.setItems(filteredImages, thumbSize);
     updateStatusBar();
   }
 
   function createThumbCard(img, index) {
     const card = Utils.el('div', {
-      className: `thumb-card${img.flag_status === 'picked' ? ' picked' : ''}${img.flag_status === 'rejected' ? ' rejected' : ''}`,
+      className: `thumb-card${img.flag_status === 'picked' ? ' picked' : ''}${img.flag_status === 'rejected' ? ' rejected' : ''}${selectedIndices.has(index) ? ' selected' : ''}`,
       'data-path': img.path,
       'data-index': index,
+      draggable: 'true',
     });
 
-    // Thumbnail image (matches .thumb-img in gallery.css)
+    // Thumbnail image (lazy loaded via IntersectionObserver in VirtualGrid)
     const imgEl = Utils.el('img', {
-      className: 'thumb-img',
-      src: img.thumbnail ? Utils.base64Src(img.thumbnail) : '',
+      className: 'thumb-img loading',
       alt: img.filename,
-      loading: 'lazy',
     });
+    if (img.thumbnail) {
+      imgEl.dataset.src = Utils.base64Src(img.thumbnail);
+    }
     card.appendChild(imgEl);
 
     // Video play indicator overlay
     if (img.is_video) {
       card.appendChild(Utils.el('div', {
-        className: 'thumb-badge-video',
-        style: 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; background: rgba(0,0,0,0.65); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; pointer-events: none; z-index: 2; border: 1.5px solid rgba(255,255,255,0.8); box-shadow: 0 4px 12px rgba(0,0,0,0.5);',
+        className: 'thumb-badge-video-play',
         textContent: '▶'
       }));
     }
@@ -203,7 +276,7 @@ const Gallery = (() => {
     overlay.appendChild(Utils.el('div', { className: 'thumb-filename', textContent: img.filename }));
     card.appendChild(overlay);
 
-    // Rating (bottom-left, absolute positioned, always visible)
+    // Rating (bottom-left)
     if (img.rating > 0) {
       const ratingEl = Utils.el('div', { className: 'thumb-rating' });
       for (let r = 0; r < img.rating; r++) {
@@ -212,35 +285,34 @@ const Gallery = (() => {
       card.appendChild(ratingEl);
     }
 
-    // Color label (top-left, absolute positioned, always visible)
+    // Color label (top-left)
     if (img.color_label) {
       card.appendChild(Utils.el('div', { className: `thumb-color-label ${img.color_label}` }));
     }
 
-    // Flag (top-left offset, absolute positioned, always visible)
+    // Flag indicator (top-left offset)
     if (img.flag_status) {
       const flagChar = img.flag_status === 'picked' ? '✓' : '✗';
-      const flagColorClass = img.flag_status === 'picked' ? 'text-success' : 'text-danger';
       const flagStyle = img.flag_status === 'picked' ? 'color: var(--flag-picked, #10b981)' : 'color: var(--flag-rejected, #ef4444)';
-      card.appendChild(Utils.el('span', { 
-        className: `thumb-flag ${flagColorClass}`, 
+      card.appendChild(Utils.el('span', {
+        className: 'thumb-flag',
         style: flagStyle,
-        textContent: flagChar 
+        textContent: flagChar
       }));
     }
 
-    // Badges (top-right, absolute positioned, always visible)
+    // Badges (top-right)
     const badges = Utils.el('div', { className: 'thumb-badges' });
     if (img.is_best_in_group) {
-      badges.appendChild(Utils.el('span', { className: 'thumb-badge-video', style: 'background: var(--accent-primary, #6366f1); border-radius: 3px; font-size: 9px; padding: 1px 4px; color: #fff; text-transform: uppercase;', textContent: 'Лучшее' }));
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-best', textContent: '★' }));
     } else if (img.group_id) {
-      badges.appendChild(Utils.el('span', { className: 'thumb-badge-raw', style: 'background: var(--bg-active, #4b5563); border-radius: 3px; font-size: 9px; padding: 1px 4px; color: #fff; text-transform: uppercase;', textContent: 'Дубл.' }));
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-dup', textContent: '⊞' }));
     }
     if (img.is_raw) {
       badges.appendChild(Utils.el('span', { className: 'thumb-badge-raw', textContent: 'RAW' }));
     }
     if (img.is_video) {
-      badges.appendChild(Utils.el('span', { className: 'thumb-badge-video', textContent: 'Видео' }));
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-video', textContent: 'VID' }));
     }
     if (badges.children.length) card.appendChild(badges);
 
@@ -248,6 +320,19 @@ const Gallery = (() => {
     card.addEventListener('click', (e) => handleClick(index, e));
     card.addEventListener('dblclick', () => handleDoubleClick(img));
     card.addEventListener('contextmenu', (e) => handleContextMenu(e, img, index));
+
+    // Drag & Drop (v3)
+    card.addEventListener('dragstart', (e) => {
+      const selected = getSelectedImages();
+      const dragPaths = selected.length > 0 ? selected.map(i => i.path) : [img.path];
+      e.dataTransfer.setData('application/json', JSON.stringify(dragPaths));
+      e.dataTransfer.setData('application/wiphoto-paths', JSON.stringify(dragPaths));
+      e.dataTransfer.effectAllowed = 'copyMove';
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+    });
 
     return card;
   }
@@ -268,7 +353,6 @@ const Gallery = (() => {
 
   function handleDoubleClick(img) {
     if (img.is_video) {
-      // Open video in system player
       return;
     }
     App.openEditor(img);
@@ -285,6 +369,7 @@ const Gallery = (() => {
 
   function selectIndex(index) {
     selectedIndices.add(index);
+    // Update DOM: find card by data-index in the virtual grid's content area
     const card = grid().querySelector(`[data-index="${index}"]`);
     if (card) card.classList.add('selected');
   }
@@ -331,7 +416,7 @@ const Gallery = (() => {
   function updateStatusBar() {
     const total = filteredImages.length;
     const sel = selectedIndices.size;
-    const parts = [`Всего: ${total}`, `Выбрано: ${sel}`];
+    const parts = [`${total} файлов`, `${sel} выбрано`];
     if (sel === 1) {
       const img = getSelectedImages()[0];
       if (img) {
@@ -340,6 +425,11 @@ const Gallery = (() => {
         if (img.camera_model) parts.push(img.camera_model);
         if (img.rating > 0) parts.push('★'.repeat(img.rating));
       }
+    }
+    // Total size
+    if (total > 0) {
+      const totalBytes = filteredImages.reduce((acc, i) => acc + (i.file_size || 0), 0);
+      parts.push(Utils.formatSize(totalBytes));
     }
     document.getElementById('status-text').textContent = parts.join(' │ ');
   }
@@ -390,12 +480,65 @@ const Gallery = (() => {
     updateBadges();
   }
 
+  // v3: folder filtering
+  function filterByFolder(folderPath) {
+    currentFolderFilter = folderPath;
+    currentFilter = 'all';
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
+    if (allBtn) allBtn.classList.add('active');
+    applyFilters();
+  }
+
+  // v3: tag filtering
+  function filterByTag(tag) {
+    currentTagFilter = tag;
+    applyFilters();
+  }
+
+  function clearTagFilter() {
+    currentTagFilter = '';
+    applyFilters();
+  }
+
+  // v3: get all unique tags
+  function getAllTags() {
+    const tagSet = new Set();
+    allImages.forEach(img => {
+      if (img.tags) img.tags.forEach(t => tagSet.add(t));
+    });
+    return Array.from(tagSet).sort();
+  }
+
+  // v3: add tags to selected images
+  function addTagToSelected(tag) {
+    getSelectedImages().forEach(img => {
+      if (!img.tags) img.tags = [];
+      if (!img.tags.includes(tag)) {
+        img.tags.push(tag);
+        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags);
+      }
+    });
+  }
+
+  // v3: remove tag from selected images
+  function removeTagFromSelected(tag) {
+    getSelectedImages().forEach(img => {
+      if (img.tags) {
+        img.tags = img.tags.filter(t => t !== tag);
+        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags);
+      }
+    });
+  }
+
   return {
     init, setImages, addImage, applyFilters, getSelectedImages,
     clearSelection, selectAll, setRating, setColorLabel, setFlagStatus,
     removeImages, setDuplicateGroups, getFilteredImages: () => filteredImages,
-    getAllImages: () => allImages,
-    updateStatusBar,
+    getAllImages: () => allImages, updateStatusBar,
+    // v3 additions
+    filterByFolder, filterByTag, clearTagFilter, getAllTags,
+    addTagToSelected, removeTagFromSelected, addImageBatch,
   };
 })();
 
@@ -458,11 +601,50 @@ const ContextMenu = (() => {
         }
         break;
       }
+      case 'rename': {
+        if (selected.length === 1) {
+          const img = selected[0];
+          const oldName = img.filename;
+          // Use prompt-style rename (modal would be better, but keeping it simple)
+          const ext = oldName.split('.').pop();
+          const stem = oldName.substring(0, oldName.lastIndexOf('.'));
+          // Trigger inline rename via a prompt toast
+          const newName = prompt('Новое имя файла:', stem);
+          if (newName && newName !== stem) {
+            const sep = img.path.includes('/') ? '/' : '\\';
+            const dir = img.path.substring(0, img.path.lastIndexOf(sep));
+            const newPath = `${dir}${sep}${newName}.${ext}`;
+            try {
+              await API.batchRename([[img.path, newPath]]);
+              img.path = newPath;
+              img.filename = `${newName}.${ext}`;
+              Gallery.applyFilters();
+              Utils.toast('Файл переименован', 'success');
+            } catch (err) {
+              Utils.toast(`Ошибка переименования: ${err}`, 'error');
+            }
+          }
+        } else if (selected.length > 1) {
+          if (typeof BatchOps !== 'undefined') {
+            BatchOps.showRenameModal();
+          }
+        }
+        break;
+      }
+      case 'export': {
+        if (typeof BatchOps !== 'undefined') {
+          BatchOps.showExportModal();
+        }
+        break;
+      }
       case 'delete': {
         const ok = await API.askConfirm(`Удалить ${selected.length} файл(ов) в корзину WiPhoto?`);
         if (ok) {
           const deleted = await API.deleteFiles(selected.map(i => i.path));
           Gallery.removeImages(deleted);
+          if (typeof Sidebar !== 'undefined' && typeof App !== 'undefined' && App.currentFolder) {
+            Sidebar.loadFolderTree(App.currentFolder);
+          }
           Utils.toast(`Удалено: ${deleted.length}`, 'success');
         }
         break;

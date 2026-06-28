@@ -2,7 +2,7 @@ mod commands;
 mod models;
 
 use commands::{
-    duplicates, editor, file_ops, metadata, scanner, settings, thumbnails, xmp,
+    duplicates, editor, export, file_ops, metadata, scanner, settings, thumbnails, xmp,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,6 +29,9 @@ pub fn run() {
             file_ops::delete_permanently,
             file_ops::batch_rename,
             file_ops::get_folder_tree,
+            file_ops::list_trash,
+            file_ops::restore_from_trash,
+            file_ops::empty_trash,
             // Duplicates
             duplicates::find_duplicates,
             duplicates::get_duplicate_stats,
@@ -37,8 +40,11 @@ pub fn run() {
             editor::apply_edit,
             editor::save_edited,
             editor::crop_image,
+            editor::save_cropped_edited_image,
             editor::get_histogram,
             editor::get_color_palette,
+            // Export
+            export::export_files,
             // Settings
             settings::load_settings,
             settings::save_settings,

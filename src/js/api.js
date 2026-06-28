@@ -24,6 +24,9 @@ const API = {
   deletePermanently: (paths) => invoke('delete_permanently', { paths }),
   batchRename: (renameMap) => invoke('batch_rename', { renameMap }),
   getFolderTree: (rootPath) => invoke('get_folder_tree', { rootPath }),
+  listTrash: () => invoke('list_trash'),
+  restoreFromTrash: (filename) => invoke('restore_from_trash', { filename }),
+  emptyTrash: () => invoke('empty_trash'),
 
   // ─── Duplicates ───
   findDuplicates: (paths, method, threshold) => invoke('find_duplicates', { paths, method, threshold }),
@@ -34,8 +37,14 @@ const API = {
   applyEdit: (path, operations, maxPreviewSize) => invoke('apply_edit', { path, operations, maxPreviewSize: maxPreviewSize || null }),
   saveEdited: (path, operations, outputPath, quality) => invoke('save_edited', { path, operations, outputPath: outputPath || null, quality: quality || null }),
   cropImage: (path, x, y, width, height) => invoke('crop_image', { path, x, y, width, height }),
+  saveCroppedEditedImage: (path, cropRect, operations, outputPath, quality) =>
+    invoke('save_cropped_edited_image', { path, cropRect: cropRect || null, operations, outputPath: outputPath || null, quality: quality || null }),
   getHistogram: (path) => invoke('get_histogram', { path }),
   getColorPalette: (path, count) => invoke('get_color_palette', { path, count: count || null }),
+
+  // ─── Export ───
+  exportFiles: (paths, destDir, format, quality, maxWidth, maxHeight, watermarkText) =>
+    invoke('export_files', { paths, destDir, format, quality, maxWidth: maxWidth || null, maxHeight: maxHeight || null, watermarkText: watermarkText || null }),
 
   // ─── Settings ───
   loadSettings: () => invoke('load_settings'),
@@ -51,6 +60,8 @@ const API = {
   // ─── Events ───
   onScanProgress: (callback) => listen('scan-progress', (event) => callback(event.payload)),
   onScanFinished: (callback) => listen('scan-finished', (event) => callback(event.payload)),
+  onImageScanned: (callback) => listen('image-scanned', (event) => callback(event.payload)),
+  onFileDrop: (callback) => listen('tauri://drag-drop', (event) => callback(event.payload)),
 
   // ─── Dialogs ───
   openFolderDialog: () => openDialog({ directory: true, multiple: false, title: 'Выберите папку с фотографиями' }),

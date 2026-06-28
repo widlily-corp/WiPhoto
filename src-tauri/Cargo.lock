@@ -5947,8 +5947,9 @@ dependencies = [
 
 [[package]]
 name = "wiphoto"
-version = "2.4.4"
+version = "3.0.0"
 dependencies = [
+ "ab_glyph",
  "base64 0.22.1",
  "chrono",
  "dirs",

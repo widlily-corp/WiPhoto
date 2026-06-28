@@ -2,50 +2,118 @@
 
 const Welcome = (() => {
   function init() {
-    document.getElementById('btn-select-folder')?.addEventListener('click', selectFolder);
+    document.getElementById('btn-select-folder')?.addEventListener('click', () => selectFolder());
+
+    // Listen to external OS drag-drop on welcome screen
+    if (typeof API.onFileDrop === 'function') {
+      API.onFileDrop((payload) => {
+        const isWelcomeActive = document.getElementById('welcome-screen')?.classList.contains('active');
+        if (isWelcomeActive && payload.paths && payload.paths.length > 0) {
+          selectFolder(payload.paths[0]);
+        }
+      });
+    }
   }
 
-  async function selectFolder() {
+  async function selectFolder(folderPath = null) {
+    let unlistenProgress = null;
+    let unlistenScanned = null;
+    let batchInterval = null;
+
     try {
-      const folder = await API.openFolderDialog();
+      const folder = folderPath || await API.openFolderDialog();
       if (!folder) return;
 
       const recursive = document.getElementById('checkbox-recursive')?.checked ?? true;
 
-      // Show progress
+      // Show progress container on welcome (just in case they see it before switch)
       const progressEl = document.getElementById('scan-progress');
-      progressEl?.classList.remove('hidden');
-      document.getElementById('progress-text').textContent = 'Подготовка к сканированию...';
-      document.getElementById('progress-fill').style.width = '0%';
+      if (progressEl) {
+        progressEl.classList.remove('hidden');
+        document.getElementById('progress-text').textContent = 'Подготовка к сканированию...';
+        document.getElementById('progress-fill').style.width = '0%';
+      }
+
+      // Reset gallery and transition to main app instantly
+      Gallery.setImages([]);
+      Sidebar.loadFolderTree(folder);
+      document.getElementById('welcome-screen').classList.remove('active');
+      document.getElementById('main-app').classList.add('active');
+      App.currentFolder = folder;
+
+      const galleryProgressEl = document.getElementById('gallery-scan-progress');
+      const galleryProgressBar = document.getElementById('gallery-progress-bar');
+      if (galleryProgressEl) {
+        galleryProgressEl.classList.remove('hidden');
+        if (galleryProgressBar) galleryProgressBar.style.width = '0%';
+      }
+
+      let scanBuffer = [];
+      batchInterval = setInterval(() => {
+        if (scanBuffer.length > 0) {
+          Gallery.addImageBatch(scanBuffer);
+          scanBuffer = [];
+        }
+      }, 150);
 
       // Listen for progress events
-      API.onScanProgress((data) => {
+      unlistenProgress = await API.onScanProgress((data) => {
         const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-        document.getElementById('progress-fill').style.width = `${pct}%`;
-        document.getElementById('progress-text').textContent = `Сканирование: ${data.current} / ${data.total}`;
+        if (progressEl) {
+          document.getElementById('progress-fill').style.width = `${pct}%`;
+          document.getElementById('progress-text').textContent = `Сканирование: ${data.current} / ${data.total}`;
+        }
+        if (galleryProgressBar) {
+          galleryProgressBar.style.width = `${pct}%`;
+        }
+        const fn = data.current_file ? Utils.getFilename(data.current_file) : '';
+        document.getElementById('status-text').textContent = `Сканирование: ${data.current} / ${data.total} │ ${fn}`;
+      });
+
+      // Listen for progressive image scans
+      unlistenScanned = await API.onImageScanned((info) => {
+        scanBuffer.push(info);
       });
 
       // Start scan
       const images = await API.scanFolder(folder, recursive);
 
+      // Clear interval and unlisten
+      if (batchInterval) clearInterval(batchInterval);
+      if (unlistenProgress) unlistenProgress();
+      if (unlistenScanned) unlistenScanned();
+
+      if (galleryProgressEl) {
+        galleryProgressEl.classList.add('hidden');
+      }
+
+      // Final batch render
+      if (scanBuffer.length > 0) {
+        Gallery.addImageBatch(scanBuffer);
+        scanBuffer = [];
+      }
+
       if (images.length === 0) {
         Utils.toast('Нет файлов для отображения', 'warning');
-        progressEl?.classList.add('hidden');
+        document.getElementById('welcome-screen').classList.add('active');
+        document.getElementById('main-app').classList.remove('active');
+        if (progressEl) progressEl.classList.add('hidden');
         return;
       }
 
-      // Switch to main app
+      // Final synchronization & sorting
       Gallery.setImages(images);
-      Sidebar.loadFolderTree(folder);
-
-      document.getElementById('welcome-screen').classList.remove('active');
-      document.getElementById('main-app').classList.add('active');
-
       Utils.toast(`Загружено файлов: ${images.length}`, 'success');
-      App.currentFolder = folder;
     } catch (err) {
-      Utils.toast(`Ошибка: ${err}`, 'error');
+      if (batchInterval) clearInterval(batchInterval);
+      if (unlistenProgress) unlistenProgress();
+      if (unlistenScanned) unlistenScanned();
+
+      Utils.toast(`Ошибка сканирования: ${err}`, 'error');
+      document.getElementById('welcome-screen').classList.add('active');
+      document.getElementById('main-app').classList.remove('active');
       document.getElementById('scan-progress')?.classList.add('hidden');
+      document.getElementById('gallery-scan-progress')?.classList.add('hidden');
     }
   }
 
