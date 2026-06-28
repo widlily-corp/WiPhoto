@@ -24,6 +24,8 @@ const Welcome = (() => {
       const folder = folderPath || await API.openFolderDialog();
       if (!folder) return;
 
+      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] selectFolder initiated for folder: " + folder);
+
       const recursive = document.getElementById('checkbox-recursive')?.checked ?? true;
 
       // Show progress container on welcome (just in case they see it before switch)
@@ -75,8 +77,10 @@ const Welcome = (() => {
         scanBuffer.push(info);
       });
 
+      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Starting API.scanFolder IPC call");
       // Start scan
       const images = await API.scanFolder(folder, recursive);
+      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] API.scanFolder resolved with " + (images ? images.length : 'null') + " images");
 
       // Clear interval and unlisten
       if (batchInterval) clearInterval(batchInterval);
