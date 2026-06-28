@@ -78,6 +78,10 @@ const VirtualGrid = (() => {
     thumbSize = newThumbSize || thumbSize;
     isActive = true;
 
+    // Reset visible range to force rendering after container clear
+    visibleStartRow = -1;
+    visibleEndRow = -1;
+
     // Clear existing
     container.innerHTML = '';
     renderedCards.clear();
