@@ -337,6 +337,7 @@ body {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr var(--sidebar-width);
   flex: 1;
+  height: calc(100vh - var(--toolbar-height));
   overflow: hidden;
   min-height: 0;
 }
