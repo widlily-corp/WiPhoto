@@ -760,6 +760,24 @@
 
   <!-- Scripts -->
   <script src="js/api.js"></script>
+  <script>
+    window.onerror = function (message, source, lineno, colno, error) {
+      const errStr = `${message} at ${source}:${lineno}:${colno}` + (error ? `\nStack: ${error.stack}` : '');
+      if (window.API && window.API.logJs) {
+        window.API.logJs(errStr);
+      } else {
+        console.error(errStr);
+      }
+    };
+    window.onunhandledrejection = function (event) {
+      const errStr = `Unhandled Promise Rejection: ${event.reason}` + (event.reason && event.reason.stack ? `\nStack: ${event.reason.stack}` : '');
+      if (window.API && window.API.logJs) {
+        window.API.logJs(errStr);
+      } else {
+        console.error(errStr);
+      }
+    };
+  </script>
   <script src="js/utils.js"></script>
   <script src="js/virtualgrid.js"></script>
   <script src="js/gallery.js"></script>

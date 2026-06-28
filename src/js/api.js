@@ -8,6 +8,7 @@ const API = {
   // ─── Scanner ───
   scanFolder: (path, recursive) => invoke('scan_folder', { path, recursive }),
   countFiles: (path, recursive) => invoke('count_files', { path, recursive }),
+  logJs: (message) => invoke('log_js', { message }),
 
   // ─── Thumbnails ───
   getThumbnail: (path) => invoke('get_thumbnail', { path }),

@@ -349,3 +349,9 @@ pub async fn scan_folder(
 pub fn count_files(path: String, recursive: bool) -> u32 {
     collect_files(&path, recursive).len() as u32
 }
+
+/// JS error logger command
+#[tauri::command]
+pub fn log_js(message: String) {
+    log::error!("[JS-Frontend] {}", message);
+}

@@ -56,6 +56,8 @@ pub fn run() {
             // XMP
             xmp::read_xmp_sidecar,
             xmp::write_xmp_sidecar,
+            // Logger
+            scanner::log_js,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
