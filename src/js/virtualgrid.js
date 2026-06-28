@@ -74,6 +74,7 @@ const VirtualGrid = (() => {
   }
 
   function setItems(newItems, newThumbSize) {
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.setItems called, newItems count: " + newItems.length);
     items = newItems;
     thumbSize = newThumbSize || thumbSize;
     isActive = true;
@@ -108,6 +109,10 @@ const VirtualGrid = (() => {
     rowHeight = thumbSize + gap;
     totalRows = Math.ceil(items.length / columns);
     const totalHeight = totalRows * rowHeight;
+    
+    if (window.API && window.API.logJs) {
+      window.API.logJs(`[JS-Trace] VirtualGrid.recalculate: scrollContainer clientWidth=${scrollContainer.clientWidth}, containerWidth=${containerWidth}, columns=${columns}, totalRows=${totalRows}`);
+    }
 
     // Set grid layout on content area
     contentArea.style.display = 'grid';
@@ -133,9 +138,16 @@ const VirtualGrid = (() => {
       totalRows - 1,
       Math.ceil((scrollTop + viewportHeight) / rowHeight) + bufferRows
     );
+    
+    if (window.API && window.API.logJs) {
+      window.API.logJs(`[JS-Trace] VirtualGrid.renderVisible: scrollTop=${scrollTop}, viewportHeight=${viewportHeight}, rowHeight=${rowHeight}, newStartRow=${newStartRow}, newEndRow=${newEndRow}`);
+    }
 
     // Early exit if nothing changed
-    if (newStartRow === visibleStartRow && newEndRow === visibleEndRow) return;
+    if (newStartRow === visibleStartRow && newEndRow === visibleEndRow) {
+      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.renderVisible early exit (nothing changed)");
+      return;
+    }
 
     visibleStartRow = newStartRow;
     visibleEndRow = newEndRow;
@@ -148,6 +160,10 @@ const VirtualGrid = (() => {
     // Determine which items to render
     const startIdx = visibleStartRow * columns;
     const endIdx = Math.min((visibleEndRow + 1) * columns, items.length);
+    
+    if (window.API && window.API.logJs) {
+      window.API.logJs(`[JS-Trace] VirtualGrid.renderVisible rendering items range: ${startIdx} to ${endIdx}`);
+    }
 
     // Build new content
     const fragment = document.createDocumentFragment();
@@ -160,6 +176,7 @@ const VirtualGrid = (() => {
     contentArea.appendChild(fragment);
 
     updateSpacers();
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.renderVisible complete, appended items count: " + contentArea.children.length);
   }
 
   function updateSpacers() {
