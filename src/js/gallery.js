@@ -110,12 +110,15 @@ const Gallery = (() => {
   }
 
   function setImages(images) {
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.setImages called with: " + images.length + " images");
     allImages = images;
     updateBadges();
     applyFilters();
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.setImages finished applying filters");
     if (typeof Sidebar !== 'undefined') {
       Sidebar.updateLibraryStats(allImages);
     }
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.setImages complete");
   }
 
   function addImage(info) {
@@ -220,6 +223,7 @@ const Gallery = (() => {
     });
 
     filteredImages = images;
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.applyFilters: filteredImages count: " + filteredImages.length);
     renderGrid();
     if (typeof Tags !== 'undefined') {
       Tags.renderGlobalTags();
@@ -228,14 +232,17 @@ const Gallery = (() => {
 
   function renderGrid() {
     selectedIndices.clear();
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.renderGrid: filteredImages count: " + filteredImages.length);
 
     if (filteredImages.length === 0) {
+      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.renderGrid: emptyState shown");
       emptyState().classList.remove('hidden');
       grid().classList.add('hidden');
       updateStatusBar();
       return;
     }
 
+    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Gallery.renderGrid: displaying grid and calling VirtualGrid.setItems");
     emptyState().classList.add('hidden');
     grid().classList.remove('hidden');
     grid().style.setProperty('--thumb-size', `${thumbSize}px`);
