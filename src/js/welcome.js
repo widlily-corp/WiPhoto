@@ -108,6 +108,22 @@ const Welcome = (() => {
       // Final synchronization & sorting
       Gallery.setImages(images);
       Utils.toast(`Загружено файлов: ${images.length}`, 'success');
+
+      setTimeout(() => {
+        const mainApp = document.getElementById('main-app');
+        const mainContent = document.querySelector('.main-content');
+        const centerArea = document.getElementById('center-area');
+        const viewGallery = document.getElementById('view-gallery');
+        const galleryGrid = document.getElementById('gallery-grid');
+        
+        const report = `[JS-Trace] DOM layout dimensions report:
+- #main-app: clientWidth=${mainApp?.clientWidth}, clientHeight=${mainApp?.clientHeight}
+- .main-content: clientWidth=${mainContent?.clientWidth}, clientHeight=${mainContent?.clientHeight}
+- #center-area: clientWidth=${centerArea?.clientWidth}, clientHeight=${centerArea?.clientHeight}
+- #view-gallery: clientWidth=${viewGallery?.clientWidth}, clientHeight=${viewGallery?.clientHeight}
+- #gallery-grid: clientWidth=${galleryGrid?.clientWidth}, clientHeight=${galleryGrid?.clientHeight}`;
+        if (window.API && window.API.logJs) window.API.logJs(report);
+      }, 800);
     } catch (err) {
       if (batchInterval) clearInterval(batchInterval);
       if (unlistenProgress) unlistenProgress();
