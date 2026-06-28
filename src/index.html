@@ -15,6 +15,35 @@
   <link rel="stylesheet" href="styles/editor.css" />
   <link rel="stylesheet" href="styles/crop.css" />
   <link rel="stylesheet" href="styles/commandpalette.css" />
+  <style>
+    #main-app {
+      display: flex !important;
+      flex-direction: column !important;
+      height: 100vh !important;
+      width: 100vw !important;
+      position: fixed !important;
+      inset: 0 !important;
+    }
+    #main-content {
+      display: grid !important;
+      height: calc(100vh - 48px) !important;
+      flex: 1 !important;
+      min-height: 0 !important;
+    }
+    #center-area {
+      height: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      min-height: 0 !important;
+    }
+    #view-gallery {
+      height: 100% !important;
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      min-height: 0 !important;
+    }
+  </style>
 </head>
 <body>
   <!-- ═══════ WELCOME SCREEN ═══════ -->
