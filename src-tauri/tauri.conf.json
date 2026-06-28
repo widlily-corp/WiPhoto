@@ -12,6 +12,7 @@
       {
         "label": "main",
         "title": "WiPhoto",
+        "url": "index.html",
         "width": 1600,
         "height": 900,
         "minWidth": 1024,

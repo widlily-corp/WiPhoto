@@ -9,6 +9,7 @@ pub fn apply_edit(
     operations: Vec<EditOp>,
     max_preview_size: Option<u32>,
 ) -> Result<String, String> {
+    log::info!("apply_edit called for image: {} with {} operations", path, operations.len());
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
     // Resize for preview if needed
@@ -40,6 +41,7 @@ pub fn save_edited(
     output_path: Option<String>,
     quality: Option<u8>,
 ) -> Result<String, String> {
+    log::info!("save_edited called for image: {}, output: {:?}", path, output_path);
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
     for op in &operations {

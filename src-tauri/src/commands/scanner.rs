@@ -285,6 +285,7 @@ pub async fn scan_folder(
     path: String,
     recursive: bool,
 ) -> Result<Vec<ImageInfo>, String> {
+    log::info!("Starting folder scan: {} (recursive={})", path, recursive);
     let cache_dir = dirs::home_dir()
         .unwrap_or_default()
         .join(".wiphoto")
@@ -294,8 +295,10 @@ pub async fn scan_folder(
 
     let files = collect_files(&path, recursive);
     let total = files.len() as u32;
+    log::info!("Found {} files to scan", total);
 
     if total == 0 {
+        log::info!("Scan completed. No files found.");
         return Ok(vec![]);
     }
 
@@ -332,6 +335,7 @@ pub async fn scan_folder(
     let mut final_results = results.into_inner().unwrap();
     // Sort by path for consistency
     final_results.sort_by(|a, b| a.path.cmp(&b.path));
+    log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
 
     let _ = app.emit("scan-finished", serde_json::json!({
         "total": final_results.len()
