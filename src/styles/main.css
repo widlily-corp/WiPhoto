@@ -200,7 +200,29 @@ body {
 }
 
 .toolbar-group.view-modes {
-  gap: 0;
+  gap: 2px;
+  background: var(--bg-primary);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--border-normal);
+}
+
+.toolbar-group.view-modes .toolbar-btn {
+  border-radius: 4px;
+  padding: 4px 10px;
+  height: 26px;
+  border: none;
+}
+
+.toolbar-group.view-modes .toolbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-group.view-modes .toolbar-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .toolbar-divider {
@@ -381,6 +403,93 @@ body {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   z-index: 10;
+}
+
+/* ── Contextual Action Bar ── */
+.contextual-bar {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%) translateY(0);
+  z-index: 700;
+  background: rgba(16, 17, 20, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-normal);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  padding: 8px 16px;
+  opacity: 1;
+  transition: transform 250ms cubic-bezier(0.32, 0.72, 0, 1), opacity 200ms ease;
+  pointer-events: all;
+}
+
+.contextual-bar.hidden {
+  display: flex !important; /* Override standard display none to allow transition */
+  transform: translateX(-50%) translateY(24px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.contextual-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.contextual-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.contextual-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contextual-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 100ms ease;
+}
+
+.contextual-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.contextual-btn:active {
+  transform: scale(0.97);
+}
+
+.contextual-btn.btn-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.contextual-btn.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+}
+
+.contextual-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-normal);
+  margin: 0 4px;
 }
 
 /* ── Scrollbar ── */
