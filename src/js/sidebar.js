@@ -1,6 +1,8 @@
 // ═══ Sidebar Module ═══
 
 const Sidebar = (() => {
+  let computeTimer = null;
+
   function init() {
     // Toggle buttons
     document.getElementById('toggle-left')?.addEventListener('click', () => {
@@ -31,6 +33,7 @@ const Sidebar = (() => {
       
       area.appendChild(img);
     } catch (err) {
+      Logger.error('Sidebar', `Failed to show preview for ${imageInfo.path}`, err);
       area.innerHTML = '<span class="preview-placeholder">Ошибка загрузки</span>';
     }
 
@@ -57,108 +60,113 @@ const Sidebar = (() => {
         ]);
         table.appendChild(row);
       });
-    } catch {
+    } catch (err) {
+      Logger.warn('Sidebar', `Failed to load metadata for ${path}`, err);
       table.innerHTML = '<div class="meta-row"><span class="meta-key">Ошибка чтения EXIF</span></div>';
     }
   }
 
   function computeAndDrawHistogramAndPalette(img) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Scale down image for fast pixel extraction (100x100 is extremely fast and accurate)
-    canvas.width = 100;
-    canvas.height = 100;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    
-    let imgData;
-    try {
-      imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    } catch {
-      return;
-    }
-    
-    const data = imgData.data;
-    const len = data.length;
-    
-    // ─── Calculate Histogram ───
-    const rHist = new Uint32Array(256);
-    const gHist = new Uint32Array(256);
-    const bHist = new Uint32Array(256);
-    const lHist = new Uint32Array(256);
-    
-    for (let i = 0; i < len; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    clearTimeout(computeTimer);
+    computeTimer = setTimeout(() => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       
-      rHist[r]++;
-      gHist[g]++;
-      bHist[b]++;
-      lHist[lum]++;
-    }
-    
-    const histData = {
-      red: Array.from(rHist),
-      green: Array.from(gHist),
-      blue: Array.from(bHist),
-      luminance: Array.from(lHist)
-    };
-    
-    // Draw histogram
-    const histCanvas = document.getElementById('histogram-canvas');
-    if (histCanvas) {
-      drawHistogram(histCanvas, histData);
-    }
-    
-    // ─── Calculate Color Palette ───
-    const colorCounts = {};
-    for (let i = 0; i < len; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
+      // Scale down image for fast pixel extraction (100x100 is extremely fast and accurate)
+      canvas.width = 100;
+      canvas.height = 100;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
-      // Quantize to group similar colors (step of 32 reduces space to 8x8x8)
-      const qr = Math.round(r / 32) * 32;
-      const qg = Math.round(g / 32) * 32;
-      const qb = Math.round(b / 32) * 32;
-      const key = `${qr},${qg},${qb}`;
-      colorCounts[key] = (colorCounts[key] || 0) + 1;
-    }
-    
-    // Sort colors by popularity
-    const sortedBins = Object.keys(colorCounts).sort((a, b) => colorCounts[b] - colorCounts[a]);
-    
-    const rgbToHex = (r, g, b) => {
-      const clamp = (val) => Math.min(255, Math.max(0, val));
-      const hex = (x) => clamp(x).toString(16).padStart(2, '0');
-      return `#${hex(r)}${hex(g)}${hex(b)}`;
-    };
-    
-    const palette = [];
-    const colorDistance = (hex1, hex2) => {
-      const parse = (h) => [
-        parseInt(h.slice(1, 3), 16),
-        parseInt(h.slice(3, 5), 16),
-        parseInt(h.slice(5, 7), 16)
-      ];
-      const [r1, g1, b1] = parse(hex1);
-      const [r2, g2, b2] = parse(hex2);
-      return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
-    };
-    
-    for (let i = 0; i < sortedBins.length && palette.length < 8; i++) {
-      const [r, g, b] = sortedBins[i].split(',').map(Number);
-      const hex = rgbToHex(r, g, b);
-      
-      // Filter out colors that are too close to existing palette colors
-      if (!palette.some(existing => colorDistance(existing, hex) < 45)) {
-        palette.push(hex);
+      let imgData;
+      try {
+        imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      } catch (err) {
+        Logger.debug('Sidebar', `Failed to get image data for histogram/palette: ${err}`);
+        return;
       }
-    }
-    
-    drawColorPalette(palette);
+      
+      const data = imgData.data;
+      const len = data.length;
+      
+      // ─── Calculate Histogram ───
+      const rHist = new Uint32Array(256);
+      const gHist = new Uint32Array(256);
+      const bHist = new Uint32Array(256);
+      const lHist = new Uint32Array(256);
+      
+      for (let i = 0; i < len; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const lum = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        
+        rHist[r]++;
+        gHist[g]++;
+        bHist[b]++;
+        lHist[lum]++;
+      }
+      
+      const histData = {
+        red: Array.from(rHist),
+        green: Array.from(gHist),
+        blue: Array.from(bHist),
+        luminance: Array.from(lHist)
+      };
+      
+      // Draw histogram
+      const histCanvas = document.getElementById('histogram-canvas');
+      if (histCanvas) {
+        drawHistogram(histCanvas, histData);
+      }
+      
+      // ─── Calculate Color Palette ───
+      const colorCounts = {};
+      for (let i = 0; i < len; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        // Quantize to group similar colors (step of 32 reduces space to 8x8x8)
+        const qr = Math.round(r / 32) * 32;
+        const qg = Math.round(g / 32) * 32;
+        const qb = Math.round(b / 32) * 32;
+        const key = `${qr},${qg},${qb}`;
+        colorCounts[key] = (colorCounts[key] || 0) + 1;
+      }
+      
+      // Sort colors by popularity
+      const sortedBins = Object.keys(colorCounts).sort((a, b) => colorCounts[b] - colorCounts[a]);
+      
+      const rgbToHex = (r, g, b) => {
+        const clamp = (val) => Math.min(255, Math.max(0, val));
+        const hex = (x) => clamp(x).toString(16).padStart(2, '0');
+        return `#${hex(r)}${hex(g)}${hex(b)}`;
+      };
+      
+      const palette = [];
+      const colorDistance = (hex1, hex2) => {
+        const parse = (h) => [
+          parseInt(h.slice(1, 3), 16),
+          parseInt(h.slice(3, 5), 16),
+          parseInt(h.slice(5, 7), 16)
+        ];
+        const [r1, g1, b1] = parse(hex1);
+        const [r2, g2, b2] = parse(hex2);
+        return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
+      };
+      
+      for (let i = 0; i < sortedBins.length && palette.length < 8; i++) {
+        const [r, g, b] = sortedBins[i].split(',').map(Number);
+        const hex = rgbToHex(r, g, b);
+        
+        // Filter out colors that are too close to existing palette colors
+        if (!palette.some(existing => colorDistance(existing, hex) < 45)) {
+          palette.push(hex);
+        }
+      }
+      
+      drawColorPalette(palette);
+    }, 150);
   }
 
   function drawHistogram(canvas, data) {
@@ -263,7 +271,8 @@ const Sidebar = (() => {
       const tree = await API.getFolderTree(rootPath);
       container.innerHTML = '';
       renderFolderNodes(container, tree);
-    } catch {
+    } catch (err) {
+      Logger.error('Sidebar', `Failed to load folder tree for ${rootPath}`, err);
       container.innerHTML = '<div style="color:var(--text-muted);font-size:11px;padding:4px 8px">Не удалось загрузить дерево</div>';
     }
   }

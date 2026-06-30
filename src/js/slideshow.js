@@ -104,7 +104,8 @@ const Slideshow = (() => {
       };
       tempImg.src = Utils.base64Src(b64);
       
-    } catch {
+    } catch (err) {
+      Logger.error('Slideshow', `Failed to load slide at ${imgInfo.path}`, err);
       img.src = '';
       img.style.opacity = '0.3'; // Dimmed fallback
     }

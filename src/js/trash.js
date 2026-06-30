@@ -29,7 +29,8 @@ const Trash = (() => {
     try {
       const items = await API.listTrash();
       updateBadge(items.length);
-    } catch {
+    } catch (err) {
+      Logger.warn('Trash', "Failed to load badge count", err);
       updateBadge(0);
     }
   }
@@ -54,37 +55,34 @@ const Trash = (() => {
       const fragment = document.createDocumentFragment();
       items.forEach(item => {
         const itemRow = Utils.el('div', {
-          className: 'trash-item-row',
-          style: 'display:flex;align-items:center;gap:12px;padding:8px;border-bottom:1px solid var(--border-subtle);'
+          className: 'trash-item-row'
         }, [
           // Previews
           Utils.el('img', {
-            src: item.thumbnail ? Utils.base64Src(item.thumbnail) : '',
-            style: 'width:40px;height:40px;object-fit:cover;border-radius:var(--radius-sm);background:var(--bg-primary);'
+            className: 'trash-item-thumb',
+            src: item.thumbnail ? Utils.base64Src(item.thumbnail) : ''
           }),
           // Info
-          Utils.el('div', { style: 'flex:1;min-width:0;' }, [
+          Utils.el('div', { className: 'trash-item-info' }, [
             Utils.el('div', {
-              textContent: item.filename,
-              style: 'font-size:var(--font-size-sm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary);'
+              className: 'trash-item-name',
+              textContent: item.filename
             }),
             Utils.el('div', {
-              textContent: `Из: ${item.original_path}`,
-              style: 'font-size:var(--font-size-xs);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+              className: 'trash-item-path',
+              textContent: `Из: ${item.original_path}`
             })
           ]),
           // Actions
-          Utils.el('div', { style: 'display:flex;gap:6px;' }, [
+          Utils.el('div', { className: 'trash-item-actions' }, [
             Utils.el('button', {
-              className: 'btn btn-secondary btn-sm',
+              className: 'btn btn-secondary btn-sm btn-trash-action',
               textContent: 'Восстановить',
-              style: 'padding:4px 8px;font-size:11px;height:24px;',
               onClick: () => restore(item.filename)
             }),
             Utils.el('button', {
-              className: 'btn btn-danger btn-sm',
+              className: 'btn btn-danger btn-sm btn-trash-action btn-trash-delete-perm',
               textContent: 'Удалить',
-              style: 'padding:4px 8px;font-size:11px;height:24px;background:var(--color-danger);color:#fff;',
               onClick: () => deletePermanently(item.path, item.filename)
             })
           ])
@@ -93,7 +91,7 @@ const Trash = (() => {
       });
       list.appendChild(fragment);
     } catch (err) {
-      list.innerHTML = `<div style="color:var(--color-danger);font-size:var(--font-size-sm);padding:12px;text-align:center;">Ошибка: ${err}</div>`;
+      list.innerHTML = `<div class="trash-error-msg">Ошибка: ${err}</div>`;
     }
   }
 

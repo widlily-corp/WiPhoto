@@ -24,7 +24,7 @@ const Welcome = (() => {
       const folder = folderPath || await API.openFolderDialog();
       if (!folder) return;
 
-      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] selectFolder initiated for folder: " + folder);
+      Logger.debug('Welcome', "selectFolder initiated for folder: " + folder);
 
       const recursive = document.getElementById('checkbox-recursive')?.checked ?? true;
 
@@ -77,10 +77,10 @@ const Welcome = (() => {
         scanBuffer.push(info);
       });
 
-      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] Starting API.scanFolder IPC call");
+      Logger.debug('Welcome', "Starting API.scanFolder IPC call");
       // Start scan
       const images = await API.scanFolder(folder, recursive);
-      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] API.scanFolder resolved with " + (images ? images.length : 'null') + " images");
+      Logger.debug('Welcome', "API.scanFolder resolved with " + (images ? images.length : 'null') + " images");
 
       // Clear interval and unlisten
       if (batchInterval) clearInterval(batchInterval);
@@ -109,26 +109,30 @@ const Welcome = (() => {
       Gallery.setImages(images);
       Utils.toast(`Загружено файлов: ${images.length}`, 'success');
 
-      setTimeout(() => {
-        const mainApp = document.getElementById('main-app');
-        const mainContent = document.querySelector('.main-content');
-        const centerArea = document.getElementById('center-area');
-        const viewGallery = document.getElementById('view-gallery');
-        const galleryGrid = document.getElementById('gallery-grid');
-        
-        const report = `[JS-Trace] DOM layout dimensions report:
+      // Layout report guarded with isDebug
+      if (Logger.isDebug()) {
+        setTimeout(() => {
+          const mainApp = document.getElementById('main-app');
+          const mainContent = document.querySelector('.main-content');
+          const centerArea = document.getElementById('center-area');
+          const viewGallery = document.getElementById('view-gallery');
+          const galleryGrid = document.getElementById('gallery-grid');
+          
+          const report = `DOM layout dimensions report:
 - #main-app: clientWidth=${mainApp?.clientWidth}, clientHeight=${mainApp?.clientHeight}
 - .main-content: clientWidth=${mainContent?.clientWidth}, clientHeight=${mainContent?.clientHeight}
 - #center-area: clientWidth=${centerArea?.clientWidth}, clientHeight=${centerArea?.clientHeight}
 - #view-gallery: clientWidth=${viewGallery?.clientWidth}, clientHeight=${viewGallery?.clientHeight}
 - #gallery-grid: clientWidth=${galleryGrid?.clientWidth}, clientHeight=${galleryGrid?.clientHeight}`;
-        if (window.API && window.API.logJs) window.API.logJs(report);
-      }, 800);
+          Logger.debug('Welcome', report);
+        }, 800);
+      }
     } catch (err) {
       if (batchInterval) clearInterval(batchInterval);
       if (unlistenProgress) unlistenProgress();
       if (unlistenScanned) unlistenScanned();
 
+      Logger.error('Welcome', "Scan folder failed", err);
       Utils.toast(`Ошибка сканирования: ${err}`, 'error');
       document.getElementById('welcome-screen').classList.add('active');
       document.getElementById('main-app').classList.remove('active');
@@ -137,7 +141,7 @@ const Welcome = (() => {
     }
   }
 
-  return { init };
+  return { init, selectFolder };
 })();
 
 window.Welcome = Welcome;

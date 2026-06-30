@@ -12,6 +12,7 @@ const Viewer = (() => {
   let isPanning = false;
   let startPanX = 0;
   let startPanY = 0;
+  let histogramTimer = null;
 
   function init() {
     document.getElementById('viewer-close')?.addEventListener('click', close);
@@ -97,7 +98,8 @@ const Viewer = (() => {
         imgEl.src = src;
         preloadCache.set(img.path, src);
       }
-    } catch {
+    } catch (err) {
+      Logger.error('Viewer', `Failed to load image at ${img.path}`, err);
       imgEl.src = '';
     }
 
@@ -155,8 +157,8 @@ const Viewer = (() => {
     try {
       const b64 = await API.loadFullImage(path, 3000);
       preloadCache.set(path, Utils.base64Src(b64));
-    } catch (e) {
-      // Ignore
+    } catch (err) {
+      Logger.debug('Viewer', `Failed to preload image at ${path}: ${err}`);
     }
   }
 
@@ -302,16 +304,21 @@ const Viewer = (() => {
 
     try {
       const data = await API.readExif(path);
-      const cam = data.camera_model || 'Unknown Camera';
-      const lens = data.lens_model ? `\n${data.lens_model}` : '';
-      const exp = data.exposure_time || '';
-      const f = data.f_number ? `f/${data.f_number}` : '';
-      const iso = data.iso_speed ? `ISO ${data.iso_speed}` : '';
-      const focal = data.focal_length ? `${data.focal_length}mm` : '';
+      const cam = data.find(e => e.key === 'Камера')?.value || 'Unknown Camera';
+      const lens = data.find(e => e.key === 'Объектив')?.value;
+      const lensStr = lens ? `\n${lens}` : '';
+      const exp = data.find(e => e.key === 'Выдержка')?.value || '';
+      const f = data.find(e => e.key === 'Диафрагма')?.value;
+      const fStr = f ? `f/${f}` : '';
+      const iso = data.find(e => e.key === 'ISO')?.value;
+      const isoStr = iso ? `ISO ${iso}` : '';
+      const focal = data.find(e => e.key === 'Фокусное расстояние')?.value;
+      const focalStr = focal ? `${focal}mm` : '';
       
-      const settings = [exp, f, iso, focal].filter(Boolean).join('  ');
-      exifEl.textContent = `${cam}${lens}\n${settings}`;
-    } catch {
+      const settings = [exp, fStr, isoStr, focalStr].filter(Boolean).join('  ');
+      exifEl.textContent = `${cam}${lensStr}\n${settings}`;
+    } catch (err) {
+      Logger.warn('Viewer', `Failed to load EXIF for ${path}`, err);
       exifEl.textContent = 'EXIF не найден';
     }
   }
@@ -323,56 +330,59 @@ const Viewer = (() => {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Create a scaling canvas to sample pixels quickly
-    const sampleCanvas = document.createElement('canvas');
-    sampleCanvas.width = 120;
-    sampleCanvas.height = 80;
-    const sampleCtx = sampleCanvas.getContext('2d');
+    clearTimeout(histogramTimer);
+    histogramTimer = setTimeout(() => {
+      // Create a scaling canvas to sample pixels quickly
+      const sampleCanvas = document.createElement('canvas');
+      sampleCanvas.width = 120;
+      sampleCanvas.height = 80;
+      const sampleCtx = sampleCanvas.getContext('2d');
 
-    try {
-      sampleCtx.drawImage(img, 0, 0, sampleCanvas.width, sampleCanvas.height);
-      const imgData = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
-      const data = imgData.data;
+      try {
+        sampleCtx.drawImage(img, 0, 0, sampleCanvas.width, sampleCanvas.height);
+        const imgData = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+        const data = imgData.data;
 
-      const rHist = new Array(256).fill(0);
-      const gHist = new Array(256).fill(0);
-      const bHist = new Array(256).fill(0);
+        const rHist = new Array(256).fill(0);
+        const gHist = new Array(256).fill(0);
+        const bHist = new Array(256).fill(0);
 
-      for (let i = 0; i < data.length; i += 4) {
-        rHist[data[i]]++;
-        gHist[data[i + 1]]++;
-        bHist[data[i + 2]]++;
-      }
-
-      // Find max value to normalize height
-      const maxVal = Math.max(...rHist, ...gHist, ...bHist);
-      if (maxVal === 0) return;
-
-      const w = canvas.width;
-      const h = canvas.height;
-      const step = w / 256;
-
-      ctx.lineWidth = 1.5;
-      ctx.globalCompositeOperation = 'screen';
-
-      const drawChannel = (hist, color) => {
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        for (let i = 0; i < 256; i++) {
-          const x = i * step;
-          const y = h - (hist[i] / maxVal) * h * 0.9;
-          if (i === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        for (let i = 0; i < data.length; i += 4) {
+          rHist[data[i]]++;
+          gHist[data[i + 1]]++;
+          bHist[data[i + 2]]++;
         }
-        ctx.stroke();
-      };
 
-      drawChannel(rHist, 'rgba(239, 68, 68, 0.7)');
-      drawChannel(gHist, 'rgba(34, 197, 94, 0.7)');
-      drawChannel(bHist, 'rgba(59, 130, 246, 0.7)');
-    } catch {
-      // Quiet fail if canvas tainted by CORS
-    }
+        // Find max value to normalize height
+        const maxVal = Math.max(...rHist, ...gHist, ...bHist);
+        if (maxVal === 0) return;
+
+        const w = canvas.width;
+        const h = canvas.height;
+        const step = w / 256;
+
+        ctx.lineWidth = 1.5;
+        ctx.globalCompositeOperation = 'screen';
+
+        const drawChannel = (hist, color) => {
+          ctx.strokeStyle = color;
+          ctx.beginPath();
+          for (let i = 0; i < 256; i++) {
+            const x = i * step;
+            const y = h - (hist[i] / maxVal) * h * 0.9;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        };
+
+        drawChannel(rHist, 'rgba(239, 68, 68, 0.7)');
+        drawChannel(gHist, 'rgba(34, 197, 94, 0.7)');
+        drawChannel(bHist, 'rgba(59, 130, 246, 0.7)');
+      } catch (err) {
+        Logger.debug('Viewer', `Failed to draw histogram: ${err}`);
+      }
+    }, 150);
   }
 
   return { init, open, close };
