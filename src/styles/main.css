@@ -340,8 +340,8 @@ body {
 .main-content {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr var(--sidebar-width);
-  flex: 1;
-  height: calc(100% - var(--toolbar-height));
+  flex: 1 1 auto;
+  height: calc(100vh - 48px);
   overflow: hidden;
   min-height: 0;
 }
