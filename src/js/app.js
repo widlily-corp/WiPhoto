@@ -312,6 +312,23 @@ const App = (() => {
 
 // Bootstrap Application
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const info = [];
+    info.push(`window.__TAURI__ exists: ${!!window.__TAURI__}`);
+    if (window.__TAURI__) {
+      info.push(`window.__TAURI__.core exists: ${!!window.__TAURI__.core}`);
+      info.push(`window.__TAURI__.event exists: ${!!window.__TAURI__.event}`);
+      if (window.__TAURI__.event) {
+        info.push(`window.__TAURI__.event.listen type: ${typeof window.__TAURI__.event.listen}`);
+      }
+      info.push(`window.__TAURI__.dialog exists: ${!!window.__TAURI__.dialog}`);
+    }
+    if (window.API && typeof window.API.logJs === 'function') {
+      window.API.logJs(`Frontend init diagnostic:\n${info.join('\n')}`);
+    }
+  } catch (e) {
+    console.error(e);
+  }
   App.init();
   window.App = App;
 });
