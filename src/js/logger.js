@@ -9,7 +9,7 @@ const Logger = (() => {
     ERROR: 4,
   };
 
-  let currentLevel = Levels.INFO;
+  let currentLevel = Levels.DEBUG;
 
   // Check if we are in debug mode
   try {
