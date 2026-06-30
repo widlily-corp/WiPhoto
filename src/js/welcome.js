@@ -111,25 +111,29 @@ const Welcome = (() => {
 
       // Layout report guarded with isDebug
       if (Logger.isDebug()) {
-        setTimeout(() => {
           const mainApp = document.getElementById('main-app');
           const mainContent = document.querySelector('.main-content');
+          const leftSidebar = document.getElementById('left-sidebar');
           const centerArea = document.getElementById('center-area');
+          const rightSidebar = document.getElementById('right-sidebar');
           const viewGallery = document.getElementById('view-gallery');
           const galleryGrid = document.getElementById('gallery-grid');
           
           const logCs = (el) => {
             if (!el) return 'NOT FOUND';
             const cs = window.getComputedStyle(el);
-            return `display=${cs.display}, height=${cs.height}, minHeight=${cs.minHeight}, flex=${cs.flex}, position=${cs.position}, overflow=${cs.overflow}`;
+            const r = el.getBoundingClientRect();
+            return `display=${cs.display}, height=${cs.height}, width=${cs.width}, position=${cs.position}, top=${r.top}, left=${r.left}, bottom=${r.bottom}, right=${r.right}`;
           };
 
           const report = `DOM layout dimensions report:
-- #main-app: clientWidth=${mainApp?.clientWidth}, clientHeight=${mainApp?.clientHeight} (${logCs(mainApp)})
-- .main-content: clientWidth=${mainContent?.clientWidth}, clientHeight=${mainContent?.clientHeight} (${logCs(mainContent)})
-- #center-area: clientWidth=${centerArea?.clientWidth}, clientHeight=${centerArea?.clientHeight} (${logCs(centerArea)})
-- #view-gallery: clientWidth=${viewGallery?.clientWidth}, clientHeight=${viewGallery?.clientHeight} (${logCs(viewGallery)})
-- #gallery-grid: clientWidth=${galleryGrid?.clientWidth}, clientHeight=${galleryGrid?.clientHeight} (${logCs(galleryGrid)})`;
+- #main-app: (${logCs(mainApp)})
+- .main-content: (${logCs(mainContent)})
+- #left-sidebar: (${logCs(leftSidebar)})
+- #center-area: (${logCs(centerArea)})
+- #right-sidebar: (${logCs(rightSidebar)})
+- #view-gallery: (${logCs(viewGallery)})
+- #gallery-grid: (${logCs(galleryGrid)})`;
           Logger.debug('Welcome', report);
         }, 800);
       }
