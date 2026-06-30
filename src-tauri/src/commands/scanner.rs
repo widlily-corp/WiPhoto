@@ -4,7 +4,6 @@ use image::imageops::FilterType;
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use tauri::{Emitter, AppHandle};
 
 const THUMBNAIL_SIZE: u32 = 256;
@@ -321,30 +320,37 @@ pub async fn scan_folder(
         "current_file": ""
     }));
 
-    let results = Mutex::new(Vec::new());
-    let counter = Mutex::new(0u32);
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let counter = AtomicU32::new(0);
 
-    files.par_iter().for_each(|file_path| {
-        if let Some(info) = process_single_file(file_path, &cache_dir) {
-            let mut r = results.lock().unwrap();
-            r.push(info.clone());
+    let mut final_results: Vec<ImageInfo> = files
+        .par_iter()
+        .filter_map(|file_path| {
+            if let Some(info) = process_single_file(file_path, &cache_dir) {
+                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                let _ = app.emit("image-scanned", info.clone());
 
-            let mut c = counter.lock().unwrap();
-            *c += 1;
-
-            let _ = app.emit("image-scanned", info);
-
-            if *c % 5 == 0 || *c == total {
-                let _ = app.emit("scan-progress", serde_json::json!({
-                    "current": *c,
-                    "total": total,
-                    "current_file": file_path.to_string_lossy()
-                }));
+                if current % 5 == 0 || current == total {
+                    let _ = app.emit("scan-progress", serde_json::json!({
+                        "current": current,
+                        "total": total,
+                        "current_file": file_path.to_string_lossy()
+                    }));
+                }
+                Some(info)
+            } else {
+                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                if current % 5 == 0 || current == total {
+                    let _ = app.emit("scan-progress", serde_json::json!({
+                        "current": current,
+                        "total": total,
+                        "current_file": file_path.to_string_lossy()
+                    }));
+                }
+                None
             }
-        }
-    });
-
-    let mut final_results = results.into_inner().unwrap();
+        })
+        .collect();
     // Sort by path for consistency
     final_results.sort_by(|a, b| a.path.cmp(&b.path));
     log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());

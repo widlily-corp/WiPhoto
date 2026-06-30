@@ -5960,6 +5960,7 @@ dependencies = [
  "imageproc",
  "kamadak-exif",
  "log",
+ "memchr",
  "once_cell",
  "parking_lot",
  "rayon",
