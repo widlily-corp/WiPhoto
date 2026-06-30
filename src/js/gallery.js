@@ -451,6 +451,18 @@ const Gallery = (() => {
         contextualBar.classList.add('hidden');
       }
     }
+
+    // Dynamic layout logging
+    const mainApp = document.getElementById('main-app');
+    const mainContent = document.querySelector('.main-content');
+    const centerArea = document.getElementById('center-area');
+    const viewGallery = document.getElementById('view-gallery');
+    const logEl = (name, el) => {
+      if (!el) return `${name}=null`;
+      const cs = window.getComputedStyle(el);
+      return `${name}: clientH=${el.clientHeight}, compH=${cs.height}, display=${cs.display}, position=${cs.position}, flex=${cs.flex}`;
+    };
+    Logger.debug('Layout', `${logEl('main-app', mainApp)} | ${logEl('main-content', mainContent)} | ${logEl('center-area', centerArea)} | ${logEl('view-gallery', viewGallery)}`);
   }
 
   function setRating(rating) {
