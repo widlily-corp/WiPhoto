@@ -395,6 +395,7 @@ pub fn crop_image(
     width: u32,
     height: u32,
 ) -> Result<String, String> {
+    log::info!("crop_image called for path: {}, rect: (x: {}, y: {}, w: {}, h: {})", path, x, y, width, height);
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
     let cropped = img.crop(x, y, width, height);
 
@@ -511,6 +512,7 @@ pub fn save_cropped_edited_image(
     output_path: Option<String>,
     quality: Option<u8>,
 ) -> Result<String, String> {
+    log::info!("save_cropped_edited_image called for path: {}, crop_rect: {:?}, operations count: {}, output: {:?}", path, crop_rect, operations.len(), output_path);
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
     // 1. Apply crop first if present

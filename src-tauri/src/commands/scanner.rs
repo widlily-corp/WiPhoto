@@ -71,9 +71,21 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     // Try to load the image
     let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
         // For RAW files, try to extract embedded JPEG preview
-        load_raw_thumbnail(path)?
+        match load_raw_thumbnail(path) {
+            Some(i) => i,
+            None => {
+                log::warn!("Failed to load RAW thumbnail preview for: {:?}", path);
+                return None;
+            }
+        }
     } else {
-        image::open(path).ok()?
+        match image::open(path) {
+            Ok(i) => i,
+            Err(e) => {
+                log::warn!("Failed to open image {:?}: {}", path, e);
+                return None;
+            }
+        }
     };
 
     // Create thumbnail using Triangle filter (much faster than Lanczos3, negligible difference for 256px thumbs)
