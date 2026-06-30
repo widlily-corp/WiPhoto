@@ -284,12 +284,12 @@
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease;
 }
 
 .color-swatch:hover {
-  transform: scale(1.15);
-  box-shadow: var(--shadow-sm);
+  transform: scale(1.2) translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
   z-index: 1;
 }
 
@@ -302,9 +302,15 @@
 
 .meta-row {
   display: flex;
-  padding: 4px 0;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border-subtle);
+  border-radius: 4px;
   gap: 8px;
+  transition: background-color 100ms ease;
+}
+
+.meta-row:hover {
+  background-color: var(--bg-hover);
 }
 
 .meta-row:last-child {
