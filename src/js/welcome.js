@@ -87,9 +87,14 @@ const Welcome = (() => {
       if (unlistenProgress) unlistenProgress();
       if (unlistenScanned) unlistenScanned();
 
-      if (galleryProgressEl) {
-        galleryProgressEl.classList.add('hidden');
+      if (galleryProgressBar) {
+        galleryProgressBar.style.width = '100%';
       }
+      setTimeout(() => {
+        if (galleryProgressEl) {
+          galleryProgressEl.classList.add('hidden');
+        }
+      }, 500);
 
       // Final batch render
       if (scanBuffer.length > 0) {
