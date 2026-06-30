@@ -4,6 +4,8 @@
 .sidebar {
   display: flex;
   flex-direction: column;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
   background: var(--bg-secondary);
   overflow: hidden;
   position: relative;
