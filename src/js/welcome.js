@@ -116,6 +116,7 @@ const Welcome = (() => {
 
       // Layout report guarded with isDebug
       if (Logger.isDebug()) {
+        setTimeout(() => {
           const mainApp = document.getElementById('main-app');
           const mainContent = document.querySelector('.main-content');
           const leftSidebar = document.getElementById('left-sidebar');
