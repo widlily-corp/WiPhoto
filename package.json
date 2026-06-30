@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
+    "build": "echo 'No frontend build step needed'",
     "test": "node --test src/js/*.test.cjs"
   },
   "devDependencies": {
