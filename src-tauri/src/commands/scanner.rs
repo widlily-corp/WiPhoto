@@ -308,6 +308,17 @@ pub async fn scan_folder(
     let total = files.len() as u32;
     log::info!("Found {} files to scan", total);
 
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open("debug.log")
+    {
+        let _ = writeln!(file, "[Rust] Starting scan for: {}, total files: {}", path, total);
+    }
+
     if total == 0 {
         log::info!("Scan completed. No files found.");
         return Ok(vec![]);
@@ -354,6 +365,14 @@ pub async fn scan_folder(
     // Sort by path for consistency
     final_results.sort_by(|a, b| a.path.cmp(&b.path));
     log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open("debug.log")
+    {
+        let _ = writeln!(file, "[Rust] Scan completed. Processed: {}", final_results.len());
+    }
 
     let _ = app.emit("scan-finished", serde_json::json!({
         "total": final_results.len()
@@ -372,4 +391,14 @@ pub fn count_files(path: String, recursive: bool) -> u32 {
 #[tauri::command]
 pub fn log_js(message: String) {
     log::error!("[JS-Frontend] {}", message);
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open("debug.log")
+    {
+        let _ = writeln!(file, "[JS] {}", message);
+    }
 }
