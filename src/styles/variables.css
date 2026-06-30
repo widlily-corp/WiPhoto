@@ -1,30 +1,30 @@
 /* ═══ WiPhoto Design Tokens ═══ */
 :root {
   /* ─── Core Colors ─── */
-  --bg-primary: #08090A;
-  --bg-secondary: #1B1C1F;
-  --bg-tertiary: #222326;
-  --bg-elevated: #26272B;
-  --bg-hover: #2F3034;
-  --bg-active: #3A3C42;
+  --bg-primary: #0A0B0D;
+  --bg-secondary: #060708;
+  --bg-tertiary: #101114;
+  --bg-elevated: #14161B;
+  --bg-hover: #191B21;
+  --bg-active: #22252D;
 
   /* ─── Accent ─── */
   --accent-primary: #5E6AD2;
   --accent-hover: #7176E0;
-  --accent-soft: rgba(94, 106, 210, 0.14);
-  --accent-glow: rgba(94, 106, 210, 0.3);
+  --accent-soft: rgba(94, 106, 210, 0.12);
+  --accent-glow: rgba(94, 106, 210, 0.25);
   --accent-gradient: linear-gradient(135deg, #5E6AD2, #7176E0, #9c9ffd);
 
   /* ─── Text ─── */
-  --text-primary: #F7F8F8;
-  --text-secondary: #8A8F98;
-  --text-muted: #62666D;
+  --text-primary: #F5F6F6;
+  --text-secondary: #8E929B;
+  --text-muted: #5A5D64;
   --text-accent: #7176E0;
 
   /* ─── Borders ─── */
-  --border-subtle: #1F2024;
-  --border-normal: #2C2D31;
-  --border-hover: #3A3C42;
+  --border-subtle: #121417;
+  --border-normal: #1D2025;
+  --border-hover: #2B2F37;
   --border-accent: #5E6AD2;
 
   /* ─── Status Colors ─── */
