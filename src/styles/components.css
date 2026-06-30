@@ -683,3 +683,134 @@
 @keyframes toast-out {
   to { opacity: 0; transform: translateY(-4px) scale(0.96); }
 }
+
+/* ── Trash Modal Classes ── */
+.trash-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.trash-item-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+.trash-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.trash-item-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.trash-item-path {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-item-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn-trash-action {
+  padding: 4px 8px;
+  font-size: 11px;
+  height: 24px;
+}
+.btn-trash-delete-perm {
+  background: var(--color-danger);
+  color: #fff;
+}
+.trash-error-msg {
+  color: var(--color-danger);
+  font-size: var(--font-size-sm);
+  padding: 12px;
+  text-align: center;
+}
+
+/* ── Extracted Dialog & Preset UI Classes ── */
+.editor-preset-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-right: 8px;
+}
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.btn-preset-mini {
+  padding: 4px;
+  font-size: 11px;
+}
+.presets-save-container {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
+}
+.btn-preset-save {
+  width: 100%;
+  height: 26px;
+  font-size: 11px;
+}
+.presets-custom-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.export-inputs-row {
+  display: flex;
+  gap: 8px;
+}
+.export-input-half {
+  width: 50%;
+}
+.modal-trash-content {
+  max-width: 700px;
+}
+.modal-trash-body {
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+}
+.modal-trash-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.modal-trash-desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+.btn-trash-empty {
+  height: 28px;
+  font-size: 11px;
+}
+.trash-list-container {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  padding: 8px;
+}
+.modal-trash-footer-actions {
+  margin-top: 12px;
+  padding: 0;
+}
+.btn-trash-close {
+  margin-left: auto;
+}

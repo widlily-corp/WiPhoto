@@ -229,6 +229,14 @@
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
+.thumb-flag.picked {
+  color: var(--flag-picked, #10b981);
+}
+
+.thumb-flag.rejected {
+  color: var(--flag-rejected, #ef4444);
+}
+
 /* ── Map View ── */
 .map-container {
   width: 100%;
