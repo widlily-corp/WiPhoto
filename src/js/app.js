@@ -159,6 +159,13 @@ const App = (() => {
       activeView.classList.add('active');
     }
 
+    // Hide contextual bar if leaving gallery
+    if (viewName !== 'gallery') {
+      document.getElementById('contextual-bar')?.classList.add('hidden');
+    } else if (typeof Gallery !== 'undefined' && Gallery.getSelectedImages().length > 0) {
+      document.getElementById('contextual-bar')?.classList.remove('hidden');
+    }
+
     // Toggle active state in view mode buttons (if not editor)
     if (viewName !== 'editor') {
       activeTab = viewName;

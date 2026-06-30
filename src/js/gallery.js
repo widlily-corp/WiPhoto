@@ -439,6 +439,18 @@ const Gallery = (() => {
       parts.push(Utils.formatSize(totalBytes));
     }
     document.getElementById('status-text').textContent = parts.join(' │ ');
+
+    // Update Contextual Action Bar
+    const contextualBar = document.getElementById('contextual-bar');
+    const contextualCount = document.getElementById('contextual-count');
+    if (contextualBar && contextualCount) {
+      if (sel > 0) {
+        contextualCount.textContent = `Выбрано: ${sel} файл(ов)`;
+        contextualBar.classList.remove('hidden');
+      } else {
+        contextualBar.classList.add('hidden');
+      }
+    }
   }
 
   function setRating(rating) {
