@@ -174,3 +174,58 @@ pub fn is_supported_extension(ext: &str) -> bool {
         || RAW_EXTENSIONS.contains(&ext_lower.as_str())
         || VIDEO_EXTENSIONS.contains(&ext_lower.as_str())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_supported_extension() {
+        // Arrange
+        let jpg = "jpg";
+        let nef = "NEF";
+        let mp4 = "mp4";
+        let txt = "txt";
+
+        // Act
+        let is_jpg_supported = is_supported_extension(jpg);
+        let is_nef_supported = is_supported_extension(nef);
+        let is_mp4_supported = is_supported_extension(mp4);
+        let is_txt_supported = is_supported_extension(txt);
+
+        // Assert
+        assert!(is_jpg_supported);
+        assert!(is_nef_supported);
+        assert!(is_mp4_supported);
+        assert!(!is_txt_supported);
+    }
+
+    #[test]
+    fn test_image_info_new_constructor() {
+        // Arrange
+        let path = "C:/photos/test_image.NEF";
+
+        // Act
+        let info = ImageInfo::new(path);
+
+        // Assert
+        assert_eq!(info.path, "C:/photos/test_image.NEF");
+        assert_eq!(info.filename, "test_image.NEF");
+        assert!(info.is_raw);
+        assert!(!info.is_video);
+        assert_eq!(info.rating, 0);
+    }
+
+    #[test]
+    fn test_app_settings_default() {
+        // Arrange & Act
+        let settings = AppSettings::default();
+
+        // Assert
+        assert!(settings.worker_count > 0);
+        assert_eq!(settings.raw_quality, "half");
+        assert!(settings.calculate_sharpness);
+        assert_eq!(settings.hamming_threshold, 5);
+        assert!(settings.thumbnail_cache_path.contains(".wiphoto"));
+    }
+}
