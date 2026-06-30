@@ -21,6 +21,9 @@ const VirtualGrid = (() => {
   let resizeObserver = null;
   let lazyObserver = null;
 
+  let renderedStartIdx = -1;
+  let renderedEndIdx = -1;
+
   // Callbacks
   let onCardClick = null;
   let onCardDoubleClick = null;
@@ -74,7 +77,7 @@ const VirtualGrid = (() => {
   }
 
   function setItems(newItems, newThumbSize) {
-    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.setItems called, newItems count: " + newItems.length);
+    Logger.debug('VirtualGrid', "setItems called, newItems count: " + newItems.length);
     items = newItems;
     thumbSize = newThumbSize || thumbSize;
     isActive = true;
@@ -82,6 +85,8 @@ const VirtualGrid = (() => {
     // Reset visible range to force rendering after container clear
     visibleStartRow = -1;
     visibleEndRow = -1;
+    renderedStartIdx = -1;
+    renderedEndIdx = -1;
 
     // Clear existing
     container.innerHTML = '';
@@ -108,11 +113,8 @@ const VirtualGrid = (() => {
     columns = Math.max(1, Math.floor((containerWidth + gap) / (thumbSize + gap)));
     rowHeight = thumbSize + gap;
     totalRows = Math.ceil(items.length / columns);
-    const totalHeight = totalRows * rowHeight;
     
-    if (window.API && window.API.logJs) {
-      window.API.logJs(`[JS-Trace] VirtualGrid.recalculate: scrollContainer clientWidth=${scrollContainer.clientWidth}, containerWidth=${containerWidth}, columns=${columns}, totalRows=${totalRows}`);
-    }
+    Logger.debug('VirtualGrid', `recalculate: scrollContainer clientWidth=${scrollContainer.clientWidth}, containerWidth=${containerWidth}, columns=${columns}, totalRows=${totalRows}`);
 
     // Set grid layout on content area
     contentArea.style.display = 'grid';
@@ -139,13 +141,11 @@ const VirtualGrid = (() => {
       Math.ceil((scrollTop + viewportHeight) / rowHeight) + bufferRows
     );
     
-    if (window.API && window.API.logJs) {
-      window.API.logJs(`[JS-Trace] VirtualGrid.renderVisible: scrollTop=${scrollTop}, viewportHeight=${viewportHeight}, rowHeight=${rowHeight}, newStartRow=${newStartRow}, newEndRow=${newEndRow}`);
-    }
+    Logger.debug('VirtualGrid', `renderVisible: scrollTop=${scrollTop}, viewportHeight=${viewportHeight}, rowHeight=${rowHeight}, newStartRow=${newStartRow}, newEndRow=${newEndRow}`);
 
     // Early exit if nothing changed
     if (newStartRow === visibleStartRow && newEndRow === visibleEndRow) {
-      if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.renderVisible early exit (nothing changed)");
+      Logger.debug('VirtualGrid', "renderVisible early exit (nothing changed)");
       return;
     }
 
@@ -161,22 +161,58 @@ const VirtualGrid = (() => {
     const startIdx = visibleStartRow * columns;
     const endIdx = Math.min((visibleEndRow + 1) * columns, items.length);
     
-    if (window.API && window.API.logJs) {
-      window.API.logJs(`[JS-Trace] VirtualGrid.renderVisible rendering items range: ${startIdx} to ${endIdx}`);
+    Logger.debug('VirtualGrid', `renderVisible rendering items range: ${startIdx} to ${endIdx}`);
+
+    if (renderedStartIdx === -1 || renderedEndIdx === -1 || startIdx >= renderedEndIdx || endIdx <= renderedStartIdx) {
+      // No overlap or first render
+      const fragment = document.createDocumentFragment();
+      for (let i = startIdx; i < endIdx; i++) {
+        const card = cardRenderer(items[i], i);
+        fragment.appendChild(card);
+      }
+      contentArea.innerHTML = '';
+      contentArea.appendChild(fragment);
+    } else {
+      // We have overlap!
+      // 1. Remove elements that left the range from the top
+      if (startIdx > renderedStartIdx) {
+        const removeCount = startIdx - renderedStartIdx;
+        for (let i = 0; i < removeCount; i++) {
+          if (contentArea.firstChild) {
+            contentArea.removeChild(contentArea.firstChild);
+          }
+        }
+      }
+      // 2. Remove elements that left the range from the bottom
+      if (endIdx < renderedEndIdx) {
+        const removeCount = renderedEndIdx - endIdx;
+        for (let i = 0; i < removeCount; i++) {
+          if (contentArea.lastChild) {
+            contentArea.removeChild(contentArea.lastChild);
+          }
+        }
+      }
+      // 3. Prepend elements that entered from the top
+      if (startIdx < renderedStartIdx) {
+        for (let i = renderedStartIdx - 1; i >= startIdx; i--) {
+          const card = cardRenderer(items[i], i);
+          contentArea.insertBefore(card, contentArea.firstChild);
+        }
+      }
+      // 4. Append elements that entered from the bottom
+      if (endIdx > renderedEndIdx) {
+        for (let i = renderedEndIdx; i < endIdx; i++) {
+          const card = cardRenderer(items[i], i);
+          contentArea.appendChild(card);
+        }
+      }
     }
 
-    // Build new content
-    const fragment = document.createDocumentFragment();
-    for (let i = startIdx; i < endIdx; i++) {
-      const card = cardRenderer(items[i], i);
-      fragment.appendChild(card);
-    }
-
-    contentArea.innerHTML = '';
-    contentArea.appendChild(fragment);
+    renderedStartIdx = startIdx;
+    renderedEndIdx = endIdx;
 
     updateSpacers();
-    if (window.API && window.API.logJs) window.API.logJs("[JS-Trace] VirtualGrid.renderVisible complete, appended items count: " + contentArea.children.length);
+    Logger.debug('VirtualGrid', "renderVisible complete, appended items count: " + contentArea.children.length);
   }
 
   function updateSpacers() {
