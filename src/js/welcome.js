@@ -118,12 +118,18 @@ const Welcome = (() => {
           const viewGallery = document.getElementById('view-gallery');
           const galleryGrid = document.getElementById('gallery-grid');
           
+          const logCs = (el) => {
+            if (!el) return 'NOT FOUND';
+            const cs = window.getComputedStyle(el);
+            return `display=${cs.display}, height=${cs.height}, minHeight=${cs.minHeight}, flex=${cs.flex}, position=${cs.position}, overflow=${cs.overflow}`;
+          };
+
           const report = `DOM layout dimensions report:
-- #main-app: clientWidth=${mainApp?.clientWidth}, clientHeight=${mainApp?.clientHeight}
-- .main-content: clientWidth=${mainContent?.clientWidth}, clientHeight=${mainContent?.clientHeight}
-- #center-area: clientWidth=${centerArea?.clientWidth}, clientHeight=${centerArea?.clientHeight}
-- #view-gallery: clientWidth=${viewGallery?.clientWidth}, clientHeight=${viewGallery?.clientHeight}
-- #gallery-grid: clientWidth=${galleryGrid?.clientWidth}, clientHeight=${galleryGrid?.clientHeight}`;
+- #main-app: clientWidth=${mainApp?.clientWidth}, clientHeight=${mainApp?.clientHeight} (${logCs(mainApp)})
+- .main-content: clientWidth=${mainContent?.clientWidth}, clientHeight=${mainContent?.clientHeight} (${logCs(mainContent)})
+- #center-area: clientWidth=${centerArea?.clientWidth}, clientHeight=${centerArea?.clientHeight} (${logCs(centerArea)})
+- #view-gallery: clientWidth=${viewGallery?.clientWidth}, clientHeight=${viewGallery?.clientHeight} (${logCs(viewGallery)})
+- #gallery-grid: clientWidth=${galleryGrid?.clientWidth}, clientHeight=${galleryGrid?.clientHeight} (${logCs(galleryGrid)})`;
           Logger.debug('Welcome', report);
         }, 800);
       }
