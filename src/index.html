@@ -15,35 +15,6 @@
   <link rel="stylesheet" href="styles/editor.css" />
   <link rel="stylesheet" href="styles/crop.css" />
   <link rel="stylesheet" href="styles/commandpalette.css" />
-  <style>
-    #main-app {
-      display: flex !important;
-      flex-direction: column !important;
-      height: 100vh !important;
-      width: 100vw !important;
-      position: fixed !important;
-      inset: 0 !important;
-    }
-    #main-content {
-      display: grid !important;
-      height: calc(100vh - 48px) !important;
-      flex: 1 !important;
-      min-height: 0 !important;
-    }
-    #center-area {
-      height: 100% !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-    #view-gallery {
-      height: 100% !important;
-      flex: 1 !important;
-      display: flex !important;
-      flex-direction: column !important;
-      min-height: 0 !important;
-    }
-  </style>
 </head>
 <body>
   <!-- ═══════ WELCOME SCREEN ═══════ -->
@@ -257,10 +228,6 @@
             </svg>
             <p>Нет файлов для отображения</p>
           </div>
-          <!-- Status Bar -->
-          <div class="statusbar">
-            <span id="status-text" class="status-text">Готов</span>
-          </div>
         </div>
 
         <!-- Map View -->
@@ -333,7 +300,7 @@
 
               <!-- Crop Ratio Sub-toolbar -->
               <div class="editor-toolbar crop-ratio-toolbar hidden" id="crop-ratio-toolbar">
-                <span style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-right: 8px;">Соотношение сторон:</span>
+                <span class="editor-preset-label">Соотношение сторон:</span>
                 <button class="editor-tool-btn active" data-ratio="free">Свободное</button>
                 <button class="editor-tool-btn" data-ratio="1">1:1</button>
                 <button class="editor-tool-btn" data-ratio="1.7777777777777777">16:9</button>
@@ -425,17 +392,17 @@
               <!-- Presets Section -->
               <div class="control-group">
                 <div class="control-group-title">Пресеты</div>
-                <div class="preset-buttons" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-cinematic">Cinematic</button>
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-bw">BW Classic</button>
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-vibrant">Vibrant</button>
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-moody">Moody</button>
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-film">Film Grain</button>
-                  <button class="editor-tool-btn preset-btn" style="padding: 4px; font-size: 11px;" id="btn-preset-warm">Warm Edit</button>
+                <div class="preset-buttons preset-grid">
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-cinematic">Cinematic</button>
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-bw">BW Classic</button>
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-vibrant">Vibrant</button>
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-moody">Moody</button>
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-film">Film Grain</button>
+                  <button class="editor-tool-btn preset-btn btn-preset-mini" id="btn-preset-warm">Warm Edit</button>
                 </div>
-                <div style="margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 8px;">
-                  <button class="editor-tool-btn btn-secondary btn-sm" id="btn-save-preset" style="width: 100%; height: 26px; font-size: 11px;">Сохранить пресет</button>
-                  <div id="custom-presets-list" class="custom-presets-list" style="margin-top: 6px; display: flex; flex-direction: column; gap: 4px;"></div>
+                <div class="presets-save-container">
+                  <button class="editor-tool-btn btn-secondary btn-sm btn-preset-save" id="btn-save-preset">Сохранить пресет</button>
+                  <div id="custom-presets-list" class="custom-presets-list presets-custom-list"></div>
                 </div>
               </div>
               <!-- History -->
@@ -700,9 +667,9 @@
         </div>
         <div class="setting-group">
           <label>Изменение размера (ограничить в пикселях)</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="number" style="width: 50%;" id="export-max-w" placeholder="Макс. ширина" />
-            <input type="number" style="width: 50%;" id="export-max-h" placeholder="Макс. высота" />
+          <div class="export-inputs-row">
+            <input type="number" class="export-input-half" id="export-max-w" placeholder="Макс. ширина" />
+            <input type="number" class="export-input-half" id="export-max-h" placeholder="Макс. высота" />
           </div>
         </div>
         <div class="setting-group">
@@ -720,21 +687,21 @@
   <!-- Trash Modal -->
   <div id="modal-trash" class="modal hidden">
     <div class="modal-overlay"></div>
-    <div class="modal-content modal-settings" style="max-width: 700px;">
+    <div class="modal-content modal-settings modal-trash-content">
       <div class="modal-header">
         <h2>Корзина удалённых файлов</h2>
         <button class="modal-close" data-close="modal-trash">✕</button>
       </div>
-      <div class="modal-body" style="display: flex; flex-direction: column; height: 400px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <p style="margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm);">Файлы в корзине могут быть восстановлены в их исходные папки.</p>
-          <button class="btn btn-secondary btn-sm danger" id="btn-empty-trash" style="height: 28px; font-size: 11px;">Очистить корзину</button>
+      <div class="modal-body modal-trash-body">
+        <div class="modal-trash-header-row">
+          <p class="modal-trash-desc">Файлы в корзине могут быть восстановлены в их исходные папки.</p>
+          <button class="btn btn-secondary btn-sm danger btn-trash-empty" id="btn-empty-trash">Очистить корзину</button>
         </div>
-        <div id="trash-list" class="trash-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-tertiary); padding: 8px;">
+        <div id="trash-list" class="trash-list trash-list-container">
           <!-- Loaded dynamically -->
         </div>
-        <div class="setting-actions" style="margin-top: 12px; padding: 0;">
-          <button class="btn btn-secondary" data-close="modal-trash" style="margin-left: auto;">Закрыть</button>
+        <div class="setting-actions modal-trash-footer-actions">
+          <button class="btn btn-secondary btn-trash-close" data-close="modal-trash">Закрыть</button>
         </div>
       </div>
     </div>
@@ -789,22 +756,13 @@
 
   <!-- Scripts -->
   <script src="js/api.js"></script>
+  <script src="js/logger.js"></script>
   <script>
     window.onerror = function (message, source, lineno, colno, error) {
-      const errStr = `${message} at ${source}:${lineno}:${colno}` + (error ? `\nStack: ${error.stack}` : '');
-      if (window.API && window.API.logJs) {
-        window.API.logJs(errStr);
-      } else {
-        console.error(errStr);
-      }
+      Logger.error('Window', `${message} at ${source}:${lineno}:${colno}`, error);
     };
     window.onunhandledrejection = function (event) {
-      const errStr = `Unhandled Promise Rejection: ${event.reason}` + (event.reason && event.reason.stack ? `\nStack: ${event.reason.stack}` : '');
-      if (window.API && window.API.logJs) {
-        window.API.logJs(errStr);
-      } else {
-        console.error(errStr);
-      }
+      Logger.error('Window', `Unhandled Promise Rejection: ${event.reason}`, event.reason);
     };
   </script>
   <script src="js/utils.js"></script>
