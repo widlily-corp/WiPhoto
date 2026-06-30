@@ -314,7 +314,7 @@ pub async fn scan_folder(
         .create(true)
         .write(true)
         .append(true)
-        .open("debug.log")
+        .open("C:/Users/Widlily/Documents/projects/wiphoto/debug.log")
     {
         let _ = writeln!(file, "[Rust] Starting scan for: {}, total files: {}", path, total);
     }
@@ -369,7 +369,7 @@ pub async fn scan_folder(
         .create(true)
         .write(true)
         .append(true)
-        .open("debug.log")
+        .open("C:/Users/Widlily/Documents/projects/wiphoto/debug.log")
     {
         let _ = writeln!(file, "[Rust] Scan completed. Processed: {}", final_results.len());
     }
@@ -397,7 +397,7 @@ pub fn log_js(message: String) {
         .create(true)
         .write(true)
         .append(true)
-        .open("debug.log")
+        .open("C:/Users/Widlily/Documents/projects/wiphoto/debug.log")
     {
         let _ = writeln!(file, "[JS] {}", message);
     }
