@@ -379,7 +379,7 @@ pub fn empty_trash() -> Result<(), String> {
 
 /// Open a file in the system default media player
 #[tauri::command]
-pub fn open_in_system_player(_app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub fn open_in_system_player(path: String) -> Result<(), String> {
     log::info!("Opening file in system player: {}", path);
     #[cfg(target_os = "windows")]
     {
@@ -389,11 +389,20 @@ pub fn open_in_system_player(_app: tauri::AppHandle, path: String) -> Result<(),
             .map_err(|e| format!("Failed to spawn cmd start: {}", e))?;
         Ok(())
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        use tauri_plugin_opener::OpenerExt;
-        app.opener()
-            .open_path(&path, None::<&str>)
-            .map_err(|e| format!("Opener failed to open path: {}", e))
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn open: {}", e))?;
+        Ok(())
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to spawn xdg-open: {}", e))?;
+        Ok(())
     }
 }
