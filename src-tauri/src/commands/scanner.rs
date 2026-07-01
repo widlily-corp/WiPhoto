@@ -269,21 +269,17 @@ fn process_single_file(path: &Path, cache_dir: &Path) -> Option<ImageInfo> {
         }
     }
 
-    // Heuristic face & animal recognition mock
-    let hash_str = sha2_hash(&info.filename);
-    if let Ok(val) = u64::from_str_radix(&hash_str[0..8], 16) {
-        if val % 7 == 0 {
-            info.faces_count = (val % 3) as u32 + 1; // 1 to 3 faces
-        }
-        if val % 9 == 0 {
-            info.animals_count = (val % 2) as u32 + 1; // 1 to 2 animals
-            info.animal_species = match val % 5 {
-                0 => vec!["Кот".to_string()],
-                1 => vec!["Собака".to_string()],
-                2 => vec!["Птица".to_string()],
-                3 => vec!["Лошадь".to_string()],
-                _ => vec!["Белка".to_string()],
-            };
+    // Real face & animal & object recognition via ONNX
+    if !info.is_video {
+        if let Some(analysis) = crate::onnx::analyze_image(path) {
+            info.faces_count = analysis.faces_count;
+            info.animals_count = analysis.animals_count;
+            info.animal_species = analysis.animal_species;
+            for tag in analysis.tags {
+                if !info.tags.contains(&tag) {
+                    info.tags.push(tag);
+                }
+            }
         }
     }
 
@@ -321,6 +317,11 @@ pub async fn scan_folder(
         .join("cache")
         .join("thumbnails");
     let _ = fs::create_dir_all(&cache_dir);
+
+    // Initialize ONNX model
+    if let Err(e) = crate::onnx::init_model() {
+        log::warn!("Failed to initialize ONNX model: {}. Running scan without ML analysis.", e);
+    }
 
     let files = collect_files(&path, recursive);
     let total = files.len() as u32;

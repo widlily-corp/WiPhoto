@@ -1,5 +1,6 @@
 mod commands;
 mod models;
+mod onnx;
 
 use commands::{
     duplicates, editor, export, file_ops, metadata, scanner, settings, thumbnails, xmp,
