@@ -5,10 +5,71 @@ use commands::{
     duplicates, editor, export, file_ops, metadata, scanner, settings, thumbnails, xmp,
 };
 
+struct FileAndConsoleLogger {
+    file: Option<Mutex<File>>,
+}
+
+impl log::Log for FileAndConsoleLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Info
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            let timestamp = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z");
+            let msg = format!(
+                "[{}] [{}] [{}] {}",
+                timestamp,
+                record.level(),
+                record.target(),
+                record.args()
+            );
+
+            // Write to console (stderr)
+            eprintln!("{}", msg);
+
+            // Write to file if open
+            if let Some(ref file_mutex) = self.file {
+                if let Ok(mut file) = file_mutex.lock() {
+                    let _ = writeln!(file, "{}", msg);
+                }
+            }
+        }
+    }
+
+    fn flush(&self) {
+        if let Some(ref file_mutex) = self.file {
+            if let Ok(mut file) = file_mutex.lock() {
+                let _ = file.flush();
+            }
+        }
+    }
+}
+
+fn init_logger() {
+    let mut exe_path = std::env::current_exe().unwrap_or_default();
+    exe_path.set_file_name("debug.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open(&exe_path)
+        .ok()
+        .map(|f| Mutex::new(f));
+
+    let logger = FileAndConsoleLogger { file };
+    let _ = log::set_boxed_logger(Box::new(logger))
+        .map(|_| log::set_max_level(log::LevelFilter::Info));
+}
+
+use std::fs::File;
+use std::io::Write;
+use std::sync::Mutex;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    log::info!("Starting WiPhoto v3.0.0 application...");
+    init_logger();
+    log::info!("Starting WiPhoto v4.0.0 application...");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

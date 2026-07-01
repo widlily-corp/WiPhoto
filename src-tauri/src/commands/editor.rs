@@ -4,7 +4,7 @@ use std::path::Path;
 
 /// Apply an edit operation to an image and return base64 result
 #[tauri::command]
-pub fn apply_edit(
+pub async fn apply_edit(
     path: String,
     operations: Vec<EditOp>,
     max_preview_size: Option<u32>,
@@ -35,7 +35,7 @@ pub fn apply_edit(
 
 /// Save edited image to disk
 #[tauri::command]
-pub fn save_edited(
+pub async fn save_edited(
     path: String,
     operations: Vec<EditOp>,
     output_path: Option<String>,
@@ -88,26 +88,27 @@ pub fn save_edited(
 #[derive(serde::Deserialize, Clone, Debug)]
 pub struct EditOp {
     pub tool: String,
-    pub value: f64,
+    pub value: serde_json::Value,
 }
 
 fn apply_single_edit(img: DynamicImage, op: &EditOp) -> DynamicImage {
+    let val_f64 = op.value.as_f64().unwrap_or(0.0);
     match op.tool.as_str() {
-        "exposure" => adjust_exposure(img, op.value / 100.0),
-        "contrast" => adjust_contrast(img, op.value),
-        "brightness" => adjust_brightness(img, op.value),
-        "highlights" => adjust_highlights(img, op.value),
-        "shadows" => adjust_shadows(img, op.value),
-        "whites" => adjust_whites(img, op.value),
-        "blacks" => adjust_blacks(img, op.value),
-        "temperature" => adjust_temperature(img, op.value),
-        "tint" => adjust_tint(img, op.value),
-        "vibrance" => adjust_vibrance(img, op.value),
-        "saturation" => adjust_saturation(img, op.value),
-        "clarity" => adjust_clarity(img, op.value),
-        "sharpness" => adjust_sharpness(img, op.value),
-        "vignette" => apply_vignette(img, op.value),
-        "rotate" => rotate_image(img, op.value),
+        "exposure" => adjust_exposure(img, val_f64 / 100.0),
+        "contrast" => adjust_contrast(img, val_f64),
+        "brightness" => adjust_brightness(img, val_f64),
+        "highlights" => adjust_highlights(img, val_f64),
+        "shadows" => adjust_shadows(img, val_f64),
+        "whites" => adjust_whites(img, val_f64),
+        "blacks" => adjust_blacks(img, val_f64),
+        "temperature" => adjust_temperature(img, val_f64),
+        "tint" => adjust_tint(img, val_f64),
+        "vibrance" => adjust_vibrance(img, val_f64),
+        "saturation" => adjust_saturation(img, val_f64),
+        "clarity" => adjust_clarity(img, val_f64),
+        "sharpness" => adjust_sharpness(img, val_f64),
+        "vignette" => apply_vignette(img, val_f64),
+        "rotate" => rotate_image(img, val_f64),
         "flip_h" => DynamicImage::ImageRgba8(image::imageops::flip_horizontal(&img)),
         "flip_v" => DynamicImage::ImageRgba8(image::imageops::flip_vertical(&img)),
         "crop" => img, // crop handled separately with rect
@@ -505,7 +506,7 @@ pub struct CropRect {
 
 /// Save edited image with an optional crop rect to disk
 #[tauri::command]
-pub fn save_cropped_edited_image(
+pub async fn save_cropped_edited_image(
     path: String,
     crop_rect: Option<CropRect>,
     operations: Vec<EditOp>,

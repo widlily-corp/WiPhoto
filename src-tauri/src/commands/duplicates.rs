@@ -74,7 +74,7 @@ fn hamming_distance(a: u64, b: u64) -> u32 {
 
 /// Find duplicates using specified hash method
 #[tauri::command]
-pub fn find_duplicates(
+pub async fn find_duplicates(
     paths: Vec<String>,
     method: String,
     threshold: u32,

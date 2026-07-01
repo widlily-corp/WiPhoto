@@ -70,7 +70,7 @@ fn apply_watermark(img: &mut DynamicImage, text: &str) {
 
 /// Batch export files to destination folder with format conversion, resizing, and watermarking
 #[tauri::command]
-pub fn export_files(
+pub async fn export_files(
     paths: Vec<String>,
     dest_dir: String,
     format: String,
