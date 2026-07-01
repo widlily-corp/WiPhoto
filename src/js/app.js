@@ -23,6 +23,9 @@ const App = (() => {
     Slideshow.init();
     Timeline.init();
     CommandPalette.init();
+    if (typeof ContextMenu !== 'undefined') {
+      ContextMenu.init();
+    }
     if (typeof Trash !== 'undefined') {
       Trash.init();
     }
