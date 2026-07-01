@@ -79,6 +79,7 @@ pub async fn find_duplicates(
     method: String,
     threshold: u32,
 ) -> Result<Vec<DuplicateGroup>, String> {
+    log::info!("find_duplicates called with {} paths, method: {}, threshold: {}", paths.len(), method, threshold);
     // Compute hashes in parallel
     let hashes: Vec<(String, Option<u64>)> = paths
         .par_iter()
@@ -93,6 +94,8 @@ pub async fn find_duplicates(
         .into_iter()
         .filter_map(|(path, hash)| hash.map(|h| (path, h)))
         .collect();
+
+    log::info!("Successfully computed hashes for {} out of {} files", valid_hashes.len(), paths.len());
 
     // Group by similarity
     let mut groups: Vec<DuplicateGroup> = Vec::new();
@@ -132,6 +135,7 @@ pub async fn find_duplicates(
         }
     }
 
+    log::info!("Found {} duplicate groups", groups.len());
     Ok(groups)
 }
 

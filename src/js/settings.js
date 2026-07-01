@@ -136,7 +136,16 @@ const Settings = (() => {
     const startBtn = document.getElementById('btn-start-dup-search');
     if (startBtn) startBtn.removeAttribute('disabled');
 
+    // Ensure the default method is selected in the UI
+    const defaultRadio = document.querySelector('input[name="dup-method"][value="phash"]');
+    if (defaultRadio) {
+      defaultRadio.checked = true;
+    }
+
     document.getElementById('modal-duplicates')?.classList.remove('hidden');
+
+    // Auto-run search with recommended method (phash)
+    runDuplicateSearch();
   }
 
   // Run Duplicate Finder Search
