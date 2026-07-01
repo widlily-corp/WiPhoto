@@ -1,5 +1,6 @@
 use crate::models::image_info::DuplicateGroup;
 use rayon::prelude::*;
+use tauri::{Emitter, AppHandle};
 
 /// Simple perceptual hash implementation using DCT-based approach
 fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
@@ -75,16 +76,28 @@ fn hamming_distance(a: u64, b: u64) -> u32 {
 /// Find duplicates using specified hash method
 #[tauri::command]
 pub async fn find_duplicates(
+    app: AppHandle,
     paths: Vec<String>,
     method: String,
     threshold: u32,
 ) -> Result<Vec<DuplicateGroup>, String> {
     log::info!("find_duplicates called with {} paths, method: {}, threshold: {}", paths.len(), method, threshold);
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let counter = AtomicU32::new(0);
+    let total = paths.len() as u32;
+
     // Compute hashes in parallel
     let hashes: Vec<(String, Option<u64>)> = paths
         .par_iter()
         .map(|path| {
             let hash = image::open(path).ok().and_then(|img| compute_hash(&img, &method));
+            let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+            if current % 10 == 0 || current == total {
+                let _ = app.emit("dup-progress", serde_json::json!({
+                    "current": current,
+                    "total": total,
+                }));
+            }
             (path.clone(), hash)
         })
         .collect();

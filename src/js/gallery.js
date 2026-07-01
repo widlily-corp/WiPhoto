@@ -360,6 +360,7 @@ const Gallery = (() => {
 
   function handleDoubleClick(img) {
     if (img.is_video) {
+      Viewer.open(img);
       return;
     }
     App.openEditor(img);

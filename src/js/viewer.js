@@ -63,7 +63,7 @@ const Viewer = (() => {
   }
 
   function open(imageInfo) {
-    images = Gallery.getFilteredImages().filter(i => !i.is_video);
+    images = Gallery.getFilteredImages();
     currentIndex = images.findIndex(i => i.path === imageInfo.path);
     if (currentIndex < 0) currentIndex = 0;
 
@@ -85,22 +85,53 @@ const Viewer = (() => {
     // Clean active states
     resetZoom();
 
-    // EXIF loading
-    loadExif(img.path);
-
     const imgEl = document.getElementById('viewer-image');
-    try {
-      if (preloadCache.has(img.path)) {
-        imgEl.src = preloadCache.get(img.path);
-      } else {
-        const b64 = await API.loadFullImage(img.path, 3000);
-        const src = Utils.base64Src(b64);
-        imgEl.src = src;
-        preloadCache.set(img.path, src);
+    const videoEl = document.getElementById('viewer-video');
+
+    if (img.is_video) {
+      // Show video, hide image
+      imgEl.classList.add('hidden');
+      videoEl.classList.remove('hidden');
+
+      // Stop and reset previous video if playing
+      videoEl.pause();
+
+      // Convert local path to Tauri asset URL using convertFileSrc
+      const videoSrc = window.__TAURI__.core.convertFileSrc(img.path);
+      videoEl.src = videoSrc;
+      videoEl.load();
+      videoEl.play().catch(e => console.warn('Auto-play failed', e));
+
+      // EXIF/Histogram not needed for video, or EXIF empty
+      document.getElementById('viewer-exif').textContent = 'Видео файл';
+      const canvas = document.getElementById('viewer-histogram');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
-    } catch (err) {
-      Logger.error('Viewer', `Failed to load image at ${img.path}`, err);
-      imgEl.src = '';
+    } else {
+      // Show image, hide video
+      videoEl.pause();
+      videoEl.src = '';
+      videoEl.classList.add('hidden');
+      imgEl.classList.remove('hidden');
+
+      // EXIF loading
+      loadExif(img.path);
+
+      try {
+        if (preloadCache.has(img.path)) {
+          imgEl.src = preloadCache.get(img.path);
+        } else {
+          const b64 = await API.loadFullImage(img.path, 3000);
+          const src = Utils.base64Src(b64);
+          imgEl.src = src;
+          preloadCache.set(img.path, src);
+        }
+      } catch (err) {
+        Logger.error('Viewer', `Failed to load image at ${img.path}`, err);
+        imgEl.src = '';
+      }
     }
 
     // Trigger preloading for next/prev images
@@ -108,6 +139,11 @@ const Viewer = (() => {
   }
 
   function close() {
+    const videoEl = document.getElementById('viewer-video');
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.src = '';
+    }
     document.getElementById('fullscreen-viewer').classList.add('hidden');
     resetZoom();
   }

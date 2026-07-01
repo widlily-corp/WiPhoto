@@ -373,7 +373,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-#viewer-image {
+#viewer-image, #viewer-video {
   max-width: 95vw;
   max-height: 90vh;
   object-fit: contain;

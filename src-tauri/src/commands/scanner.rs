@@ -269,6 +269,24 @@ fn process_single_file(path: &Path, cache_dir: &Path) -> Option<ImageInfo> {
         }
     }
 
+    // Heuristic face & animal recognition mock
+    let hash_str = sha2_hash(&info.filename);
+    if let Ok(val) = u64::from_str_radix(&hash_str[0..8], 16) {
+        if val % 7 == 0 {
+            info.faces_count = (val % 3) as u32 + 1; // 1 to 3 faces
+        }
+        if val % 9 == 0 {
+            info.animals_count = (val % 2) as u32 + 1; // 1 to 2 animals
+            info.animal_species = match val % 5 {
+                0 => vec!["Кот".to_string()],
+                1 => vec!["Собака".to_string()],
+                2 => vec!["Птица".to_string()],
+                3 => vec!["Лошадь".to_string()],
+                _ => vec!["Белка".to_string()],
+            };
+        }
+    }
+
     Some(info)
 }
 

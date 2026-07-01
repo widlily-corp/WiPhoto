@@ -177,13 +177,23 @@ const Settings = (() => {
       const methodRadio = document.querySelector('input[name="dup-method"]:checked');
       const method = methodRadio ? methodRadio.value : 'phash';
 
-      if (progressFill) progressFill.style.width = '40%';
-      if (statusText) statusText.textContent = 'Сравнение хэшей изображений...';
+      let unlisten = null;
+      if (typeof API.onDupProgress === 'function') {
+        unlisten = await API.onDupProgress((payload) => {
+          const percent = Math.round((payload.current / payload.total) * 100);
+          if (progressFill) progressFill.style.width = `${percent}%`;
+          if (statusText) statusText.textContent = `Сравнение хэшей: ${payload.current} / ${payload.total} (${percent}%)`;
+        });
+      }
 
       const paths = images.map(i => i.path);
       const groups = await API.findDuplicates(paths, method, threshold);
 
-      if (progressFill) progressFill.style.width = '80%';
+      if (unlisten) {
+        unlisten();
+      }
+
+      if (progressFill) progressFill.style.width = '90%';
       if (statusText) statusText.textContent = 'Обработка результатов...';
 
       if (groups.length === 0) {
