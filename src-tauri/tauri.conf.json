@@ -39,7 +39,7 @@
       "icons/icon.ico"
     ],
     "windows": {
-      "signCommand": "powershell -ExecutionPolicy Bypass -File sign.ps1 $1"
+      "signCommand": "powershell -ExecutionPolicy Bypass -File src-tauri/sign.ps1 %1"
     }
   }
 }
