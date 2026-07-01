@@ -13,6 +13,18 @@ const Welcome = (() => {
         }
       });
     }
+
+    // Set version from API dynamically
+    if (typeof API.getAppVersion === 'function') {
+      API.getAppVersion().then(ver => {
+        const welVer = document.querySelector('.welcome-version');
+        if (welVer) {
+          welVer.textContent = `v${ver} · Widlily Corporation`;
+        }
+      }).catch(err => {
+        console.error("Failed to load app version:", err);
+      });
+    }
   }
 
   async function selectFolder(folderPath = null) {

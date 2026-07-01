@@ -115,3 +115,45 @@ wiphoto/
 * **Плоские условия (Early Returns):** Избегайте вложенных блоков `if-else`. Выходите из функций как можно раньше.
 * **Анимации:** Анимируйте только `transform` и `opacity` (рендеринг на GPU).
 * **Никаких `any` или скрытых ошибок:** Пишите строгие типы, всегда логгируйте перехваченные исключения через `Logger.error(...)`.
+
+---
+
+## 🔑 Подпись установщика для Windows (Code Signing)
+
+Для того чтобы Windows SmartScreen не блокировал установщик (`.msi`) с предупреждением «Неизвестный издатель», бинарные файлы необходимо подписать цифровым сертификатом разработчика.
+
+Рекомендуется использовать один из двух вариантов в CI/CD пайплайне:
+
+### Вариант 1. Использование PFX-сертификата (Локального или через секреты)
+1. Экспортируйте ваш сертификат в формате `.pfx` и преобразуйте его в Base64. Сохраните его в Secrets репозитория как `SIGNING_CERT_BASE64`, а пароль как `SIGNING_CERT_PASSWORD`.
+2. Добавьте конфигурацию `signCommand` в блок `bundle` вашего [tauri.conf.json](file:///c:/Users/Widlily/Documents/projects/wiphoto/src-tauri/tauri.conf.json):
+   ```json
+   "bundle": {
+     "active": true,
+     "targets": "all",
+     "windows": {
+       "signCommand": "signtool sign /f certificate.pfx /p %SIGNING_CERT_PASSWORD% /tr http://timestamp.digicert.com /td sha256 /fd sha256 $1"
+     }
+   }
+   ```
+3. В `.github/workflows/ci.yml` перед шагом сборки Tauri добавьте декодирование сертификата:
+   ```yaml
+   - name: Import Certificate
+     shell: pwsh
+     run: |
+       $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERT_BASE64 }}")
+       [System.IO.File]::WriteAllBytes("src-tauri/certificate.pfx", $certBytes)
+   ```
+
+### Вариант 2. Azure Trusted Signing (Рекомендуемый для корпоративной сборки)
+1. Настройте службу Azure Trusted Signing в вашей панели Azure.
+2. Пропишите команду `signCommand` в [tauri.conf.json](file:///c:/Users/Widlily/Documents/projects/wiphoto/src-tauri/tauri.conf.json) с использованием утилиты `dotnet sign`:
+   ```json
+   "bundle": {
+     "windows": {
+       "signCommand": "dotnet sign --sha256 --timestamp http://timestamp.digicert.com --azure-key-vault-url %AZURE_VAULT_URL% --azure-client-id %AZURE_CLIENT_ID% --azure-tenant-id %AZURE_TENANT_ID% --azure-client-secret %AZURE_CLIENT_SECRET% --azure-certificate-name %AZURE_CERT_NAME% $1"
+     }
+   }
+   ```
+3. Передайте секретные переменные в шаге сборки в `.github/workflows/ci.yml` из Secrets вашего репозитория.
+
