@@ -38,9 +38,14 @@ pub fn init_model() -> Result<(), String> {
     let _ = fs::create_dir_all(&model_dir);
     let model_path = model_dir.join("yolov8n.onnx");
 
-    if !model_path.exists() {
-        log::info!("ONNX model not found. Downloading YOLOv8n from HuggingFace...");
-        download_model(&model_path)?;
+    let needs_download = !model_path.exists() || fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0) == 0;
+
+    if needs_download {
+        log::info!("ONNX model not found or empty. Downloading YOLOv8n from HuggingFace...");
+        if let Err(e) = download_model(&model_path) {
+            let _ = fs::remove_file(&model_path);
+            return Err(e);
+        }
     }
 
     log::info!("Loading ONNX model from {:?}", model_path);
@@ -80,19 +85,24 @@ fn download_model(dest: &Path) -> Result<(), String> {
     let mut downloaded = 0;
     let mut last_percent = 0;
 
-    while let Ok(n) = reader.read(&mut buffer) {
-        if n == 0 {
-            break;
-        }
-        file.write_all(&buffer[..n])
-            .map_err(|e| format!("Failed to write data: {}", e))?;
-        downloaded += n as u64;
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                file.write_all(&buffer[..n])
+                    .map_err(|e| format!("Failed to write data: {}", e))?;
+                downloaded += n as u64;
 
-        if total_size > 0 {
-            let percent = (downloaded * 100 / total_size) as u32;
-            if percent >= last_percent + 10 || percent == 100 {
-                log::info!("Model download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
-                last_percent = percent;
+                if total_size > 0 {
+                    let percent = (downloaded * 100 / total_size) as u32;
+                    if percent >= last_percent + 10 || percent == 100 {
+                        log::info!("Model download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
+                        last_percent = percent;
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("Socket read error: {}", e));
             }
         }
     }

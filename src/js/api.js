@@ -28,6 +28,7 @@ const API = {
   listTrash: () => invoke('list_trash'),
   restoreFromTrash: (filename) => invoke('restore_from_trash', { filename }),
   emptyTrash: () => invoke('empty_trash'),
+  openInSystemPlayer: (path) => invoke('open_in_system_player', { path }),
 
   // ─── Duplicates ───
   findDuplicates: (paths, method, threshold) => invoke('find_duplicates', { paths, method, threshold }),

@@ -32,6 +32,14 @@ const Viewer = (() => {
         case 'ArrowRight': next(); break;
         case 'Home': goTo(0); break;
         case 'End': goTo(images.length - 1); break;
+        case ' ':
+        case 'Enter':
+          const currentImg = images[currentIndex];
+          if (currentImg && currentImg.is_video) {
+            e.preventDefault();
+            API.openInSystemPlayer(currentImg.path);
+          }
+          break;
         case 'f':
         case 'F':
           e.preventDefault();
@@ -88,32 +96,54 @@ const Viewer = (() => {
     const imgEl = document.getElementById('viewer-image');
     const videoEl = document.getElementById('viewer-video');
 
-    if (img.is_video) {
-      // Show video, hide image
-      imgEl.classList.add('hidden');
-      videoEl.classList.remove('hidden');
-
-      // Stop and reset previous video if playing
+    // Hide video element completely to avoid Webview codec restrictions
+    if (videoEl) {
       videoEl.pause();
+      videoEl.src = '';
+      videoEl.classList.add('hidden');
+    }
 
-      // Convert local path to Tauri asset URL using convertFileSrc
-      const videoSrc = window.__TAURI__.core.convertFileSrc(img.path);
-      videoEl.src = videoSrc;
-      videoEl.load();
-      videoEl.play().catch(e => console.warn('Auto-play failed', e));
+    if (img.is_video) {
+      // Show image element as a preview frame, hide video element
+      imgEl.classList.remove('hidden');
 
-      // EXIF/Histogram not needed for video, or EXIF empty
-      document.getElementById('viewer-exif').textContent = 'Видео файл';
+      // Load generated thumbnail as preview
+      if (img.thumbnail) {
+        imgEl.src = Utils.base64Src(img.thumbnail);
+      } else {
+        imgEl.src = '';
+      }
+
+      // Add or show a play overlay button in the center
+      let playBtn = document.getElementById('viewer-play-overlay');
+      if (!playBtn) {
+        playBtn = document.createElement('button');
+        playBtn.id = 'viewer-play-overlay';
+        playBtn.className = 'viewer-play-overlay';
+        playBtn.innerHTML = `
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+            <path d="M8 5v14l11-7z" fill="white"/>
+          </svg>
+          <span>Открыть в системном плеере</span>
+        `;
+        playBtn.addEventListener('click', () => {
+          const currentImg = images[currentIndex];
+          if (currentImg) API.openInSystemPlayer(currentImg.path);
+        });
+        document.getElementById('fullscreen-viewer').appendChild(playBtn);
+      }
+      playBtn.classList.remove('hidden');
+
+      // EXIF/Histogram
+      document.getElementById('viewer-exif').textContent = 'Видео файл (Нажмите Space/Enter или кликните для запуска)';
       const canvas = document.getElementById('viewer-histogram');
       if (canvas) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     } else {
-      // Show image, hide video
-      videoEl.pause();
-      videoEl.src = '';
-      videoEl.classList.add('hidden');
+      // Hide play button overlay
+      document.getElementById('viewer-play-overlay')?.classList.add('hidden');
       imgEl.classList.remove('hidden');
 
       // EXIF loading
@@ -144,6 +174,7 @@ const Viewer = (() => {
       videoEl.pause();
       videoEl.src = '';
     }
+    document.getElementById('viewer-play-overlay')?.classList.add('hidden');
     document.getElementById('fullscreen-viewer').classList.add('hidden');
     resetZoom();
   }
@@ -200,6 +231,11 @@ const Viewer = (() => {
 
   // ─── Zoom & Pan Operations ───
   function toggleZoom(e) {
+    const currentImg = images[currentIndex];
+    if (currentImg && currentImg.is_video) {
+      API.openInSystemPlayer(currentImg.path);
+      return;
+    }
     const imgEl = document.getElementById('viewer-image');
     if (!imgEl) return;
 

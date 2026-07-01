@@ -97,6 +97,7 @@ pub fn run() {
             file_ops::list_trash,
             file_ops::restore_from_trash,
             file_ops::empty_trash,
+            file_ops::open_in_system_player,
             // Duplicates
             duplicates::find_duplicates,
             duplicates::get_duplicate_stats,

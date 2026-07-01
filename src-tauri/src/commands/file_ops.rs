@@ -376,3 +376,24 @@ pub fn empty_trash() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Open a file in the system default media player
+#[tauri::command]
+pub fn open_in_system_player(_app: tauri::AppHandle, path: String) -> Result<(), String> {
+    log::info!("Opening file in system player: {}", path);
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(&["/C", "start", "", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to spawn cmd start: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_path(&path, None::<&str>)
+            .map_err(|e| format!("Opener failed to open path: {}", e))
+    }
+}
