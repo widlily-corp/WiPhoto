@@ -83,6 +83,12 @@ const Gallery = (() => {
         currentFilter = btn.dataset.filter;
         currentFolderFilter = '';
         applyFilters();
+
+        if (currentFilter === 'duplicates' && (!duplicateGroups || duplicateGroups.length === 0)) {
+          if (typeof Settings !== 'undefined' && typeof Settings.showDuplicateFinder === 'function') {
+            Settings.showDuplicateFinder();
+          }
+        }
       });
     });
 

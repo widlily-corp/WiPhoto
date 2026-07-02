@@ -1,6 +1,81 @@
 use crate::models::image_info::DuplicateGroup;
 use rayon::prelude::*;
 use tauri::{Emitter, AppHandle};
+use std::path::Path;
+
+fn sha2_hash(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Retrieve the cached 256x256 thumbnail if present, falling back to original image
+fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
+    let hash = sha2_hash(path);
+    let cache_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".wiphoto")
+        .join("cache")
+        .join("thumbnails");
+    let cache_file = cache_dir.join(format!("{}.jpg", hash));
+
+    if cache_file.exists() {
+        if let Ok(img) = image::open(&cache_file) {
+            return Some(img);
+        }
+    }
+
+    // Fallback to original image path
+    image::open(Path::new(path)).ok()
+}
+
+fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
+    match method {
+        "phash" => {
+            let gray = img.resize_exact(16, 16, image::imageops::FilterType::Triangle).to_luma8();
+            let pixels: Vec<f64> = gray.pixels().map(|p| p.0[0] as f64).collect();
+            let mut block_means = Vec::with_capacity(16);
+            for by in 0..4 {
+                for bx in 0..4 {
+                    let mut sum = 0.0;
+                    for dy in 0..4 {
+                        for dx in 0..4 {
+                            let idx = (by * 4 + dy) * 16 + bx * 4 + dx;
+                            sum += pixels[idx];
+                        }
+                    }
+                    block_means.push(sum / 16.0);
+                }
+            }
+            let avg: f64 = block_means.iter().sum::<f64>() / block_means.len() as f64;
+            let mut hash: u32 = 0;
+            for (i, &val) in block_means.iter().enumerate() {
+                if val > avg {
+                    hash |= 1 << i;
+                }
+            }
+            Some(hash)
+        }
+        "dhash" => {
+            let gray = img.resize_exact(9, 4, image::imageops::FilterType::Triangle).to_luma8();
+            let mut hash: u32 = 0;
+            let mut bit = 0;
+            for y in 0..4 {
+                for x in 0..8 {
+                    let left = gray.get_pixel(x, y).0[0] as f64;
+                    let right = gray.get_pixel(x + 1, y).0[0] as f64;
+                    if left > right {
+                        hash |= 1 << bit;
+                    }
+                    bit += 1;
+                }
+            }
+            Some(hash)
+        }
+        _ => None,
+    }
+}
 
 /// Simple perceptual hash implementation using DCT-based approach
 fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
@@ -36,6 +111,11 @@ fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
                 }
             }
             Some(hash)
+        }
+        "combined" => {
+            let ph = compute_hash_32(img, "phash")?;
+            let dh = compute_hash_32(img, "dhash")?;
+            Some(((ph as u64) << 32) | (dh as u64))
         }
         "phash" | _ => {
             // Simplified pHash using mean of larger block
@@ -90,7 +170,7 @@ pub async fn find_duplicates(
     let hashes: Vec<(String, Option<u64>)> = paths
         .par_iter()
         .map(|path| {
-            let hash = image::open(path).ok().and_then(|img| compute_hash(&img, &method));
+            let hash = get_image_for_hashing(path).and_then(|img| compute_hash(&img, &method));
             let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
             if current % 10 == 0 || current == total {
                 let _ = app.emit("dup-progress", serde_json::json!({
@@ -183,7 +263,7 @@ pub struct DuplicateStats {
 /// Compute perceptual hash for a single image (returned as hex string)
 #[tauri::command]
 pub fn compute_phash(path: String) -> Result<String, String> {
-    let img = image::open(&path).map_err(|e| format!("Failed to open image: {}", e))?;
+    let img = get_image_for_hashing(&path).ok_or_else(|| "Failed to open image".to_string())?;
     let hash = compute_hash(&img, "phash").unwrap_or(0);
     Ok(format!("{:016x}", hash))
 }

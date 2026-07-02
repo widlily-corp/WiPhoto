@@ -38,10 +38,10 @@ pub fn init_model() -> Result<(), String> {
     let _ = fs::create_dir_all(&model_dir);
     let model_path = model_dir.join("yolov8n.onnx");
 
-    let needs_download = !model_path.exists() || fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0) == 0;
+    let needs_download = !model_path.exists() || fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0) < 10_000_000;
 
     if needs_download {
-        log::info!("ONNX model not found or empty. Downloading YOLOv8n from HuggingFace...");
+        log::info!("ONNX model not found or corrupt/incomplete. Downloading YOLOv8n from GitHub Releases...");
         if let Err(e) = download_model(&model_path) {
             let _ = fs::remove_file(&model_path);
             return Err(e);
@@ -64,7 +64,7 @@ pub fn init_model() -> Result<(), String> {
 }
 
 fn download_model(dest: &Path) -> Result<(), String> {
-    let url = "https://huggingface.co/Kalray/yolov8/resolve/main/yolov8n.onnx";
+    let url = "https://github.com/CVHub520/X-AnyLabeling/releases/download/v0.1.0/yolov8n.onnx";
 
     let response = ureq::get(url)
         .call()
