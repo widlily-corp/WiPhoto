@@ -170,7 +170,6 @@ pub async fn export_files(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_watermark_position_unicode() {
