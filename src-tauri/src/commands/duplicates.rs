@@ -27,7 +27,21 @@ fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
     }
 
     // Fallback to original image path
-    image::open(Path::new(path)).ok()
+    let file_path = Path::new(path);
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    if crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str()) {
+        if let Some(bytes) = crate::commands::raw_utils::extract_embedded_jpeg(file_path) {
+            image::load_from_memory(&bytes).ok()
+        } else {
+            None
+        }
+    } else {
+        image::open(file_path).ok()
+    }
 }
 
 fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
@@ -266,4 +280,47 @@ pub fn compute_phash(path: String) -> Result<String, String> {
     let img = get_image_for_hashing(&path).ok_or_else(|| "Failed to open image".to_string())?;
     let hash = compute_hash(&img, "phash").unwrap_or(0);
     Ok(format!("{:016x}", hash))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hamming_distance() {
+        // Arrange
+        let a = 0b10101010;
+        let b = 0b10101111; // differs in last 2 bits
+
+        // Act
+        let dist = hamming_distance(a, b);
+
+        // Assert
+        assert_eq!(dist, 2);
+    }
+
+    #[test]
+    fn test_get_duplicate_stats() {
+        // Arrange
+        let groups = vec![
+            DuplicateGroup {
+                group_id: "1".into(),
+                images: vec!["a.jpg".into(), "b.jpg".into()],
+                best_path: "a.jpg".into(),
+            },
+            DuplicateGroup {
+                group_id: "2".into(),
+                images: vec!["c.jpg".into(), "d.jpg".into(), "e.jpg".into()],
+                best_path: "c.jpg".into(),
+            },
+        ];
+
+        // Act
+        let stats = get_duplicate_stats(groups).expect("Failed to get stats");
+
+        // Assert
+        assert_eq!(stats.total_groups, 2);
+        assert_eq!(stats.total_duplicates, 3);
+        assert_eq!(stats.potential_savings_mb, 0.0);
+    }
 }
