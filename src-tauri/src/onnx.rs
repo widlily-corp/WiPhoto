@@ -6,6 +6,7 @@ use tract_onnx::prelude::*;
 
 pub type ModelType = SimplePlan<TypedFact, Box<dyn TypedOp>, TypedModel>;
 static MODEL: OnceCell<ModelType> = OnceCell::new();
+static INIT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[derive(Debug)]
 pub struct Detection {
@@ -27,6 +28,12 @@ pub fn get_model() -> Option<&'static ModelType> {
 
 /// Initialize and load the model (downloads it if not present)
 pub fn init_model() -> Result<(), String> {
+    if MODEL.get().is_some() {
+        return Ok(());
+    }
+
+    let _guard = INIT_LOCK.lock().map_err(|e| format!("Failed to acquire init lock: {}", e))?;
+
     if MODEL.get().is_some() {
         return Ok(());
     }
