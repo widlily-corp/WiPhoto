@@ -167,6 +167,38 @@ fn hamming_distance(a: u64, b: u64) -> u32 {
     (a ^ b).count_ones()
 }
 
+struct BKNode {
+    hash: u64,
+    index: usize,
+    children: std::collections::HashMap<u32, usize>,
+}
+
+fn bktree_query(
+    nodes: &[BKNode],
+    node_idx: usize,
+    query_hash: u64,
+    threshold: u32,
+    results: &mut Vec<usize>,
+) {
+    if nodes.is_empty() {
+        return;
+    }
+    let node = &nodes[node_idx];
+    let dist = hamming_distance(node.hash, query_hash);
+    if dist <= threshold {
+        results.push(node.index);
+    }
+
+    let min_dist = dist.saturating_sub(threshold);
+    let max_dist = dist.saturating_add(threshold);
+
+    for (&child_dist, &child_idx) in &node.children {
+        if child_dist >= min_dist && child_dist <= max_dist {
+            bktree_query(nodes, child_idx, query_hash, threshold, results);
+        }
+    }
+}
+
 /// Find duplicates using specified hash method
 #[tauri::command]
 pub async fn find_duplicates(
@@ -204,28 +236,64 @@ pub async fn find_duplicates(
 
     log::info!("Successfully computed hashes for {} out of {} files", valid_hashes.len(), paths.len());
 
-    // Group by similarity
+    // Build BK-Tree
+    let mut tree_nodes: Vec<BKNode> = Vec::with_capacity(valid_hashes.len());
+    
+    let insert_node = |nodes: &mut Vec<BKNode>, index: usize, hash: u64| {
+        if nodes.is_empty() {
+            nodes.push(BKNode {
+                hash,
+                index,
+                children: std::collections::HashMap::new(),
+            });
+            return;
+        }
+
+        let mut curr = 0;
+        loop {
+            let dist = hamming_distance(nodes[curr].hash, hash);
+            if dist == 0 {
+                // Same hash: we can handle or just branch
+            }
+            if let Some(&idx) = nodes[curr].children.get(&dist) {
+                curr = idx;
+            } else {
+                let new_idx = nodes.len();
+                nodes.push(BKNode {
+                    hash,
+                    index,
+                    children: std::collections::HashMap::new(),
+                });
+                nodes[curr].children.insert(dist, new_idx);
+                break;
+            }
+        }
+    };
+
+    for (i, &(_, hash)) in valid_hashes.iter().enumerate() {
+        insert_node(&mut tree_nodes, i, hash);
+    }
+
+    // Group by similarity using BK-Tree
     let mut groups: Vec<DuplicateGroup> = Vec::new();
-    let mut assigned: Vec<bool> = vec![false; valid_hashes.len()];
+    let mut assigned = vec![false; valid_hashes.len()];
 
     for i in 0..valid_hashes.len() {
         if assigned[i] {
             continue;
         }
-        let mut group_paths = vec![valid_hashes[i].0.clone()];
 
-        for j in (i + 1)..valid_hashes.len() {
-            if assigned[j] {
-                continue;
-            }
-            let dist = hamming_distance(valid_hashes[i].1, valid_hashes[j].1);
-            if dist <= threshold {
-                group_paths.push(valid_hashes[j].0.clone());
-                assigned[j] = true;
-            }
-        }
+        let mut similar_indices = Vec::new();
+        bktree_query(&tree_nodes, 0, valid_hashes[i].1, threshold, &mut similar_indices);
+        similar_indices.retain(|&idx| !assigned[idx]);
 
-        if group_paths.len() > 1 {
+        if similar_indices.len() > 1 {
+            let mut group_paths = Vec::new();
+            for &idx in &similar_indices {
+                group_paths.push(valid_hashes[idx].0.clone());
+                assigned[idx] = true;
+            }
+
             let best = group_paths
                 .iter()
                 .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
@@ -238,7 +306,6 @@ pub async fn find_duplicates(
                 images: group_paths,
                 best_path: best,
             });
-            assigned[i] = true;
         }
     }
 
