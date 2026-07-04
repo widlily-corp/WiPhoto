@@ -91,8 +91,10 @@ pub fn write_xmp_sidecar(
     fs::write(&xmp_path, xmp_content).map_err(|e| format!("Write error: {}", e))
 }
 
-/// Parse XMP content string into XmpData
+/// Parse XMP content string into XmpData using roxmltree
 pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
+    let doc = roxmltree::Document::parse(content).ok()?;
+    
     let mut data = XmpData {
         rating: 0,
         color_label: String::new(),
@@ -101,78 +103,46 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
         history: vec![],
     };
 
-    // Simple XML parsing (no full XML parser dependency needed)
-    // Parse Rating
-    if let Some(val) = extract_attr(content, "xmp:Rating") {
-        data.rating = val.parse().unwrap_or(0);
-    }
-    // Parse Label
-    if let Some(val) = extract_attr(content, "xmp:Label") {
-        data.color_label = val;
-    }
-    // Parse FlagStatus
-    if let Some(val) = extract_attr(content, "xmp:FlagStatus") {
-        data.flag_status = val;
-    }
-    // Parse tags from rdf:li elements inside dc:subject
-    if let Some(subject_block) = extract_block(content, "dc:subject") {
-        data.tags = extract_list_items(&subject_block);
-    }
-    // Parse history from rdf:li elements inside xmpMM:History
-    if let Some(history_block) = extract_block(content, "xmpMM:History") {
-        data.history = extract_list_items(&history_block);
+    if let Some(desc_node) = doc.descendants().find(|n| n.has_tag_name("Description")) {
+        for attr in desc_node.attributes() {
+            match attr.name() {
+                "Rating" => {
+                    data.rating = attr.value().parse().unwrap_or(0);
+                }
+                "Label" => {
+                    data.color_label = attr.value().to_string();
+                }
+                "FlagStatus" => {
+                    data.flag_status = attr.value().to_string();
+                }
+                _ => {}
+            }
+        }
+        
+        if let Some(subject_node) = desc_node.descendants().find(|n| n.has_tag_name("subject")) {
+            for li in subject_node.descendants().filter(|n| n.has_tag_name("li")) {
+                if let Some(text) = li.text() {
+                    let t = text.trim();
+                    if !t.is_empty() {
+                        data.tags.push(t.to_string());
+                    }
+                }
+            }
+        }
+
+        if let Some(history_node) = desc_node.descendants().find(|n| n.has_tag_name("History")) {
+            for li in history_node.descendants().filter(|n| n.has_tag_name("li")) {
+                if let Some(text) = li.text() {
+                    let t = text.trim();
+                    if !t.is_empty() {
+                        data.history.push(t.to_string());
+                    }
+                }
+            }
+        }
     }
 
     Some(data)
-}
-
-fn extract_attr(content: &str, attr: &str) -> Option<String> {
-    let search_double = format!("{}=\"", attr);
-    if let Some(start) = content.find(&search_double) {
-        let value_start = start + search_double.len();
-        if let Some(end) = content[value_start..].find('"') {
-            return Some(content[value_start..value_start + end].to_string());
-        }
-    }
-    let search_single = format!("{}='", attr);
-    if let Some(start) = content.find(&search_single) {
-        let value_start = start + search_single.len();
-        if let Some(end) = content[value_start..].find('\'') {
-            return Some(content[value_start..value_start + end].to_string());
-        }
-    }
-    None
-}
-
-fn extract_block(content: &str, tag: &str) -> Option<String> {
-    let open_tag = format!("<{}", tag);
-    let close_tag = format!("</{}>", tag);
-    if let Some(start) = content.find(&open_tag) {
-        if let Some(end) = content[start..].find(&close_tag) {
-            return Some(content[start..start + end + close_tag.len()].to_string());
-        }
-    }
-    None
-}
-
-fn extract_list_items(block: &str) -> Vec<String> {
-    let mut items = Vec::new();
-    let mut search_from = 0;
-    let open = "<rdf:li>";
-    let close = "</rdf:li>";
-    while let Some(start) = block[search_from..].find(open) {
-        let abs_start = search_from + start + open.len();
-        if let Some(end) = block[abs_start..].find(close) {
-            let item = block[abs_start..abs_start + end].trim().to_string();
-            if !item.is_empty() {
-                items.push(xml_unescape(&item));
-            }
-            search_from = abs_start + end + close.len();
-        } else {
-            break;
-        }
-    }
-    items
 }
 
 fn xml_escape(s: &str) -> String {
@@ -180,13 +150,6 @@ fn xml_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
-}
-
-fn xml_unescape(s: &str) -> String {
-    s.replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
 }
 
 #[cfg(test)]
@@ -200,6 +163,8 @@ mod tests {
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
   <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description
+      xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+      xmlns:dc="http://purl.org/dc/elements/1.1/"
       xmp:Rating="4"
       xmp:Label="blue"
       xmp:FlagStatus="picked">
@@ -230,6 +195,8 @@ mod tests {
 <x:xmpmeta xmlns:x='adobe:ns:meta/'>
   <rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>
     <rdf:Description
+      xmlns:xmp='http://ns.adobe.com/xap/1.0/'
+      xmlns:dc='http://purl.org/dc/elements/1.1/'
       xmp:Rating='3'
       xmp:Label='red'
       xmp:FlagStatus='rejected'>
