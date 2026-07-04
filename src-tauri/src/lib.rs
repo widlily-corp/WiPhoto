@@ -1,4 +1,5 @@
 mod commands;
+mod db;
 mod models;
 mod onnx;
 
@@ -71,6 +72,10 @@ use std::sync::Mutex;
 pub fn run() {
     init_logger();
     log::info!("Starting WiPhoto v4.0.0 application...");
+
+    if let Err(e) = db::init_db() {
+        log::error!("Failed to initialize database: {}", e);
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

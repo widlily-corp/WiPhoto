@@ -303,6 +303,14 @@ fn parse_gps_coordinate(value: &exif::Value, reference: &str) -> Option<f64> {
     }
 }
 
+fn get_modified_time(path: &Path) -> u64 {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Scan a folder and return all image infos
 #[tauri::command]
 pub async fn scan_folder(
@@ -334,6 +342,9 @@ pub async fn scan_folder(
         return Ok(vec![]);
     }
 
+    // Load folder cache from database
+    let db_cache = crate::db::get_folder_cache(&path).unwrap_or_default();
+
     // Emit initial progress
     let _ = app.emit("scan-progress", serde_json::json!({
         "current": 0,
@@ -347,6 +358,27 @@ pub async fn scan_folder(
     let mut final_results: Vec<ImageInfo> = files
         .par_iter()
         .filter_map(|file_path| {
+            let path_str = file_path.to_string_lossy().to_string();
+            let mtime = get_modified_time(file_path);
+
+            // Check cache
+            if let Some((cached_info, cached_mtime)) = db_cache.get(&path_str) {
+                if *cached_mtime == mtime {
+                    let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                    let _ = app.emit("image-scanned", cached_info.clone());
+
+                    if current % 5 == 0 || current == total {
+                        let _ = app.emit("scan-progress", serde_json::json!({
+                            "current": current,
+                            "total": total,
+                            "current_file": path_str.clone()
+                        }));
+                    }
+                    return Some(cached_info.clone());
+                }
+            }
+
+            // Cache miss: process
             if let Some(info) = process_single_file(file_path, &cache_dir) {
                 let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
                 let _ = app.emit("image-scanned", info.clone());
@@ -355,7 +387,7 @@ pub async fn scan_folder(
                     let _ = app.emit("scan-progress", serde_json::json!({
                         "current": current,
                         "total": total,
-                        "current_file": file_path.to_string_lossy()
+                        "current_file": path_str.clone()
                     }));
                 }
                 Some(info)
@@ -365,15 +397,50 @@ pub async fn scan_folder(
                     let _ = app.emit("scan-progress", serde_json::json!({
                         "current": current,
                         "total": total,
-                        "current_file": file_path.to_string_lossy()
+                        "current_file": path_str.clone()
                     }));
                 }
                 None
             }
         })
         .collect();
+
     // Sort by path for consistency
     final_results.sort_by(|a, b| a.path.cmp(&b.path));
+
+    // Save new/modified items to DB
+    let mut to_save = Vec::new();
+    for info in &final_results {
+        let mtime = get_modified_time(Path::new(&info.path));
+        if let Some((_, cached_mtime)) = db_cache.get(&info.path) {
+            if *cached_mtime == mtime {
+                continue; // Skip already cached
+            }
+        }
+        to_save.push((info, mtime));
+    }
+
+    if let Err(e) = crate::db::save_images_batch(&to_save) {
+        log::error!("Failed to save scanned images to database: {}", e);
+    }
+
+    // Find orphaned records (present in DB cache but not on disk)
+    let file_paths_set: std::collections::HashSet<String> = files
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+
+    let mut to_delete = Vec::new();
+    for cached_path in db_cache.keys() {
+        if !file_paths_set.contains(cached_path) {
+            to_delete.push(cached_path.clone());
+        }
+    }
+
+    if let Err(e) = crate::db::delete_images_batch(&to_delete) {
+        log::error!("Failed to delete orphaned database records: {}", e);
+    }
+
     log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
     log::info!("[Rust] Scan completed. Processed: {}", final_results.len());
 
