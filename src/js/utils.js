@@ -67,7 +67,8 @@ const Utils = {
 
   /** Get file extension */
   getExtension(path) {
-    const parts = path.split('.');
+    const filename = Utils.getFilename(path);
+    const parts = filename.split('.');
     return parts.length > 1 ? parts.pop().toLowerCase() : '';
   },
 

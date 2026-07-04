@@ -58,16 +58,22 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       const path1 = 'C:/photos/my_photo.ARW';
       const path2 = '/usr/bin/image.jpeg';
       const path3 = 'no_extension';
+      const path4 = 'C:/photos.holiday/my_photo';
+      const path5 = 'C:/photos.holiday/my_photo.png';
 
       // Act
       const ext1 = Utils.getExtension(path1);
       const ext2 = Utils.getExtension(path2);
       const ext3 = Utils.getExtension(path3);
+      const ext4 = Utils.getExtension(path4);
+      const ext5 = Utils.getExtension(path5);
 
       // Assert
       assert.strictEqual(ext1, 'arw');
       assert.strictEqual(ext2, 'jpeg');
       assert.strictEqual(ext3, '');
+      assert.strictEqual(ext4, '');
+      assert.strictEqual(ext5, 'png');
     });
   });
 
