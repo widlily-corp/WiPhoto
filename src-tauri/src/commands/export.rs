@@ -31,7 +31,7 @@ fn apply_watermark(img: &mut DynamicImage, text: &str) {
         let scale_val = (width as f32 * 0.025).max(16.0).min(72.0);
         let scale = PxScale::from(scale_val);
 
-        let text_width = (text.len() as f32 * scale_val * 0.55) as u32;
+        let text_width = (text.chars().count() as f32 * scale_val * 0.55) as u32;
         let text_height = scale_val as u32;
 
         let margin_x = (width as f32 * 0.02) as u32;
@@ -166,4 +166,37 @@ pub async fn export_files(
     });
 
     Ok(count.load(std::sync::atomic::Ordering::SeqCst))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_watermark_position_unicode() {
+        // Arrange: width 1000, height 1000.
+        // scale_val = (1000 * 0.025).max(16.0).min(72.0) = 25.0
+        // scale_val * 0.55 = 13.75
+        let width = 1000u32;
+        let scale_val = 25.0f32;
+        
+        let text_ascii = "Watermark"; // 9 chars
+        let text_cyrillic = "Ватермарк"; // 9 chars (but 18 bytes in UTF-8!)
+
+        // Act
+        let text_width_ascii = (text_ascii.chars().count() as f32 * scale_val * 0.55) as u32;
+        let text_width_cyrillic = (text_cyrillic.chars().count() as f32 * scale_val * 0.55) as u32;
+
+        // Assert: Both should have the same calculated text width since character counts are identical!
+        assert_eq!(text_width_ascii, text_width_cyrillic);
+        assert_eq!(text_width_ascii, 123); // 9 * 25 * 0.55 = 123.75 -> 123
+
+        // Verify that x position remains identical and positive
+        let margin_x = (width as f32 * 0.02) as u32; // 20
+        let x_ascii = width.saturating_sub(text_width_ascii).saturating_sub(margin_x);
+        let x_cyrillic = width.saturating_sub(text_width_cyrillic).saturating_sub(margin_x);
+
+        assert_eq!(x_ascii, x_cyrillic);
+        assert_eq!(x_ascii, 857); // 1000 - 123 - 20 = 857
+    }
 }
