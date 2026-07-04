@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
+use image::{DynamicImage, GenericImageView};
 use std::path::Path;
+use rayon::prelude::*;
 
 /// Apply an edit operation to an image and return base64 result
 #[tauri::command]
@@ -33,7 +34,7 @@ pub async fn apply_edit(
     Ok(STANDARD.encode(&buf))
 }
 
-/// Save edited image to disk
+/// Save edited image to disk atomically
 #[tauri::command]
 pub async fn save_edited(
     path: String,
@@ -65,22 +66,24 @@ pub async fn save_edited(
         .to_string_lossy()
         .to_lowercase();
 
+    let temp_path = format!("{}.tmp", save_path);
+
     match save_ext.as_str() {
         "jpg" | "jpeg" => {
             let q = quality.unwrap_or(95);
             let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                std::fs::File::create(&save_path).map_err(|e| e.to_string())?,
+                std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
                 q,
             );
             img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
         }
-        "png" => {
-            img.save(&save_path).map_err(|e| e.to_string())?;
-        }
         _ => {
-            img.save(&save_path).map_err(|e| e.to_string())?;
+            img.save(&temp_path).map_err(|e| e.to_string())?;
         }
     }
+
+    // Atomic rename replacement
+    std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
     Ok(save_path)
 }
@@ -125,212 +128,168 @@ fn clamp_u8(val: f64) -> u8 {
 }
 
 fn adjust_exposure(img: DynamicImage, value: f64) -> DynamicImage {
-    // value: -5.0 to +5.0, 0 = no change
     let factor = (2.0f64).powf(value);
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let r = clamp_u8(pixel[0] as f64 * factor);
-        let g = clamp_u8(pixel[1] as f64 * factor);
-        let b = clamp_u8(pixel[2] as f64 * factor);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
+        pixel[0] = clamp_u8(pixel[0] as f64 * factor);
+        pixel[1] = clamp_u8(pixel[1] as f64 * factor);
+        pixel[2] = clamp_u8(pixel[2] as f64 * factor);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_contrast(img: DynamicImage, value: f64) -> DynamicImage {
-    // value: -100 to +100
     let factor = (259.0 * (value + 255.0)) / (255.0 * (259.0 - value));
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let r = clamp_u8(factor * (pixel[0] as f64 - 128.0) + 128.0);
-        let g = clamp_u8(factor * (pixel[1] as f64 - 128.0) + 128.0);
-        let b = clamp_u8(factor * (pixel[2] as f64 - 128.0) + 128.0);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
+        pixel[0] = clamp_u8(factor * (pixel[0] as f64 - 128.0) + 128.0);
+        pixel[1] = clamp_u8(factor * (pixel[1] as f64 - 128.0) + 128.0);
+        pixel[2] = clamp_u8(factor * (pixel[2] as f64 - 128.0) + 128.0);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_brightness(img: DynamicImage, value: f64) -> DynamicImage {
-    // value: -100 to +100
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let r = clamp_u8(pixel[0] as f64 + value);
-        let g = clamp_u8(pixel[1] as f64 + value);
-        let b = clamp_u8(pixel[2] as f64 + value);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
+        pixel[0] = clamp_u8(pixel[0] as f64 + value);
+        pixel[1] = clamp_u8(pixel[1] as f64 + value);
+        pixel[2] = clamp_u8(pixel[2] as f64 + value);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_highlights(img: DynamicImage, value: f64) -> DynamicImage {
-    // Affects bright areas only. value: -100 to +100
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let luminance = 0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64;
-        let mask = (luminance / 255.0).powf(2.0); // Highlight mask
+        let mask = (luminance / 255.0).powf(2.0);
         let adjustment = amount * mask * 60.0;
-        let r = clamp_u8(pixel[0] as f64 + adjustment);
-        let g = clamp_u8(pixel[1] as f64 + adjustment);
-        let b = clamp_u8(pixel[2] as f64 + adjustment);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + adjustment);
+        pixel[1] = clamp_u8(pixel[1] as f64 + adjustment);
+        pixel[2] = clamp_u8(pixel[2] as f64 + adjustment);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_shadows(img: DynamicImage, value: f64) -> DynamicImage {
-    // Affects dark areas only. value: -100 to +100
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let luminance = 0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64;
-        let mask = (1.0 - luminance / 255.0).powf(2.0); // Shadow mask
+        let mask = (1.0 - luminance / 255.0).powf(2.0);
         let adjustment = amount * mask * 60.0;
-        let r = clamp_u8(pixel[0] as f64 + adjustment);
-        let g = clamp_u8(pixel[1] as f64 + adjustment);
-        let b = clamp_u8(pixel[2] as f64 + adjustment);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + adjustment);
+        pixel[1] = clamp_u8(pixel[1] as f64 + adjustment);
+        pixel[2] = clamp_u8(pixel[2] as f64 + adjustment);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_whites(img: DynamicImage, value: f64) -> DynamicImage {
-    // Adjusts the white point. value: -100 to +100
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let luminance = 0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64;
         let mask = (luminance / 255.0).powf(4.0);
         let adjustment = amount * mask * 80.0;
-        let r = clamp_u8(pixel[0] as f64 + adjustment);
-        let g = clamp_u8(pixel[1] as f64 + adjustment);
-        let b = clamp_u8(pixel[2] as f64 + adjustment);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + adjustment);
+        pixel[1] = clamp_u8(pixel[1] as f64 + adjustment);
+        pixel[2] = clamp_u8(pixel[2] as f64 + adjustment);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_blacks(img: DynamicImage, value: f64) -> DynamicImage {
-    // Adjusts the black point. value: -100 to +100
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let luminance = 0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64;
         let mask = (1.0 - luminance / 255.0).powf(4.0);
         let adjustment = amount * mask * 80.0;
-        let r = clamp_u8(pixel[0] as f64 + adjustment);
-        let g = clamp_u8(pixel[1] as f64 + adjustment);
-        let b = clamp_u8(pixel[2] as f64 + adjustment);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + adjustment);
+        pixel[1] = clamp_u8(pixel[1] as f64 + adjustment);
+        pixel[2] = clamp_u8(pixel[2] as f64 + adjustment);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_temperature(img: DynamicImage, value: f64) -> DynamicImage {
-    // value: -100 (cool/blue) to +100 (warm/orange)
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let r = clamp_u8(pixel[0] as f64 + amount * 30.0);
-        let g = clamp_u8(pixel[1] as f64 + amount * 10.0);
-        let b = clamp_u8(pixel[2] as f64 - amount * 30.0);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
+        pixel[0] = clamp_u8(pixel[0] as f64 + amount * 30.0);
+        pixel[1] = clamp_u8(pixel[1] as f64 + amount * 10.0);
+        pixel[2] = clamp_u8(pixel[2] as f64 - amount * 30.0);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_tint(img: DynamicImage, value: f64) -> DynamicImage {
-    // value: -100 (green) to +100 (magenta)
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let r = clamp_u8(pixel[0] as f64 + amount * 15.0);
-        let g = clamp_u8(pixel[1] as f64 - amount * 25.0);
-        let b = clamp_u8(pixel[2] as f64 + amount * 15.0);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
+        pixel[0] = clamp_u8(pixel[0] as f64 + amount * 15.0);
+        pixel[1] = clamp_u8(pixel[1] as f64 - amount * 25.0);
+        pixel[2] = clamp_u8(pixel[2] as f64 + amount * 15.0);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_vibrance(img: DynamicImage, value: f64) -> DynamicImage {
-    // Selectively saturates less-saturated colors
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let r = pixel[0] as f64 / 255.0;
         let g = pixel[1] as f64 / 255.0;
         let b = pixel[2] as f64 / 255.0;
         let max_c = r.max(g).max(b);
         let min_c = r.min(g).min(b);
         let sat = if max_c > 0.0 { (max_c - min_c) / max_c } else { 0.0 };
-        // Less saturated pixels get more boost
         let factor = 1.0 + amount * (1.0 - sat);
         let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        let nr = clamp_u8((gray + (r - gray) * factor) * 255.0);
-        let ng = clamp_u8((gray + (g - gray) * factor) * 255.0);
-        let nb = clamp_u8((gray + (b - gray) * factor) * 255.0);
-        out.put_pixel(x, y, Rgba([nr, ng, nb, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8((gray + (r - gray) * factor) * 255.0);
+        pixel[1] = clamp_u8((gray + (g - gray) * factor) * 255.0);
+        pixel[2] = clamp_u8((gray + (b - gray) * factor) * 255.0);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_saturation(img: DynamicImage, value: f64) -> DynamicImage {
     let factor = 1.0 + value / 100.0;
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let mut rgba = img.to_rgba8();
+    rgba.par_chunks_mut(4).for_each(|pixel| {
         let r = pixel[0] as f64 / 255.0;
         let g = pixel[1] as f64 / 255.0;
         let b = pixel[2] as f64 / 255.0;
         let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        let nr = clamp_u8((gray + (r - gray) * factor) * 255.0);
-        let ng = clamp_u8((gray + (g - gray) * factor) * 255.0);
-        let nb = clamp_u8((gray + (b - gray) * factor) * 255.0);
-        out.put_pixel(x, y, Rgba([nr, ng, nb, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8((gray + (r - gray) * factor) * 255.0);
+        pixel[1] = clamp_u8((gray + (g - gray) * factor) * 255.0);
+        pixel[2] = clamp_u8((gray + (b - gray) * factor) * 255.0);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_clarity(img: DynamicImage, value: f64) -> DynamicImage {
     if value.abs() < 0.1 {
         return img;
     }
-    // Clarity = midtone contrast via unsharp mask on luminosity
     let amount = value / 100.0;
     let blurred = img.blur(10.0);
-    let rgba = img.to_rgba8();
+    let mut rgba = img.to_rgba8();
     let blurred_rgba = blurred.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let width = rgba.width() as usize;
+
+    rgba.par_chunks_mut(4).enumerate().for_each(|(idx, pixel)| {
+        let x = (idx % width) as u32;
+        let y = (idx / width) as u32;
         let bp = blurred_rgba.get_pixel(x, y);
-        let r = clamp_u8(pixel[0] as f64 + (pixel[0] as f64 - bp[0] as f64) * amount);
-        let g = clamp_u8(pixel[1] as f64 + (pixel[1] as f64 - bp[1] as f64) * amount);
-        let b = clamp_u8(pixel[2] as f64 + (pixel[2] as f64 - bp[2] as f64) * amount);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + (pixel[0] as f64 - bp[0] as f64) * amount);
+        pixel[1] = clamp_u8(pixel[1] as f64 + (pixel[1] as f64 - bp[1] as f64) * amount);
+        pixel[2] = clamp_u8(pixel[2] as f64 + (pixel[2] as f64 - bp[2] as f64) * amount);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn adjust_sharpness(img: DynamicImage, value: f64) -> DynamicImage {
@@ -339,18 +298,19 @@ fn adjust_sharpness(img: DynamicImage, value: f64) -> DynamicImage {
     }
     let amount = value / 100.0;
     let blurred = img.blur(1.5);
-    let rgba = img.to_rgba8();
+    let mut rgba = img.to_rgba8();
     let blurred_rgba = blurred.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
+    let width = rgba.width() as usize;
+
+    rgba.par_chunks_mut(4).enumerate().for_each(|(idx, pixel)| {
+        let x = (idx % width) as u32;
+        let y = (idx / width) as u32;
         let bp = blurred_rgba.get_pixel(x, y);
-        let r = clamp_u8(pixel[0] as f64 + (pixel[0] as f64 - bp[0] as f64) * amount);
-        let g = clamp_u8(pixel[1] as f64 + (pixel[1] as f64 - bp[1] as f64) * amount);
-        let b = clamp_u8(pixel[2] as f64 + (pixel[2] as f64 - bp[2] as f64) * amount);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 + (pixel[0] as f64 - bp[0] as f64) * amount);
+        pixel[1] = clamp_u8(pixel[1] as f64 + (pixel[1] as f64 - bp[1] as f64) * amount);
+        pixel[2] = clamp_u8(pixel[2] as f64 + (pixel[2] as f64 - bp[2] as f64) * amount);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn apply_vignette(img: DynamicImage, value: f64) -> DynamicImage {
@@ -358,24 +318,26 @@ fn apply_vignette(img: DynamicImage, value: f64) -> DynamicImage {
         return img;
     }
     let amount = value / 100.0;
-    let rgba = img.to_rgba8();
+    let mut rgba = img.to_rgba8();
     let (w, h) = rgba.dimensions();
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
     let max_dist = (cx * cx + cy * cy).sqrt();
-    let mut out = ImageBuffer::new(w, h);
-    for (x, y, pixel) in rgba.enumerate_pixels() {
-        let dx = x as f64 - cx;
-        let dy = y as f64 - cy;
+    let width = w as usize;
+
+    rgba.par_chunks_mut(4).enumerate().for_each(|(idx, pixel)| {
+        let x = (idx % width) as f64;
+        let y = (idx / width) as f64;
+        let dx = x - cx;
+        let dy = y - cy;
         let dist = (dx * dx + dy * dy).sqrt() / max_dist;
         let vignette_factor = 1.0 - amount * dist * dist;
         let vf = vignette_factor.max(0.0);
-        let r = clamp_u8(pixel[0] as f64 * vf);
-        let g = clamp_u8(pixel[1] as f64 * vf);
-        let b = clamp_u8(pixel[2] as f64 * vf);
-        out.put_pixel(x, y, Rgba([r, g, b, pixel[3]]));
-    }
-    DynamicImage::ImageRgba8(out)
+        pixel[0] = clamp_u8(pixel[0] as f64 * vf);
+        pixel[1] = clamp_u8(pixel[1] as f64 * vf);
+        pixel[2] = clamp_u8(pixel[2] as f64 * vf);
+    });
+    DynamicImage::ImageRgba8(rgba)
 }
 
 fn rotate_image(img: DynamicImage, degrees: f64) -> DynamicImage {
@@ -504,7 +466,7 @@ pub struct CropRect {
     pub height: u32,
 }
 
-/// Save edited image with an optional crop rect to disk
+/// Save edited image with an optional crop rect to disk atomically
 #[tauri::command]
 pub async fn save_cropped_edited_image(
     path: String,
@@ -544,22 +506,24 @@ pub async fn save_cropped_edited_image(
         .to_string_lossy()
         .to_lowercase();
 
+    let temp_path = format!("{}.tmp", save_path);
+
     match save_ext.as_str() {
         "jpg" | "jpeg" => {
             let q = quality.unwrap_or(95);
             let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                std::fs::File::create(&save_path).map_err(|e| e.to_string())?,
+                std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
                 q,
             );
             img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
         }
-        "png" => {
-            img.save(&save_path).map_err(|e| e.to_string())?;
-        }
         _ => {
-            img.save(&save_path).map_err(|e| e.to_string())?;
+            img.save(&temp_path).map_err(|e| e.to_string())?;
         }
     }
+
+    // Atomic rename replacement
+    std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
     Ok(save_path)
 }
