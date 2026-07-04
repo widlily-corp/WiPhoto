@@ -77,6 +77,15 @@ pub fn run() {
         log::error!("Failed to initialize database: {}", e);
     }
 
+    // Spawn background task to prune old thumbnails
+    std::thread::spawn(|| {
+        log::info!("Starting background thumbnail cache pruning...");
+        match commands::thumbnails::auto_prune_thumbnail_cache() {
+            Ok(count) => log::info!("Pruned {} old thumbnails from cache.", count),
+            Err(e) => log::error!("Failed to prune thumbnail cache: {}", e),
+        }
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

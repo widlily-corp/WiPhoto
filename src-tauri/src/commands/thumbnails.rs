@@ -120,3 +120,42 @@ pub fn clear_thumbnail_cache() -> Result<u32, String> {
     }
     Ok(count)
 }
+
+/// Auto-prune thumbnail cache files older than 30 days
+pub fn auto_prune_thumbnail_cache() -> Result<u32, String> {
+    let cache_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".wiphoto")
+        .join("cache")
+        .join("thumbnails");
+    if !cache_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0u32;
+    let now = std::time::SystemTime::now();
+    let max_age = std::time::Duration::from_secs(30 * 24 * 60 * 60); // 30 days
+
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "jpg") {
+                let mut should_delete = false;
+                if let Ok(metadata) = fs::metadata(&path) {
+                    if let Ok(modified) = metadata.modified() {
+                        if let Ok(age) = now.duration_since(modified) {
+                            if age > max_age {
+                                should_delete = true;
+                            }
+                        }
+                    }
+                }
+                if should_delete {
+                    let _ = fs::remove_file(path);
+                    count += 1;
+                }
+            }
+        }
+    }
+    Ok(count)
+}
