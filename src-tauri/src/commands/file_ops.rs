@@ -379,30 +379,37 @@ pub fn empty_trash() -> Result<(), String> {
 
 /// Open a file in the system default media player
 #[tauri::command]
-pub fn open_in_system_player(path: String) -> Result<(), String> {
+pub fn open_in_system_player(app: tauri::AppHandle, path: String) -> Result<(), String> {
     log::info!("Opening file in system player: {}", path);
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(&["/C", "start", "", &path])
-            .spawn()
-            .map_err(|e| format!("Failed to spawn cmd start: {}", e))?;
-        Ok(())
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path, None::<String>)
+        .map_err(|e| format!("Failed to open path: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_trash_dir() {
+        // Act
+        let trash_dir = get_trash_dir();
+
+        // Assert
+        assert!(trash_dir.exists());
+        assert!(trash_dir.to_string_lossy().contains(".wiphoto/trash"));
     }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to spawn open: {}", e))?;
-        Ok(())
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to spawn xdg-open: {}", e))?;
-        Ok(())
+
+    #[test]
+    fn test_delete_non_existent_file() {
+        // Arrange
+        let paths = vec!["non_existent_file.jpg".to_string()];
+
+        // Act
+        let result = delete_files(paths).expect("Failed to call delete_files");
+
+        // Assert
+        assert!(result.is_empty());
     }
 }
