@@ -127,10 +127,17 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
 }
 
 fn extract_attr(content: &str, attr: &str) -> Option<String> {
-    let search = format!("{}=\"", attr);
-    if let Some(start) = content.find(&search) {
-        let value_start = start + search.len();
+    let search_double = format!("{}=\"", attr);
+    if let Some(start) = content.find(&search_double) {
+        let value_start = start + search_double.len();
         if let Some(end) = content[value_start..].find('"') {
+            return Some(content[value_start..value_start + end].to_string());
+        }
+    }
+    let search_single = format!("{}='", attr);
+    if let Some(start) = content.find(&search_single) {
+        let value_start = start + search_single.len();
+        if let Some(end) = content[value_start..].find('\'') {
             return Some(content[value_start..value_start + end].to_string());
         }
     }
@@ -180,4 +187,68 @@ fn xml_unescape(s: &str) -> String {
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_xmp_content_double_quotes() {
+        // Arrange
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description
+      xmp:Rating="4"
+      xmp:Label="blue"
+      xmp:FlagStatus="picked">
+      <dc:subject>
+        <rdf:Bag>
+          <rdf:li>Nature</rdf:li>
+          <rdf:li>Landscape</rdf:li>
+        </rdf:Bag>
+      </dc:subject>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // Act
+        let data = parse_xmp_content(content).expect("Failed to parse double-quoted XMP");
+
+        // Assert
+        assert_eq!(data.rating, 4);
+        assert_eq!(data.color_label, "blue");
+        assert_eq!(data.flag_status, "picked");
+        assert_eq!(data.tags, vec!["Nature", "Landscape"]);
+    }
+
+    #[test]
+    fn test_parse_xmp_content_single_quotes() {
+        // Arrange
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x='adobe:ns:meta/'>
+  <rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>
+    <rdf:Description
+      xmp:Rating='3'
+      xmp:Label='red'
+      xmp:FlagStatus='rejected'>
+      <dc:subject>
+        <rdf:Bag>
+          <rdf:li>Vacation &amp; Travel</rdf:li>
+        </rdf:Bag>
+      </dc:subject>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // Act
+        let data = parse_xmp_content(content).expect("Failed to parse single-quoted XMP");
+
+        // Assert
+        assert_eq!(data.rating, 3);
+        assert_eq!(data.color_label, "red");
+        assert_eq!(data.flag_status, "rejected");
+        assert_eq!(data.tags, vec!["Vacation & Travel"]);
+    }
 }
