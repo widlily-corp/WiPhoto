@@ -67,6 +67,8 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       const ext3 = Utils.getExtension(path3);
       const ext4 = Utils.getExtension(path4);
       const ext5 = Utils.getExtension(path5);
+      const ext6 = Utils.getExtension('.gitignore');
+      const ext7 = Utils.getExtension('archive.tar.gz');
 
       // Assert
       assert.strictEqual(ext1, 'arw');
@@ -74,6 +76,8 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       assert.strictEqual(ext3, '');
       assert.strictEqual(ext4, '');
       assert.strictEqual(ext5, 'png');
+      assert.strictEqual(ext6, '');
+      assert.strictEqual(ext7, 'gz');
     });
   });
 
@@ -86,10 +90,14 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       // Act
       const winFile = Utils.getFilename(winPath);
       const posixFile = Utils.getFilename(posixPath);
+      const winTrailing = Utils.getFilename('C:\\path\\to\\dir\\');
+      const posixTrailing = Utils.getFilename('/home/user/dir/');
 
       // Assert
       assert.strictEqual(winFile, 'img.png');
       assert.strictEqual(posixFile, 'img_raw.dng');
+      assert.strictEqual(winTrailing, 'dir');
+      assert.strictEqual(posixTrailing, 'dir');
     });
   });
 });

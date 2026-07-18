@@ -68,13 +68,18 @@ const Utils = {
   /** Get file extension */
   getExtension(path) {
     const filename = Utils.getFilename(path);
-    const parts = filename.split('.');
-    return parts.length > 1 ? parts.pop().toLowerCase() : '';
+    if (!filename || filename === '.' || filename === '..') return '';
+    const lastDot = filename.lastIndexOf('.');
+    if (lastDot <= 0) return ''; // Handles .hidden files
+    return filename.slice(lastDot + 1).toLowerCase();
   },
 
   /** Get filename from path */
   getFilename(path) {
-    return path.split(/[/\\]/).pop() || '';
+    if (!path) return '';
+    let p = path.replace(/[/\\]+$/, '');
+    if (!p) p = path; // if it was just "/"
+    return p.split(/[/\\]/).pop() || '';
   },
 
   /** Create element shorthand */
