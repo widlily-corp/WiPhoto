@@ -27,8 +27,9 @@ const Gallery = (() => {
         cardRenderer: createThumbCard,
       });
 
-      // Bind dragstart using event delegation
-      grid().addEventListener('dragstart', (e) => {
+      // Bind events using event delegation
+      const g = grid();
+      g.addEventListener('dragstart', (e) => {
         const card = e.target.closest('.thumb-card');
         if (!card) return;
 
@@ -43,7 +44,39 @@ const Gallery = (() => {
         }
 
         e.dataTransfer.setData('application/json', JSON.stringify(dragPaths));
+        e.dataTransfer.setData('application/wiphoto-paths', JSON.stringify(dragPaths));
         e.dataTransfer.effectAllowed = 'copyMove';
+        card.classList.add('dragging');
+      });
+
+      g.addEventListener('dragend', (e) => {
+        const card = e.target.closest('.thumb-card');
+        if (card) card.classList.remove('dragging');
+      });
+
+      g.addEventListener('click', (e) => {
+        const card = e.target.closest('.thumb-card');
+        if (card) {
+          const idx = parseInt(card.dataset.index);
+          handleClick(idx, e);
+        }
+      });
+
+      g.addEventListener('dblclick', (e) => {
+        const card = e.target.closest('.thumb-card');
+        if (card) {
+          const idx = parseInt(card.dataset.index);
+          const img = allImages[idx]; // wait, filteredImages? We need VirtualGrid.getItemAtIndex(idx)
+          handleDoubleClick(VirtualGrid.getItemAtIndex(idx));
+        }
+      });
+
+      g.addEventListener('contextmenu', (e) => {
+        const card = e.target.closest('.thumb-card');
+        if (card) {
+          const idx = parseInt(card.dataset.index);
+          handleContextMenu(e, VirtualGrid.getItemAtIndex(idx), idx);
+        }
       });
     }
 
@@ -264,6 +297,9 @@ const Gallery = (() => {
       'data-path': img.path,
       'data-index': index,
       draggable: 'true',
+      role: 'button',
+      tabindex: '0',
+      'aria-label': img.filename,
     });
 
     // Thumbnail image (rendered directly since grid is virtualized)
@@ -329,36 +365,28 @@ const Gallery = (() => {
     }
     if (badges.children.length) card.appendChild(badges);
 
-    // Events
-    card.addEventListener('click', (e) => handleClick(index, e));
-    card.addEventListener('dblclick', () => handleDoubleClick(img));
-    card.addEventListener('contextmenu', (e) => handleContextMenu(e, img, index));
-
-    // Drag & Drop (v3)
-    card.addEventListener('dragstart', (e) => {
-      const selected = getSelectedImages();
-      const dragPaths = selected.length > 0 ? selected.map(i => i.path) : [img.path];
-      e.dataTransfer.setData('application/json', JSON.stringify(dragPaths));
-      e.dataTransfer.setData('application/wiphoto-paths', JSON.stringify(dragPaths));
-      e.dataTransfer.effectAllowed = 'copyMove';
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-    });
-
     return card;
   }
 
   function handleClick(index, e) {
     if (e.ctrlKey || e.metaKey) {
       toggleSelection(index);
-    } else if (e.shiftKey && lastSelectedIndex >= 0) {
-      rangeSelect(lastSelectedIndex, index);
-    } else {
-      clearSelection();
-      selectIndex(index);
+      lastSelectedIndex = index;
+      updateStatusBar();
+      showPreview();
+      return;
     }
+    
+    if (e.shiftKey && lastSelectedIndex >= 0) {
+      rangeSelect(lastSelectedIndex, index);
+      lastSelectedIndex = index;
+      updateStatusBar();
+      showPreview();
+      return;
+    }
+    
+    clearSelection();
+    selectIndex(index);
     lastSelectedIndex = index;
     updateStatusBar();
     showPreview();
@@ -393,9 +421,9 @@ const Gallery = (() => {
       selectedIndices.delete(index);
       const card = grid().querySelector(`[data-index="${index}"]`);
       if (card) card.classList.remove('selected');
-    } else {
-      selectIndex(index);
+      return;
     }
+    selectIndex(index);
   }
 
   function rangeSelect(from, to) {
@@ -450,14 +478,15 @@ const Gallery = (() => {
     // Update Contextual Action Bar
     const contextualBar = document.getElementById('contextual-bar');
     const contextualCount = document.getElementById('contextual-count');
-    if (contextualBar && contextualCount) {
-      if (sel > 0) {
-        contextualCount.textContent = `Выбрано: ${sel} файл(ов)`;
-        contextualBar.classList.remove('hidden');
-      } else {
-        contextualBar.classList.add('hidden');
-      }
+    if (!contextualBar || !contextualCount) return;
+    
+    if (sel === 0) {
+      contextualBar.classList.add('hidden');
+      return;
     }
+    
+    contextualCount.textContent = `Выбрано: ${sel} файл(ов)`;
+    contextualBar.classList.remove('hidden');
 
     // Dynamic layout logging
     const mainApp = document.getElementById('main-app');

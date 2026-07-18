@@ -172,39 +172,45 @@ const VirtualGrid = (() => {
       }
       contentArea.innerHTML = '';
       contentArea.appendChild(fragment);
-    } else {
-      // We have overlap!
-      // 1. Remove elements that left the range from the top
-      if (startIdx > renderedStartIdx) {
-        const removeCount = startIdx - renderedStartIdx;
-        for (let i = 0; i < removeCount; i++) {
-          if (contentArea.firstChild) {
-            contentArea.removeChild(contentArea.firstChild);
-          }
+      
+      renderedStartIdx = startIdx;
+      renderedEndIdx = endIdx;
+      updateSpacers();
+      Logger.debug('VirtualGrid', "renderVisible complete, appended items count: " + contentArea.children.length);
+      return;
+    }
+
+    // We have overlap!
+    // 1. Remove elements that left the range from the top
+    if (startIdx > renderedStartIdx) {
+      const removeCount = startIdx - renderedStartIdx;
+      for (let i = 0; i < removeCount; i++) {
+        if (contentArea.firstChild) {
+          contentArea.removeChild(contentArea.firstChild);
         }
       }
-      // 2. Remove elements that left the range from the bottom
-      if (endIdx < renderedEndIdx) {
-        const removeCount = renderedEndIdx - endIdx;
-        for (let i = 0; i < removeCount; i++) {
-          if (contentArea.lastChild) {
-            contentArea.removeChild(contentArea.lastChild);
-          }
+    }
+    // 2. Remove elements that left the range from the bottom
+    if (endIdx < renderedEndIdx) {
+      const removeCount = renderedEndIdx - endIdx;
+      for (let i = 0; i < removeCount; i++) {
+        if (contentArea.lastChild) {
+          contentArea.removeChild(contentArea.lastChild);
         }
       }
-      // 3. Prepend elements that entered from the top
-      if (startIdx < renderedStartIdx) {
-        for (let i = renderedStartIdx - 1; i >= startIdx; i--) {
-          const card = cardRenderer(items[i], i);
-          contentArea.insertBefore(card, contentArea.firstChild);
-        }
+    }
+    // 3. Prepend elements that entered from the top
+    if (startIdx < renderedStartIdx) {
+      for (let i = renderedStartIdx - 1; i >= startIdx; i--) {
+        const card = cardRenderer(items[i], i);
+        contentArea.insertBefore(card, contentArea.firstChild);
       }
-      // 4. Append elements that entered from the bottom
-      if (endIdx > renderedEndIdx) {
-        for (let i = renderedEndIdx; i < endIdx; i++) {
-          const card = cardRenderer(items[i], i);
-          contentArea.appendChild(card);
-        }
+    }
+    // 4. Append elements that entered from the bottom
+    if (endIdx > renderedEndIdx) {
+      for (let i = renderedEndIdx; i < endIdx; i++) {
+        const card = cardRenderer(items[i], i);
+        contentArea.appendChild(card);
       }
     }
 

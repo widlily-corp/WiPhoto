@@ -46,92 +46,96 @@ const App = (() => {
     // ─── Toolbar Action Bindings ───
     document.getElementById('btn-delete')?.addEventListener('click', async () => {
       const selected = Gallery.getSelectedImages();
-      if (selected.length > 0) {
-        const ok = await API.askConfirm(`Удалить ${selected.length} файл(ов) в корзину WiPhoto?`);
-        if (ok) {
-          try {
-            const deleted = await API.deleteFiles(selected.map(i => i.path));
-            Gallery.removeImages(deleted);
-            Sidebar.clearPreview();
-            Utils.toast(`Удалено: ${deleted.length}`, 'success');
-          } catch (err) {
-            Utils.toast(`Ошибка удаления: ${err}`, 'error');
-          }
-        }
-      } else {
+      if (selected.length === 0) {
         Utils.toast('Файлы не выбраны', 'warning');
+        return;
+      }
+      
+      const ok = await API.askConfirm(`Удалить ${selected.length} файл(ов) в корзину WiPhoto?`);
+      if (!ok) return;
+
+      try {
+        const deleted = await API.deleteFiles(selected.map(i => i.path));
+        Gallery.removeImages(deleted);
+        Sidebar.clearPreview();
+        Utils.toast(`Удалено: ${deleted.length}`, 'success');
+      } catch (err) {
+        Utils.toast(`Ошибка удаления: ${err}`, 'error');
       }
     });
 
     document.getElementById('btn-copy')?.addEventListener('click', async () => {
       const selected = Gallery.getSelectedImages();
-      if (selected.length > 0) {
-        try {
-          const dest = await API.openFolderDialog();
-          if (dest) {
-            const count = await API.copyFiles(selected.map(i => i.path), dest);
-            Utils.toast(`Скопировано файлов: ${count}`, 'success');
-          }
-        } catch (err) {
-          Utils.toast(`Ошибка копирования: ${err}`, 'error');
-        }
-      } else {
+      if (selected.length === 0) {
         Utils.toast('Файлы не выбраны', 'warning');
+        return;
+      }
+      
+      try {
+        const dest = await API.openFolderDialog();
+        if (!dest) return;
+        
+        const count = await API.copyFiles(selected.map(i => i.path), dest);
+        Utils.toast(`Скопировано файлов: ${count}`, 'success');
+      } catch (err) {
+        Utils.toast(`Ошибка копирования: ${err}`, 'error');
       }
     });
 
     document.getElementById('btn-move')?.addEventListener('click', async () => {
       const selected = Gallery.getSelectedImages();
-      if (selected.length > 0) {
-        try {
-          const dest = await API.openFolderDialog();
-          if (dest) {
-            const moved = await API.moveFiles(selected.map(i => i.path), dest);
-            Gallery.removeImages(moved);
-            Sidebar.clearPreview();
-            Utils.toast(`Перемещено файлов: ${moved.length}`, 'success');
-          }
-        } catch (err) {
-          Utils.toast(`Ошибка перемещения: ${err}`, 'error');
-        }
-      } else {
+      if (selected.length === 0) {
         Utils.toast('Файлы не выбраны', 'warning');
+        return;
+      }
+      
+      try {
+        const dest = await API.openFolderDialog();
+        if (!dest) return;
+        
+        const moved = await API.moveFiles(selected.map(i => i.path), dest);
+        Gallery.removeImages(moved);
+        Sidebar.clearPreview();
+        Utils.toast(`Перемещено файлов: ${moved.length}`, 'success');
+      } catch (err) {
+        Utils.toast(`Ошибка перемещения: ${err}`, 'error');
       }
     });
 
     document.getElementById('btn-keep-best')?.addEventListener('click', async () => {
       const selected = Gallery.getSelectedImages();
-      if (selected.length > 0) {
-        const confirm = await API.askConfirm('Оставить только лучшие фотографии в группах и отклонить остальные?', 'Оставить лучшее');
-        if (!confirm) return;
-
-        try {
-          // Flag best as picked and duplicates in groups as rejected
-          // Gather groups present in selection
-          const groups = new Set(selected.map(i => i.group_id).filter(Boolean));
-          let pickedCount = 0;
-          let rejectedCount = 0;
-
-          Gallery.getAllImages().forEach(img => {
-            if (img.group_id && groups.has(img.group_id)) {
-              if (img.is_best_in_group) {
-                img.flag_status = 'picked';
-                pickedCount++;
-              } else {
-                img.flag_status = 'rejected';
-                rejectedCount++;
-              }
-              API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || []);
-            }
-          });
-
-          Gallery.applyFilters();
-          Utils.toast(`Отмечено лучших: ${pickedCount}, отклонено дубликатов: ${rejectedCount}`, 'success');
-        } catch (err) {
-          Utils.toast(`Ошибка: ${err}`, 'error');
-        }
-      } else {
+      if (selected.length === 0) {
         Utils.toast('Выберите фотографии из групп дубликатов', 'warning');
+        return;
+      }
+
+      const confirm = await API.askConfirm('Оставить только лучшие фотографии в группах и отклонить остальные?', 'Оставить лучшее');
+      if (!confirm) return;
+
+      try {
+        // Flag best as picked and duplicates in groups as rejected
+        // Gather groups present in selection
+        const groups = new Set(selected.map(i => i.group_id).filter(Boolean));
+        let pickedCount = 0;
+        let rejectedCount = 0;
+
+        Gallery.getAllImages().forEach(img => {
+          if (!img.group_id || !groups.has(img.group_id)) return;
+          
+          if (img.is_best_in_group) {
+            img.flag_status = 'picked';
+            pickedCount++;
+          } else {
+            img.flag_status = 'rejected';
+            rejectedCount++;
+          }
+          API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || []);
+        });
+
+        Gallery.applyFilters();
+        Utils.toast(`Отмечено лучших: ${pickedCount}, отклонено дубликатов: ${rejectedCount}`, 'success');
+      } catch (err) {
+        Utils.toast(`Ошибка: ${err}`, 'error');
       }
     });
 
