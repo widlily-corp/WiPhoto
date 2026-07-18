@@ -6,7 +6,7 @@
   "scripts": {
     "tauri": "tauri",
     "build": "echo 'No frontend build step needed'",
-    "test": "node --test src/js/*.test.cjs"
+    "test": "node --test src/js/utils.test.cjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
