@@ -410,6 +410,51 @@ mod tests {
         let result = delete_files(paths).expect("Failed to call delete_files");
 
         // Assert
-        assert!(result.is_empty());
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_copy_files() {
+        // Arrange
+        let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        let src_dir = dir.join("src");
+        let dest_dir = dir.join("dest");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        let src_file = src_dir.join("test.txt");
+        std::fs::write(&src_file, "content").unwrap();
+
+        // Act
+        let result = copy_files(vec![src_file.to_string_lossy().to_string()], dest_dir.to_string_lossy().to_string()).expect("Failed copy");
+
+        // Assert
+        assert_eq!(result, 1);
+        assert!(dest_dir.join("test.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_move_files() {
+        // Arrange
+        let dir = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        let src_dir = dir.join("src");
+        let dest_dir = dir.join("dest");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dest_dir).unwrap();
+        let src_file = src_dir.join("test.txt");
+        std::fs::write(&src_file, "content").unwrap();
+
+        // Act
+        let result = move_files(vec![src_file.to_string_lossy().to_string()], dest_dir.to_string_lossy().to_string()).expect("Failed move");
+
+        // Assert
+        assert_eq!(result.len(), 1);
+        assert!(!src_file.exists());
+        assert!(dest_dir.join("test.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

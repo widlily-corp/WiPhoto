@@ -48,12 +48,11 @@ pub fn init_db() -> Result<()> {
 }
 
 /// Retrieve all cached images for a given folder path
-pub fn get_folder_cache(folder: &str) -> Result<HashMap<String, (ImageInfo, u64)>> {
+pub fn get_folder_mtimes(folder: &str) -> Result<HashMap<String, u64>> {
     let path = get_db_path();
     let conn = Connection::open(path)?;
 
     // We fetch everything matching the folder path prefix to support recursive and flat lookups
-    // Norm paths with trailing separator
     let folder_prefix = if folder.ends_with('/') || folder.ends_with('\\') {
         folder.to_string()
     } else if folder.contains('\\') {
@@ -62,78 +61,13 @@ pub fn get_folder_cache(folder: &str) -> Result<HashMap<String, (ImageInfo, u64)
         format!("{}/", folder)
     };
 
-    let mut stmt = conn.prepare(
-        "SELECT 
-            path, filename, thumbnail, phash, sharpness, is_best_in_group, group_id,
-            faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
-            camera_model, date_taken, rating, file_size, width, height,
-            animal_species, color_label, flag_status, tags, is_video, is_raw, modified_time
-        FROM images WHERE path LIKE ?"
-    )?;
-
+    let mut stmt = conn.prepare("SELECT path, modified_time FROM images WHERE path LIKE ?")?;
     let query_param = format!("{}%", folder_prefix);
+    
     let rows = stmt.query_map(params![query_param], |row| {
         let path_str: String = row.get(0)?;
-        let filename: String = row.get(1)?;
-        let thumbnail: String = row.get(2)?;
-        let phash: Option<String> = row.get(3)?;
-        let sharpness: f64 = row.get(4)?;
-        let is_best_in_group_int: i32 = row.get(5)?;
-        let group_id: Option<String> = row.get(6)?;
-        let faces_count: u32 = row.get(7)?;
-        let animals_count: u32 = row.get(8)?;
-        let gps_latitude: Option<f64> = row.get(9)?;
-        let gps_longitude: Option<f64> = row.get(10)?;
-        let aspect_ratio: f64 = row.get(11)?;
-        let camera_model: String = row.get(12)?;
-        let date_taken: String = row.get(13)?;
-        let rating: u8 = row.get(14)?;
-        let file_size: u64 = row.get(15)?;
-        let width: u32 = row.get(16)?;
-        let height: u32 = row.get(17)?;
-        let animal_species_str: String = row.get(18)?;
-        let color_label: String = row.get(19)?;
-        let flag_status: String = row.get(20)?;
-        let tags_str: String = row.get(21)?;
-        let is_video_int: i32 = row.get(22)?;
-        let is_raw_int: i32 = row.get(23)?;
-        let modified_time: u64 = row.get(24)?;
-
-        let gps_location = match (gps_latitude, gps_longitude) {
-            (Some(lat), Some(lon)) => Some((lat, lon)),
-            _ => None,
-        };
-
-        let animal_species: Vec<String> = serde_json::from_str(&animal_species_str).unwrap_or_default();
-        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-
-        let info = ImageInfo {
-            path: path_str.clone(),
-            filename,
-            thumbnail,
-            phash,
-            sharpness,
-            is_best_in_group: is_best_in_group_int != 0,
-            group_id,
-            faces_count,
-            animals_count,
-            gps_location,
-            aspect_ratio,
-            camera_model,
-            date_taken,
-            rating,
-            file_size,
-            width,
-            height,
-            animal_species,
-            color_label,
-            flag_status,
-            tags,
-            is_video: is_video_int != 0,
-            is_raw: is_raw_int != 0,
-        };
-
-        Ok((path_str, (info, modified_time)))
+        let modified_time: u64 = row.get(1)?;
+        Ok((path_str, modified_time))
     })?;
 
     let mut cache = HashMap::new();
@@ -143,6 +77,98 @@ pub fn get_folder_cache(folder: &str) -> Result<HashMap<String, (ImageInfo, u64)
         }
     }
     Ok(cache)
+}
+
+pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
+    
+    let mut results = Vec::new();
+    for chunk in paths.chunks(500) {
+        let placeholders: Vec<String> = (0..chunk.len()).map(|_| "?".to_string()).collect();
+        let query = format!("SELECT 
+            path, filename, thumbnail, phash, sharpness, is_best_in_group, group_id,
+            faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
+            camera_model, date_taken, rating, file_size, width, height,
+            animal_species, color_label, flag_status, tags, is_video, is_raw
+        FROM images WHERE path IN ({})", placeholders.join(", "));
+        
+        let mut stmt = conn.prepare(&query)?;
+        
+        let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        
+        let rows = stmt.query_map(&params[..], |row| {
+            let path_str: String = row.get(0)?;
+            let filename: String = row.get(1)?;
+            let thumbnail: String = row.get(2)?;
+            let phash: Option<String> = row.get(3)?;
+            let sharpness: f64 = row.get(4)?;
+            let is_best_in_group_int: i32 = row.get(5)?;
+            let group_id: Option<String> = row.get(6)?;
+            let faces_count: u32 = row.get(7)?;
+            let animals_count: u32 = row.get(8)?;
+            let gps_latitude: Option<f64> = row.get(9)?;
+            let gps_longitude: Option<f64> = row.get(10)?;
+            let aspect_ratio: f64 = row.get(11)?;
+            let camera_model: String = row.get(12)?;
+            let date_taken: String = row.get(13)?;
+            let rating: u8 = row.get(14)?;
+            let file_size: u64 = row.get(15)?;
+            let width: u32 = row.get(16)?;
+            let height: u32 = row.get(17)?;
+            let animal_species_str: String = row.get(18)?;
+            let color_label: String = row.get(19)?;
+            let flag_status: String = row.get(20)?;
+            let tags_str: String = row.get(21)?;
+            let is_video_int: i32 = row.get(22)?;
+            let is_raw_int: i32 = row.get(23)?;
+
+            let gps_location = match (gps_latitude, gps_longitude) {
+                (Some(lat), Some(lon)) => Some((lat, lon)),
+                _ => None,
+            };
+
+            let animal_species: Vec<String> = serde_json::from_str(&animal_species_str).unwrap_or_default();
+            let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+
+            Ok(ImageInfo {
+                path: path_str,
+                filename,
+                thumbnail,
+                phash,
+                sharpness,
+                is_best_in_group: is_best_in_group_int != 0,
+                group_id,
+                faces_count,
+                animals_count,
+                gps_location,
+                aspect_ratio,
+                camera_model,
+                date_taken,
+                rating,
+                file_size,
+                width,
+                height,
+                animal_species,
+                color_label,
+                flag_status,
+                tags,
+                is_video: is_video_int != 0,
+                is_raw: is_raw_int != 0,
+            })
+        })?;
+        
+        for row in rows {
+            if let Ok(info) = row {
+                results.push(info);
+            }
+        }
+    }
+    
+    Ok(results)
 }
 
 /// Batch insert/replace images inside a transaction

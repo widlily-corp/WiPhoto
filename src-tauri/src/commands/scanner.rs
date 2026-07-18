@@ -319,136 +319,157 @@ pub async fn scan_folder(
     recursive: bool,
 ) -> Result<Vec<ImageInfo>, String> {
     log::info!("Starting folder scan: {} (recursive={})", path, recursive);
-    let cache_dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".wiphoto")
-        .join("cache")
-        .join("thumbnails");
-    let _ = fs::create_dir_all(&cache_dir);
 
-    // Initialize ONNX model
-    if let Err(e) = crate::onnx::init_model() {
-        log::warn!("Failed to initialize ONNX model: {}. Running scan without ML analysis.", e);
-    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let cache_dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".wiphoto")
+            .join("cache")
+            .join("thumbnails");
+        let _ = fs::create_dir_all(&cache_dir);
 
-    let files = collect_files(&path, recursive);
-    let total = files.len() as u32;
-    log::info!("Found {} files to scan", total);
+        if let Err(e) = crate::onnx::init_model() {
+            log::warn!("Failed to initialize ONNX model: {}. Running scan without ML analysis.", e);
+        }
 
-    log::info!("[Rust] Starting scan for: {}, total files: {}", path, total);
+        let files = collect_files(&path, recursive);
+        let total = files.len() as u32;
+        log::info!("Found {} files to scan", total);
 
-    if total == 0 {
-        log::info!("Scan completed. No files found.");
-        return Ok(vec![]);
-    }
+        if total == 0 {
+            log::info!("Scan completed. No files found.");
+            return Ok(vec![]);
+        }
 
-    // Load folder cache from database
-    let db_cache = crate::db::get_folder_cache(&path).unwrap_or_default();
+        let db_mtimes = crate::db::get_folder_mtimes(&path).unwrap_or_default();
+        
+        let _ = app.emit("scan-progress", serde_json::json!({
+            "current": 0,
+            "total": total,
+            "current_file": ""
+        }));
 
-    // Emit initial progress
-    let _ = app.emit("scan-progress", serde_json::json!({
-        "current": 0,
-        "total": total,
-        "current_file": ""
-    }));
+        let mut cached_paths = Vec::new();
+        let mut uncached_files = Vec::new();
+        let mut file_paths_set = std::collections::HashSet::new();
 
-    use std::sync::atomic::{AtomicU32, Ordering};
-    let counter = AtomicU32::new(0);
-
-    let mut final_results: Vec<ImageInfo> = files
-        .par_iter()
-        .filter_map(|file_path| {
+        for file_path in &files {
             let path_str = file_path.to_string_lossy().to_string();
             let mtime = get_modified_time(file_path);
+            file_paths_set.insert(path_str.clone());
+            
+            if let Some(&cached_mtime) = db_mtimes.get(&path_str) {
+                if cached_mtime == mtime {
+                    cached_paths.push(path_str);
+                    continue;
+                }
+            }
+            uncached_files.push((file_path.clone(), mtime));
+        }
 
-            // Check cache
-            if let Some((cached_info, cached_mtime)) = db_cache.get(&path_str) {
-                if *cached_mtime == mtime {
+        let mut final_results = Vec::new();
+        let mut current_count = 0;
+
+        let mut cached_infos = crate::db::get_images_by_paths(&cached_paths).unwrap_or_default();
+        for chunk in cached_infos.chunks(50) {
+            let _ = app.emit("image-scanned-batch", chunk.to_vec());
+            current_count += chunk.len() as u32;
+            let _ = app.emit("scan-progress", serde_json::json!({
+                "current": current_count,
+                "total": total,
+                "current_file": chunk.last().map(|i| i.path.clone()).unwrap_or_default()
+            }));
+        }
+        final_results.append(&mut cached_infos);
+
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let counter = AtomicU32::new(current_count);
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        let app_clone = app.clone();
+        let batch_thread = std::thread::spawn(move || {
+            let mut batch = Vec::new();
+            for info in rx {
+                batch.push(info);
+                if batch.len() >= 50 {
+                    let _ = app_clone.emit("image-scanned-batch", batch.clone());
+                    batch.clear();
+                }
+            }
+            if !batch.is_empty() {
+                let _ = app_clone.emit("image-scanned-batch", batch);
+            }
+        });
+
+        let new_infos: Vec<(ImageInfo, u64)> = uncached_files
+            .par_iter()
+            .filter_map(|(file_path, mtime)| {
+                let path_str = file_path.to_string_lossy().to_string();
+                if let Some(info) = process_single_file(file_path, &cache_dir) {
+                    let _ = tx.send(info.clone());
                     let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                    let _ = app.emit("image-scanned", cached_info.clone());
-
-                    if current % 5 == 0 || current == total {
+                    if current % 10 == 0 || current == total {
                         let _ = app.emit("scan-progress", serde_json::json!({
                             "current": current,
                             "total": total,
-                            "current_file": path_str.clone()
+                            "current_file": path_str
                         }));
                     }
-                    return Some(cached_info.clone());
+                    Some((info, *mtime))
+                } else {
+                    let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                    if current % 10 == 0 || current == total {
+                        let _ = app.emit("scan-progress", serde_json::json!({
+                            "current": current,
+                            "total": total,
+                            "current_file": path_str
+                        }));
+                    }
+                    None
                 }
-            }
+            })
+            .collect();
 
-            // Cache miss: process
-            if let Some(info) = process_single_file(file_path, &cache_dir) {
-                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                let _ = app.emit("image-scanned", info.clone());
+        drop(tx);
+        let _ = batch_thread.join();
 
-                if current % 5 == 0 || current == total {
-                    let _ = app.emit("scan-progress", serde_json::json!({
-                        "current": current,
-                        "total": total,
-                        "current_file": path_str.clone()
-                    }));
-                }
-                Some(info)
-            } else {
-                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                if current % 5 == 0 || current == total {
-                    let _ = app.emit("scan-progress", serde_json::json!({
-                        "current": current,
-                        "total": total,
-                        "current_file": path_str.clone()
-                    }));
-                }
-                None
-            }
-        })
-        .collect();
+        let mut to_save_refs = Vec::new();
+        for (info, mtime) in &new_infos {
+            final_results.push(info.clone());
+            to_save_refs.push((info, *mtime));
+        }
 
-    // Sort by path for consistency
-    final_results.sort_by(|a, b| a.path.cmp(&b.path));
+        final_results.sort_by(|a, b| a.path.cmp(&b.path));
 
-    // Save new/modified items to DB
-    let mut to_save = Vec::new();
-    for info in &final_results {
-        let mtime = get_modified_time(Path::new(&info.path));
-        if let Some((_, cached_mtime)) = db_cache.get(&info.path) {
-            if *cached_mtime == mtime {
-                continue; // Skip already cached
+        if !to_save_refs.is_empty() {
+            if let Err(e) = crate::db::save_images_batch(&to_save_refs) {
+                log::error!("Failed to save scanned images to database: {}", e);
             }
         }
-        to_save.push((info, mtime));
-    }
 
-    if let Err(e) = crate::db::save_images_batch(&to_save) {
-        log::error!("Failed to save scanned images to database: {}", e);
-    }
-
-    // Find orphaned records (present in DB cache but not on disk)
-    let file_paths_set: std::collections::HashSet<String> = files
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
-
-    let mut to_delete = Vec::new();
-    for cached_path in db_cache.keys() {
-        if !file_paths_set.contains(cached_path) {
-            to_delete.push(cached_path.clone());
+        let mut to_delete = Vec::new();
+        for cached_path in db_mtimes.keys() {
+            if !file_paths_set.contains(cached_path) {
+                to_delete.push(cached_path.clone());
+            }
         }
-    }
 
-    if let Err(e) = crate::db::delete_images_batch(&to_delete) {
-        log::error!("Failed to delete orphaned database records: {}", e);
-    }
+        if !to_delete.is_empty() {
+            if let Err(e) = crate::db::delete_images_batch(&to_delete) {
+                log::error!("Failed to delete orphaned database records: {}", e);
+            }
+        }
 
-    log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
-    log::info!("[Rust] Scan completed. Processed: {}", final_results.len());
+        log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
+        
+        let _ = app.emit("scan-finished", serde_json::json!({
+            "total": final_results.len()
+        }));
 
-    let _ = app.emit("scan-finished", serde_json::json!({
-        "total": final_results.len()
-    }));
+        Ok::<Vec<ImageInfo>, String>(final_results)
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
 
-    Ok(final_results)
+    Ok(result)
 }
 
 /// Get file count in a directory (for preview)

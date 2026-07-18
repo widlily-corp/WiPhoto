@@ -11,27 +11,31 @@ pub async fn apply_edit(
     max_preview_size: Option<u32>,
 ) -> Result<String, String> {
     log::info!("apply_edit called for image: {} with {} operations", path, operations.len());
-    let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
-    // Resize for preview if needed
-    if let Some(max) = max_preview_size {
-        let (w, h) = img.dimensions();
-        if w > max || h > max {
-            img = img.resize(max, max, image::imageops::FilterType::Lanczos3);
+        // Resize for preview if needed
+        if let Some(max) = max_preview_size {
+            let (w, h) = img.dimensions();
+            if w > max || h > max {
+                img = img.resize(max, max, image::imageops::FilterType::Lanczos3);
+            }
         }
-    }
 
-    // Apply operations sequentially
-    for op in &operations {
-        img = apply_single_edit(img, op);
-    }
+        // Apply operations sequentially
+        for op in &operations {
+            img = apply_single_edit(img, op);
+        }
 
-    // Encode result
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
-    img.write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to encode: {}", e))?;
-    Ok(STANDARD.encode(&buf))
+        // Encode result
+        let mut buf = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut buf);
+        img.write_to(&mut cursor, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to encode: {}", e))?;
+        Ok::<String, String>(STANDARD.encode(&buf))
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    
+    Ok(result)
 }
 
 /// Save edited image to disk atomically
@@ -43,49 +47,53 @@ pub async fn save_edited(
     quality: Option<u8>,
 ) -> Result<String, String> {
     log::info!("save_edited called for image: {}, output: {:?}", path, output_path);
-    let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
-    for op in &operations {
-        img = apply_single_edit(img, op);
-    }
+        for op in &operations {
+            img = apply_single_edit(img, op);
+        }
 
-    let save_path = output_path.unwrap_or_else(|| {
-        let p = Path::new(&path);
-        let stem = p.file_stem().unwrap_or_default().to_string_lossy();
-        let ext = p.extension().unwrap_or_default().to_string_lossy();
-        let parent = p.parent().unwrap_or(Path::new("."));
-        parent
-            .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+        let save_path = output_path.unwrap_or_else(|| {
+            let p = Path::new(&path);
+            let stem = p.file_stem().unwrap_or_default().to_string_lossy();
+            let ext = p.extension().unwrap_or_default().to_string_lossy();
+            let parent = p.parent().unwrap_or(Path::new("."));
+            parent
+                .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+                .to_string_lossy()
+                .to_string()
+        });
+
+        let save_ext = Path::new(&save_path)
+            .extension()
+            .unwrap_or_default()
             .to_string_lossy()
-            .to_string()
-    });
+            .to_lowercase();
 
-    let save_ext = Path::new(&save_path)
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_lowercase();
+        let temp_path = format!("{}.tmp", save_path);
 
-    let temp_path = format!("{}.tmp", save_path);
-
-    match save_ext.as_str() {
-        "jpg" | "jpeg" => {
-            let q = quality.unwrap_or(95);
-            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
-                q,
-            );
-            img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
+        match save_ext.as_str() {
+            "jpg" | "jpeg" => {
+                let q = quality.unwrap_or(95);
+                let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+                    std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
+                    q,
+                );
+                img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
+            }
+            _ => {
+                img.save(&temp_path).map_err(|e| e.to_string())?;
+            }
         }
-        _ => {
-            img.save(&temp_path).map_err(|e| e.to_string())?;
-        }
-    }
 
-    // Atomic rename replacement
-    std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        // Atomic rename replacement
+        std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
-    Ok(save_path)
+        Ok::<String, String>(save_path)
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(result)
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
@@ -476,54 +484,58 @@ pub async fn save_cropped_edited_image(
     quality: Option<u8>,
 ) -> Result<String, String> {
     log::info!("save_cropped_edited_image called for path: {}, crop_rect: {:?}, operations count: {}, output: {:?}", path, crop_rect, operations.len(), output_path);
-    let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
-    // 1. Apply crop first if present
-    if let Some(rect) = crop_rect {
-        img = img.crop(rect.x, rect.y, rect.width, rect.height);
-    }
+        // 1. Apply crop first if present
+        if let Some(rect) = crop_rect {
+            img = img.crop(rect.x, rect.y, rect.width, rect.height);
+        }
 
-    // 2. Apply editing operations
-    for op in &operations {
-        img = apply_single_edit(img, op);
-    }
+        // 2. Apply editing operations
+        for op in &operations {
+            img = apply_single_edit(img, op);
+        }
 
-    // 3. Save file path logic
-    let save_path = output_path.unwrap_or_else(|| {
-        let p = Path::new(&path);
-        let stem = p.file_stem().unwrap_or_default().to_string_lossy();
-        let ext = p.extension().unwrap_or_default().to_string_lossy();
-        let parent = p.parent().unwrap_or(Path::new("."));
-        parent
-            .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+        // 3. Save file path logic
+        let save_path = output_path.unwrap_or_else(|| {
+            let p = Path::new(&path);
+            let stem = p.file_stem().unwrap_or_default().to_string_lossy();
+            let ext = p.extension().unwrap_or_default().to_string_lossy();
+            let parent = p.parent().unwrap_or(Path::new("."));
+            parent
+                .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+                .to_string_lossy()
+                .to_string()
+        });
+
+        let save_ext = Path::new(&save_path)
+            .extension()
+            .unwrap_or_default()
             .to_string_lossy()
-            .to_string()
-    });
+            .to_lowercase();
 
-    let save_ext = Path::new(&save_path)
-        .extension()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_lowercase();
+        let temp_path = format!("{}.tmp", save_path);
 
-    let temp_path = format!("{}.tmp", save_path);
-
-    match save_ext.as_str() {
-        "jpg" | "jpeg" => {
-            let q = quality.unwrap_or(95);
-            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
-                std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
-                q,
-            );
-            img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
+        match save_ext.as_str() {
+            "jpg" | "jpeg" => {
+                let q = quality.unwrap_or(95);
+                let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+                    std::fs::File::create(&temp_path).map_err(|e| e.to_string())?,
+                    q,
+                );
+                img.write_with_encoder(encoder).map_err(|e| e.to_string())?;
+            }
+            _ => {
+                img.save(&temp_path).map_err(|e| e.to_string())?;
+            }
         }
-        _ => {
-            img.save(&temp_path).map_err(|e| e.to_string())?;
-        }
-    }
 
-    // Atomic rename replacement
-    std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        // Atomic rename replacement
+        std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
-    Ok(save_path)
+        Ok::<String, String>(save_path)
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    
+    Ok(result)
 }

@@ -26,22 +26,8 @@ fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
         }
     }
 
-    // Fallback to original image path
-    let file_path = Path::new(path);
-    let ext = file_path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-
-    if crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str()) {
-        if let Some(bytes) = crate::commands::raw_utils::extract_embedded_jpeg(file_path) {
-            image::load_from_memory(&bytes).ok()
-        } else {
-            None
-        }
-    } else {
-        image::open(file_path).ok()
-    }
+    // Restrict hashing to thumbnails only
+    None
 }
 
 fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
@@ -208,109 +194,114 @@ pub async fn find_duplicates(
     threshold: u32,
 ) -> Result<Vec<DuplicateGroup>, String> {
     log::info!("find_duplicates called with {} paths, method: {}, threshold: {}", paths.len(), method, threshold);
-    use std::sync::atomic::{AtomicU32, Ordering};
-    let counter = AtomicU32::new(0);
-    let total = paths.len() as u32;
 
-    // Compute hashes in parallel
-    let hashes: Vec<(String, Option<u64>)> = paths
-        .par_iter()
-        .map(|path| {
-            let hash = get_image_for_hashing(path).and_then(|img| compute_hash(&img, &method));
-            let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-            if current % 10 == 0 || current == total {
-                let _ = app.emit("dup-progress", serde_json::json!({
-                    "current": current,
-                    "total": total,
-                }));
-            }
-            (path.clone(), hash)
-        })
-        .collect();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let counter = AtomicU32::new(0);
+        let total = paths.len() as u32;
 
-    // Filter out files that couldn't be hashed
-    let valid_hashes: Vec<(String, u64)> = hashes
-        .into_iter()
-        .filter_map(|(path, hash)| hash.map(|h| (path, h)))
-        .collect();
+        // Compute hashes in parallel
+        let hashes: Vec<(String, Option<u64>)> = paths
+            .par_iter()
+            .map(|path| {
+                let hash = get_image_for_hashing(path).and_then(|img| compute_hash(&img, &method));
+                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                if current % 10 == 0 || current == total {
+                    let _ = app.emit("dup-progress", serde_json::json!({
+                        "current": current,
+                        "total": total,
+                    }));
+                }
+                (path.clone(), hash)
+            })
+            .collect();
 
-    log::info!("Successfully computed hashes for {} out of {} files", valid_hashes.len(), paths.len());
+        // Filter out files that couldn't be hashed
+        let valid_hashes: Vec<(String, u64)> = hashes
+            .into_iter()
+            .filter_map(|(path, hash)| hash.map(|h| (path, h)))
+            .collect();
 
-    // Build BK-Tree
-    let mut tree_nodes: Vec<BKNode> = Vec::with_capacity(valid_hashes.len());
-    
-    let insert_node = |nodes: &mut Vec<BKNode>, index: usize, hash: u64| {
-        if nodes.is_empty() {
-            nodes.push(BKNode {
-                hash,
-                index,
-                children: std::collections::HashMap::new(),
-            });
-            return;
-        }
+        log::info!("Successfully computed hashes for {} out of {} files", valid_hashes.len(), paths.len());
 
-        let mut curr = 0;
-        loop {
-            let dist = hamming_distance(nodes[curr].hash, hash);
-            if dist == 0 {
-                // Same hash: we can handle or just branch
-            }
-            if let Some(&idx) = nodes[curr].children.get(&dist) {
-                curr = idx;
-            } else {
-                let new_idx = nodes.len();
+        // Build BK-Tree
+        let mut tree_nodes: Vec<BKNode> = Vec::with_capacity(valid_hashes.len());
+        
+        let insert_node = |nodes: &mut Vec<BKNode>, index: usize, hash: u64| {
+            if nodes.is_empty() {
                 nodes.push(BKNode {
                     hash,
                     index,
                     children: std::collections::HashMap::new(),
                 });
-                nodes[curr].children.insert(dist, new_idx);
-                break;
-            }
-        }
-    };
-
-    for (i, &(_, hash)) in valid_hashes.iter().enumerate() {
-        insert_node(&mut tree_nodes, i, hash);
-    }
-
-    // Group by similarity using BK-Tree
-    let mut groups: Vec<DuplicateGroup> = Vec::new();
-    let mut assigned = vec![false; valid_hashes.len()];
-
-    for i in 0..valid_hashes.len() {
-        if assigned[i] {
-            continue;
-        }
-
-        let mut similar_indices = Vec::new();
-        bktree_query(&tree_nodes, 0, valid_hashes[i].1, threshold, &mut similar_indices);
-        similar_indices.retain(|&idx| !assigned[idx]);
-
-        if similar_indices.len() > 1 {
-            let mut group_paths = Vec::new();
-            for &idx in &similar_indices {
-                group_paths.push(valid_hashes[idx].0.clone());
-                assigned[idx] = true;
+                return;
             }
 
-            let best = group_paths
-                .iter()
-                .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
-                .cloned()
-                .unwrap_or_default();
+            let mut curr = 0;
+            loop {
+                let dist = hamming_distance(nodes[curr].hash, hash);
+                if dist == 0 {
+                    // Same hash: we can handle or just branch
+                }
+                if let Some(&idx) = nodes[curr].children.get(&dist) {
+                    curr = idx;
+                } else {
+                    let new_idx = nodes.len();
+                    nodes.push(BKNode {
+                        hash,
+                        index,
+                        children: std::collections::HashMap::new(),
+                    });
+                    nodes[curr].children.insert(dist, new_idx);
+                    break;
+                }
+            }
+        };
 
-            let group_id = uuid::Uuid::new_v4().to_string();
-            groups.push(DuplicateGroup {
-                group_id,
-                images: group_paths,
-                best_path: best,
-            });
+        for (i, &(_, hash)) in valid_hashes.iter().enumerate() {
+            insert_node(&mut tree_nodes, i, hash);
         }
-    }
 
-    log::info!("Found {} duplicate groups", groups.len());
-    Ok(groups)
+        // Group by similarity using BK-Tree
+        let mut groups: Vec<DuplicateGroup> = Vec::new();
+        let mut assigned = vec![false; valid_hashes.len()];
+
+        for i in 0..valid_hashes.len() {
+            if assigned[i] {
+                continue;
+            }
+
+            let mut similar_indices = Vec::new();
+            bktree_query(&tree_nodes, 0, valid_hashes[i].1, threshold, &mut similar_indices);
+            similar_indices.retain(|&idx| !assigned[idx]);
+
+            if similar_indices.len() > 1 {
+                let mut group_paths = Vec::new();
+                for &idx in &similar_indices {
+                    group_paths.push(valid_hashes[idx].0.clone());
+                    assigned[idx] = true;
+                }
+
+                let best = group_paths
+                    .iter()
+                    .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+                    .cloned()
+                    .unwrap_or_default();
+
+                let group_id = uuid::Uuid::new_v4().to_string();
+                groups.push(DuplicateGroup {
+                    group_id,
+                    images: group_paths,
+                    best_path: best,
+                });
+            }
+        }
+
+        log::info!("Found {} duplicate groups", groups.len());
+        Ok::<Vec<DuplicateGroup>, String>(groups)
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(result)
 }
 
 /// Get duplicate search statistics
@@ -389,5 +380,42 @@ mod tests {
         assert_eq!(stats.total_groups, 2);
         assert_eq!(stats.total_duplicates, 3);
         assert_eq!(stats.potential_savings_mb, 0.0);
+    }
+
+    #[test]
+    fn test_compute_hash_32_phash() {
+        // Arrange
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(16, 16));
+        
+        // Act
+        let hash = compute_hash_32(&img, "phash");
+
+        // Assert
+        assert!(hash.is_some());
+    }
+
+    #[test]
+    fn test_bktree_query() {
+        // Arrange
+        let mut nodes = Vec::new();
+        nodes.push(BKNode {
+            hash: 0b10101010,
+            index: 0,
+            children: std::collections::HashMap::new(),
+        });
+        
+        nodes[0].children.insert(2, 1);
+        nodes.push(BKNode {
+            hash: 0b10101111,
+            index: 1,
+            children: std::collections::HashMap::new(),
+        });
+
+        // Act
+        let mut results = Vec::new();
+        bktree_query(&nodes, 0, 0b10101111, 2, &mut results);
+
+        // Assert
+        assert!(results.contains(&1));
     }
 }

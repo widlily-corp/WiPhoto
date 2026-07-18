@@ -79,93 +79,97 @@ pub async fn export_files(
     max_height: Option<u32>,
     watermark_text: Option<String>,
 ) -> Result<u32, String> {
-    let dest_path = Path::new(&dest_dir);
-    if !dest_path.exists() {
-        return Err("Destination directory does not exist".into());
-    }
-
-    let count = std::sync::atomic::AtomicU32::new(0);
-
-    paths.par_iter().for_each(|path_str| {
-        let src_path = Path::new(path_str);
-        if !src_path.exists() {
-            return;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let dest_path = Path::new(&dest_dir);
+        if !dest_path.exists() {
+            return Err("Destination directory does not exist".into());
         }
 
-        let ext = src_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-            let filename = src_path.file_name().unwrap_or_default();
-            let dest_file = dest_path.join(filename);
-            if fs::copy(src_path, dest_file).is_ok() {
-                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let count = std::sync::atomic::AtomicU32::new(0);
+
+        paths.par_iter().for_each(|path_str| {
+            let src_path = Path::new(path_str);
+            if !src_path.exists() {
+                return;
             }
-            return;
-        }
 
-        let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
-            if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(src_path) {
-                image::load_from_memory(&bytes).ok()
+            let ext = src_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+                let filename = src_path.file_name().unwrap_or_default();
+                let dest_file = dest_path.join(filename);
+                if fs::copy(src_path, dest_file).is_ok() {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+                return;
+            }
+
+            let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+                if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(src_path) {
+                    image::load_from_memory(&bytes).ok()
+                } else {
+                    None
+                }
             } else {
-                None
-            }
-        } else {
-            image::open(src_path).ok()
-        };
-
-        if let Some(mut image) = img {
-            if max_width.is_some() || max_height.is_some() {
-                let w = max_width.unwrap_or(u32::MAX);
-                let h = max_height.unwrap_or(u32::MAX);
-                image = image.resize(w, h, image::imageops::FilterType::Lanczos3);
-            }
-
-            if let Some(ref text) = watermark_text {
-                if !text.is_empty() {
-                    apply_watermark(&mut image, text);
-                }
-            }
-
-            let stem = src_path.file_stem().unwrap_or_default().to_string_lossy();
-            let out_ext = match format.as_str() {
-                "jpeg" | "jpg" => "jpg",
-                "png" => "png",
-                "webp" => "webp",
-                _ => &ext,
+                image::open(src_path).ok()
             };
 
-            let out_filename = format!("{}.{}", stem, out_ext);
-            let out_path = dest_path.join(out_filename);
+            if let Some(mut image) = img {
+                if max_width.is_some() || max_height.is_some() {
+                    let w = max_width.unwrap_or(u32::MAX);
+                    let h = max_height.unwrap_or(u32::MAX);
+                    image = image.resize(w, h, image::imageops::FilterType::Lanczos3);
+                }
 
-            let save_success = match out_ext {
-                "jpg" | "jpeg" => {
-                    let q = quality.unwrap_or(95);
-                    if let Ok(file) = fs::File::create(&out_path) {
-                        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, q);
-                        image.write_with_encoder(encoder).is_ok()
-                    } else {
-                        false
+                if let Some(ref text) = watermark_text {
+                    if !text.is_empty() {
+                        apply_watermark(&mut image, text);
                     }
                 }
-                _ => {
-                    image.save(&out_path).is_ok()
-                }
-            };
 
-            if save_success {
-                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let stem = src_path.file_stem().unwrap_or_default().to_string_lossy();
+                let out_ext = match format.as_str() {
+                    "jpeg" | "jpg" => "jpg",
+                    "png" => "png",
+                    "webp" => "webp",
+                    _ => &ext,
+                };
 
-                if format == "original" {
-                    let xmp_src = src_path.with_extension("xmp");
-                    if xmp_src.exists() {
-                        let xmp_dest = out_path.with_extension("xmp");
-                        let _ = fs::copy(&xmp_src, xmp_dest);
+                let out_filename = format!("{}.{}", stem, out_ext);
+                let out_path = dest_path.join(out_filename);
+
+                let save_success = match out_ext {
+                    "jpg" | "jpeg" => {
+                        let q = quality.unwrap_or(95);
+                        if let Ok(file) = fs::File::create(&out_path) {
+                            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, q);
+                            image.write_with_encoder(encoder).is_ok()
+                        } else {
+                            false
+                        }
+                    }
+                    _ => {
+                        image.save(&out_path).is_ok()
+                    }
+                };
+
+                if save_success {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                    if format == "original" {
+                        let xmp_src = src_path.with_extension("xmp");
+                        if xmp_src.exists() {
+                            let xmp_dest = out_path.with_extension("xmp");
+                            let _ = fs::copy(&xmp_src, xmp_dest);
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
-    Ok(count.load(std::sync::atomic::Ordering::SeqCst))
+        Ok::<u32, String>(count.load(std::sync::atomic::Ordering::SeqCst))
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -197,5 +201,19 @@ mod tests {
 
         assert_eq!(x_ascii, x_cyrillic);
         assert_eq!(x_ascii, 857); // 1000 - 123 - 20 = 857
+    }
+
+    #[test]
+    fn test_apply_watermark_no_panic() {
+        // Arrange
+        let mut img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(100, 100));
+        let text = "Test Watermark";
+
+        // Act
+        apply_watermark(&mut img, text);
+
+        // Assert
+        assert_eq!(img.width(), 100);
+        assert_eq!(img.height(), 100);
     }
 }
