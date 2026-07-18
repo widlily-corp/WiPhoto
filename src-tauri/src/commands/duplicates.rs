@@ -1,7 +1,7 @@
 use crate::models::image_info::DuplicateGroup;
 use rayon::prelude::*;
 use tauri::{Emitter, AppHandle};
-use std::path::Path;
+
 
 fn sha2_hash(input: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -117,7 +117,7 @@ fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
             let dh = compute_hash_32(img, "dhash")?;
             Some(((ph as u64) << 32) | (dh as u64))
         }
-        "phash" | _ => {
+        _ => {
             // Simplified pHash using mean of larger block
             let gray32 = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
                 .to_luma8();
@@ -206,7 +206,7 @@ pub async fn find_duplicates(
             .map(|path| {
                 let hash = get_image_for_hashing(path).and_then(|img| compute_hash(&img, &method));
                 let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                if current % 10 == 0 || current == total {
+                if current.is_multiple_of(10) || current == total {
                     let _ = app.emit("dup-progress", serde_json::json!({
                         "current": current,
                         "total": total,

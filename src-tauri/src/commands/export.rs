@@ -28,7 +28,7 @@ fn load_system_font() -> Option<FontVec> {
 fn apply_watermark(img: &mut DynamicImage, text: &str) {
     if let Some(font) = load_system_font() {
         let (width, height) = img.dimensions();
-        let scale_val = (width as f32 * 0.025).max(16.0).min(72.0);
+        let scale_val = (width as f32 * 0.025).clamp(16.0, 72.0);
         let scale = PxScale::from(scale_val);
 
         let text_width = (text.chars().count() as f32 * scale_val * 0.55) as u32;
@@ -174,6 +174,7 @@ pub async fn export_files(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn test_watermark_position_unicode() {

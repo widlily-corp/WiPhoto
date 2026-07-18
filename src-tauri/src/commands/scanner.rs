@@ -306,7 +306,7 @@ fn parse_gps_coordinate(value: &exif::Value, reference: &str) -> Option<f64> {
 fn get_modified_time(path: &Path) -> u64 {
     fs::metadata(path)
         .and_then(|m| m.modified())
-        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
+        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).map_err(std::io::Error::other))
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }

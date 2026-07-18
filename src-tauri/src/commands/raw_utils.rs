@@ -48,23 +48,23 @@ pub fn extract_embedded_jpeg(path: &Path) -> Option<Vec<u8>> {
                         break;
                     }
 
-                    if search_file.seek(SeekFrom::Start(search_offset)).is_ok() {
-                        if search_file.read_exact(&mut search_buf[..search_to_read as usize]).is_ok() {
-                            let mut found_eoi = false;
-                            for j in 0..(search_to_read as usize - 1) {
-                                if search_buf[j] == 0xFF && search_buf[j + 1] == 0xD9 {
-                                    let length = (search_offset + j as u64 + 2) - start;
-                                    if length > best_length {
-                                        best_start = Some(start);
-                                        best_length = length;
-                                    }
-                                    found_eoi = true;
-                                    break;
+                    if search_file.seek(SeekFrom::Start(search_offset)).is_ok()
+                        && search_file.read_exact(&mut search_buf[..search_to_read as usize]).is_ok()
+                    {
+                        let mut found_eoi = false;
+                        for j in 0..(search_to_read as usize - 1) {
+                            if search_buf[j] == 0xFF && search_buf[j + 1] == 0xD9 {
+                                let length = (search_offset + j as u64 + 2) - start;
+                                if length > best_length {
+                                    best_start = Some(start);
+                                    best_length = length;
                                 }
-                            }
-                            if found_eoi {
+                                found_eoi = true;
                                 break;
                             }
+                        }
+                        if found_eoi {
+                            break;
                         }
                     }
                     search_offset += search_to_read - 1; // overlap by 1 byte
@@ -79,10 +79,10 @@ pub fn extract_embedded_jpeg(path: &Path) -> Option<Vec<u8>> {
     if let Some(start) = best_start {
         if best_length > 1024 {
             let mut result = vec![0u8; best_length as usize];
-            if file.seek(SeekFrom::Start(start)).is_ok() {
-                if file.read_exact(&mut result).is_ok() {
-                    return Some(result);
-                }
+            if file.seek(SeekFrom::Start(start)).is_ok()
+                && file.read_exact(&mut result).is_ok()
+            {
+                return Some(result);
             }
         }
     }

@@ -59,7 +59,7 @@ pub fn init_model() -> Result<(), String> {
     let model = tract_onnx::onnx()
         .model_for_path(&model_path)
         .map_err(|e| format!("Failed to read model file: {}", e))?
-        .with_input_fact(0, f32::fact(&[1, 3, 640, 640]).into())
+        .with_input_fact(0, f32::fact([1, 3, 640, 640]).into())
         .map_err(|e| format!("Failed to set input shape: {}", e))?
         .into_optimized()
         .map_err(|e| format!("Failed to optimize model graph: {}", e))?
@@ -101,10 +101,12 @@ fn download_model(dest: &Path) -> Result<(), String> {
                 downloaded += n as u64;
 
                 if total_size > 0 {
-                    let percent = (downloaded * 100 / total_size) as u32;
-                    if percent >= last_percent + 10 || percent == 100 {
-                        log::info!("Model download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
-                        last_percent = percent;
+                    if let Some(result) = (downloaded * 100).checked_div(total_size) {
+                        let percent = result as u32;
+                        if percent >= last_percent + 10 || percent == 100 {
+                            log::info!("Model download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
+                            last_percent = percent;
+                        }
                     }
                 }
             }
@@ -231,7 +233,7 @@ pub fn analyze_image(path: &Path) -> Option<ImageAnalysisResult> {
             faces_count += 1;
         }
         // Classes 14-23 are COCO animal classes
-        else if class_id >= 14 && class_id <= 23 {
+        else if (14..=23).contains(&class_id) {
             animals_count += 1;
             let species_name = get_russian_label(class_id).to_string();
             if !animal_species.contains(&species_name) {

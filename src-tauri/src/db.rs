@@ -71,10 +71,8 @@ pub fn get_folder_mtimes(folder: &str) -> Result<HashMap<String, u64>> {
     })?;
 
     let mut cache = HashMap::new();
-    for row in rows {
-        if let Ok((path_str, val)) = row {
-            cache.insert(path_str, val);
-        }
+    for (path_str, val) in rows.flatten() {
+        cache.insert(path_str, val);
     }
     Ok(cache)
 }
@@ -161,10 +159,8 @@ pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
             })
         })?;
         
-        for row in rows {
-            if let Ok(info) = row {
-                results.push(info);
-            }
+        for info in rows.flatten() {
+            results.push(info);
         }
     }
     
@@ -289,21 +285,18 @@ mod tests {
         let save_res = save_images_batch(&[(&info1, 123456u64)]);
         assert!(save_res.is_ok());
 
-        let cache = get_folder_cache(folder).expect("Failed to get cache");
+        let cache = get_folder_mtimes(folder).expect("Failed to get cache");
 
         // Assert
         assert!(cache.contains_key("C:/test_folder/img1.jpg"));
-        let (cached_info, cached_mtime) = cache.get("C:/test_folder/img1.jpg").unwrap();
-        assert_eq!(cached_info.filename, "img1.jpg");
-        assert_eq!(cached_info.rating, 4);
-        assert_eq!(cached_info.tags, vec!["land".to_string()]);
+        let cached_mtime = cache.get("C:/test_folder/img1.jpg").unwrap();
         assert_eq!(*cached_mtime, 123456u64);
 
         // Delete
         let del_res = delete_images_batch(&["C:/test_folder/img1.jpg".to_string()]);
         assert!(del_res.is_ok());
 
-        let cache_after = get_folder_cache(folder).unwrap();
+        let cache_after = get_folder_mtimes(folder).unwrap();
         assert!(!cache_after.contains_key("C:/test_folder/img1.jpg"));
     }
 }

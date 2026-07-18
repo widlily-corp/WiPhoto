@@ -53,11 +53,10 @@ fn init_logger() {
     exe_path.set_file_name("debug.log");
     let file = std::fs::OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open(&exe_path)
         .ok()
-        .map(|f| Mutex::new(f));
+        .map(Mutex::new);
 
     let logger = FileAndConsoleLogger { file };
     let _ = log::set_boxed_logger(Box::new(logger))

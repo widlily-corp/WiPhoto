@@ -111,7 +111,7 @@ pub fn clear_thumbnail_cache() -> Result<u32, String> {
     if cache_dir.exists() {
         if let Ok(entries) = fs::read_dir(&cache_dir) {
             for entry in entries.flatten() {
-                if entry.path().extension().map_or(false, |e| e == "jpg") {
+                if entry.path().extension().is_some_and(|e| e == "jpg") {
                     let _ = fs::remove_file(entry.path());
                     count += 1;
                 }
@@ -139,7 +139,7 @@ pub fn auto_prune_thumbnail_cache() -> Result<u32, String> {
     if let Ok(entries) = fs::read_dir(&cache_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "jpg") {
+            if path.extension().is_some_and(|e| e == "jpg") {
                 let mut should_delete = false;
                 if let Ok(metadata) = fs::metadata(&path) {
                     if let Ok(modified) = metadata.modified() {

@@ -228,7 +228,7 @@ fn build_folder_tree(dir: &Path, depth: u32) -> Vec<FolderNode> {
             }
         }
     }
-    nodes.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    nodes.sort_by_key(|a| a.name.to_lowercase());
     nodes
 }
 
@@ -410,7 +410,7 @@ mod tests {
         let result = delete_files(paths).expect("Failed to call delete_files");
 
         // Assert
-        assert_eq!(result, 0);
+        assert!(result.is_empty());
     }
 
     #[test]
