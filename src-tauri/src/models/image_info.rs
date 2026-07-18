@@ -2,22 +2,21 @@ use serde::{Deserialize, Serialize};
 
 /// Supported image extensions
 pub const IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "jpe", "jfif", "png", "bmp", "gif", "tiff", "tif", "webp",
-    "ico", "ppm", "pgm", "pbm", "pnm",
-    "heic", "heif", "avif", "jp2", "j2k", "jpx", "jpm",
+    "jpg", "jpeg", "jpe", "jfif", "png", "bmp", "gif", "tiff", "tif", "webp", "ico", "ppm", "pgm",
+    "pbm", "pnm", "heic", "heif", "avif", "jp2", "j2k", "jpx", "jpm",
 ];
 
 /// Supported RAW extensions
 pub const RAW_EXTENSIONS: &[&str] = &[
-    "arw", "cr2", "cr3", "nef", "nrw", "dng", "raw", "rw2", "orf", "pef",
-    "raf", "srw", "x3f", "3fr", "ari", "bay", "cap", "iiq", "eip", "fff",
-    "mef", "mos", "mrw", "rwl", "rwz", "sr2", "srf", "sti",
+    "arw", "cr2", "cr3", "nef", "nrw", "dng", "raw", "rw2", "orf", "pef", "raf", "srw", "x3f",
+    "3fr", "ari", "bay", "cap", "iiq", "eip", "fff", "mef", "mos", "mrw", "rwl", "rwz", "sr2",
+    "srf", "sti",
 ];
 
 /// Supported video extensions
 pub const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v",
-    "mpg", "mpeg", "3gp", "ogv", "ts", "mts", "m2ts",
+    "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", "3gp", "ogv", "ts",
+    "mts", "m2ts",
 ];
 
 /// Main image data structure, mirrors Python's ImageInfo dataclass
@@ -25,7 +24,7 @@ pub const VIDEO_EXTENSIONS: &[&str] = &[
 pub struct ImageInfo {
     pub path: String,
     pub filename: String,
-    pub thumbnail: String,      // base64-encoded thumbnail
+    pub thumbnail: String, // base64-encoded thumbnail
     pub phash: Option<String>,
     pub sharpness: f64,
     pub is_best_in_group: bool,
@@ -38,13 +37,13 @@ pub struct ImageInfo {
     pub aspect_ratio: f64,
     pub camera_model: String,
     pub date_taken: String,
-    pub rating: u8,             // 0-5 stars
+    pub rating: u8, // 0-5 stars
     pub file_size: u64,
     pub width: u32,
     pub height: u32,
     pub animal_species: Vec<String>,
-    pub color_label: String,    // "", "red", "yellow", "green", "blue", "purple"
-    pub flag_status: String,    // "", "picked", "rejected"
+    pub color_label: String, // "", "red", "yellow", "green", "blue", "purple"
+    pub flag_status: String, // "", "picked", "rejected"
     pub tags: Vec<String>,
     pub is_video: bool,
     pub is_raw: bool,
@@ -104,7 +103,7 @@ pub struct ExifEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicateGroup {
     pub group_id: String,
-    pub images: Vec<String>,   // paths
+    pub images: Vec<String>, // paths
     pub best_path: String,
 }
 
@@ -120,7 +119,7 @@ pub struct EditOperation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub worker_count: u32,
-    pub raw_quality: String,       // "full" or "half"
+    pub raw_quality: String, // "full" or "half"
     pub calculate_sharpness: bool,
     pub hamming_threshold: u32,
     pub thumbnail_cache_path: String,

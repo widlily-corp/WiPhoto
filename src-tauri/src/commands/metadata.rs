@@ -22,12 +22,20 @@ pub fn read_exif(path: String) -> Result<Vec<ExifEntry>, String> {
 
     entries.push(ExifEntry {
         key: "Имя файла".into(),
-        value: file_path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+        value: file_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string(),
     });
 
     entries.push(ExifEntry {
         key: "Формат".into(),
-        value: file_path.extension().unwrap_or_default().to_string_lossy().to_uppercase(),
+        value: file_path
+            .extension()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_uppercase(),
     });
 
     // Try to read EXIF
@@ -104,8 +112,11 @@ pub fn read_exif(path: String) -> Result<Vec<ExifEntry>, String> {
     // Try to get image dimensions if EXIF didn't have them (use fast header-only parsing)
     if !entries.iter().any(|e| e.key == "Ширина") {
         let mut dimensions = None;
-        let ext = file_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        
+        let ext = file_path
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+
         use crate::models::image_info::RAW_EXTENSIONS;
         if RAW_EXTENSIONS.contains(&ext.as_str()) {
             if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
@@ -125,8 +136,14 @@ pub fn read_exif(path: String) -> Result<Vec<ExifEntry>, String> {
         }
 
         if let Some((w, h)) = dimensions {
-            entries.push(ExifEntry { key: "Ширина".into(), value: w.to_string() });
-            entries.push(ExifEntry { key: "Высота".into(), value: h.to_string() });
+            entries.push(ExifEntry {
+                key: "Ширина".into(),
+                value: w.to_string(),
+            });
+            entries.push(ExifEntry {
+                key: "Высота".into(),
+                value: h.to_string(),
+            });
         }
     }
 

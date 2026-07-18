@@ -59,8 +59,8 @@ fn init_logger() {
         .map(Mutex::new);
 
     let logger = FileAndConsoleLogger { file };
-    let _ = log::set_boxed_logger(Box::new(logger))
-        .map(|_| log::set_max_level(log::LevelFilter::Info));
+    let _ =
+        log::set_boxed_logger(Box::new(logger)).map(|_| log::set_max_level(log::LevelFilter::Info));
 }
 
 use std::fs::File;

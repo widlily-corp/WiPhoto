@@ -1,7 +1,6 @@
 use crate::models::image_info::DuplicateGroup;
 use rayon::prelude::*;
-use tauri::{Emitter, AppHandle};
-
+use tauri::{AppHandle, Emitter};
 
 fn sha2_hash(input: &str) -> String {
     use sha2::{Digest, Sha256};
@@ -33,7 +32,9 @@ fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
 fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
     match method {
         "phash" => {
-            let gray = img.resize_exact(16, 16, image::imageops::FilterType::Triangle).to_luma8();
+            let gray = img
+                .resize_exact(16, 16, image::imageops::FilterType::Triangle)
+                .to_luma8();
             let pixels: Vec<f64> = gray.pixels().map(|p| p.0[0] as f64).collect();
             let mut block_means = Vec::with_capacity(16);
             for by in 0..4 {
@@ -58,7 +59,9 @@ fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
             Some(hash)
         }
         "dhash" => {
-            let gray = img.resize_exact(9, 4, image::imageops::FilterType::Triangle).to_luma8();
+            let gray = img
+                .resize_exact(9, 4, image::imageops::FilterType::Triangle)
+                .to_luma8();
             let mut hash: u32 = 0;
             let mut bit = 0;
             for y in 0..4 {
@@ -79,7 +82,8 @@ fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {
 
 /// Simple perceptual hash implementation using DCT-based approach
 fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
-    let gray = img.resize_exact(8, 8, image::imageops::FilterType::Lanczos3)
+    let gray = img
+        .resize_exact(8, 8, image::imageops::FilterType::Lanczos3)
         .to_luma8();
     let pixels: Vec<f64> = gray.pixels().map(|p| p.0[0] as f64).collect();
 
@@ -96,7 +100,8 @@ fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
         }
         "dhash" => {
             // Difference hash: compare adjacent pixels
-            let gray9 = img.resize_exact(9, 8, image::imageops::FilterType::Lanczos3)
+            let gray9 = img
+                .resize_exact(9, 8, image::imageops::FilterType::Lanczos3)
                 .to_luma8();
             let mut hash: u64 = 0;
             let mut bit = 0;
@@ -119,7 +124,8 @@ fn compute_hash(img: &image::DynamicImage, method: &str) -> Option<u64> {
         }
         _ => {
             // Simplified pHash using mean of larger block
-            let gray32 = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
+            let gray32 = img
+                .resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
                 .to_luma8();
             let pixels32: Vec<f64> = gray32.pixels().map(|p| p.0[0] as f64).collect();
             // Take top-left 8x8 of DCT-like values (simplified: use mean of 4x4 blocks)
@@ -193,7 +199,12 @@ pub async fn find_duplicates(
     method: String,
     threshold: u32,
 ) -> Result<Vec<DuplicateGroup>, String> {
-    log::info!("find_duplicates called with {} paths, method: {}, threshold: {}", paths.len(), method, threshold);
+    log::info!(
+        "find_duplicates called with {} paths, method: {}, threshold: {}",
+        paths.len(),
+        method,
+        threshold
+    );
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -207,10 +218,13 @@ pub async fn find_duplicates(
                 let hash = get_image_for_hashing(path).and_then(|img| compute_hash(&img, &method));
                 let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
                 if current.is_multiple_of(10) || current == total {
-                    let _ = app.emit("dup-progress", serde_json::json!({
-                        "current": current,
-                        "total": total,
-                    }));
+                    let _ = app.emit(
+                        "dup-progress",
+                        serde_json::json!({
+                            "current": current,
+                            "total": total,
+                        }),
+                    );
                 }
                 (path.clone(), hash)
             })
@@ -222,11 +236,15 @@ pub async fn find_duplicates(
             .filter_map(|(path, hash)| hash.map(|h| (path, h)))
             .collect();
 
-        log::info!("Successfully computed hashes for {} out of {} files", valid_hashes.len(), paths.len());
+        log::info!(
+            "Successfully computed hashes for {} out of {} files",
+            valid_hashes.len(),
+            paths.len()
+        );
 
         // Build BK-Tree
         let mut tree_nodes: Vec<BKNode> = Vec::with_capacity(valid_hashes.len());
-        
+
         let insert_node = |nodes: &mut Vec<BKNode>, index: usize, hash: u64| {
             if nodes.is_empty() {
                 nodes.push(BKNode {
@@ -272,7 +290,13 @@ pub async fn find_duplicates(
             }
 
             let mut similar_indices = Vec::new();
-            bktree_query(&tree_nodes, 0, valid_hashes[i].1, threshold, &mut similar_indices);
+            bktree_query(
+                &tree_nodes,
+                0,
+                valid_hashes[i].1,
+                threshold,
+                &mut similar_indices,
+            );
             similar_indices.retain(|&idx| !assigned[idx]);
 
             if similar_indices.len() > 1 {
@@ -299,7 +323,9 @@ pub async fn find_duplicates(
 
         log::info!("Found {} duplicate groups", groups.len());
         Ok::<Vec<DuplicateGroup>, String>(groups)
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
 
     Ok(result)
 }
@@ -308,13 +334,17 @@ pub async fn find_duplicates(
 #[tauri::command]
 pub fn get_duplicate_stats(groups: Vec<DuplicateGroup>) -> Result<DuplicateStats, String> {
     let total_groups = groups.len() as u32;
-    let total_duplicates: u32 = groups.iter().map(|g| (g.images.len() as u32).saturating_sub(1)).sum();
+    let total_duplicates: u32 = groups
+        .iter()
+        .map(|g| (g.images.len() as u32).saturating_sub(1))
+        .sum();
     let potential_savings: u64 = groups
         .iter()
         .flat_map(|g| {
-            g.images.iter().filter(|p| **p != g.best_path).map(|p| {
-                std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
-            })
+            g.images
+                .iter()
+                .filter(|p| **p != g.best_path)
+                .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
         })
         .sum();
 
@@ -386,7 +416,7 @@ mod tests {
     fn test_compute_hash_32_phash() {
         // Arrange
         let img = image::DynamicImage::ImageRgba8(image::RgbaImage::new(16, 16));
-        
+
         // Act
         let hash = compute_hash_32(&img, "phash");
 
@@ -403,7 +433,7 @@ mod tests {
             index: 0,
             children: std::collections::HashMap::new(),
         });
-        
+
         nodes[0].children.insert(2, 1);
         nodes.push(BKNode {
             hash: 0b10101111,

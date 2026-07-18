@@ -1,10 +1,10 @@
 use crate::models::image_info::{RAW_EXTENSIONS, VIDEO_EXTENSIONS};
+use ab_glyph::{FontVec, PxScale};
 use image::{DynamicImage, GenericImageView};
+use imageproc::drawing::draw_text_mut;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
-use ab_glyph::{FontVec, PxScale};
-use imageproc::drawing::draw_text_mut;
 
 fn load_system_font() -> Option<FontVec> {
     let font_paths = [
@@ -93,7 +93,10 @@ pub async fn export_files(
                 return;
             }
 
-            let ext = src_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let ext = src_path
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
             if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
                 let filename = src_path.file_name().unwrap_or_default();
                 let dest_file = dest_path.join(filename);
@@ -141,15 +144,14 @@ pub async fn export_files(
                     "jpg" | "jpeg" => {
                         let q = quality.unwrap_or(95);
                         if let Ok(file) = fs::File::create(&out_path) {
-                            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, q);
+                            let encoder =
+                                image::codecs::jpeg::JpegEncoder::new_with_quality(file, q);
                             image.write_with_encoder(encoder).is_ok()
                         } else {
                             false
                         }
                     }
-                    _ => {
-                        image.save(&out_path).is_ok()
-                    }
+                    _ => image.save(&out_path).is_ok(),
                 };
 
                 if save_success {
@@ -167,7 +169,9 @@ pub async fn export_files(
         });
 
         Ok::<u32, String>(count.load(std::sync::atomic::Ordering::SeqCst))
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
 
     Ok(result)
 }
@@ -183,7 +187,7 @@ mod tests {
         // scale_val * 0.55 = 13.75
         let width = 1000u32;
         let scale_val = 25.0f32;
-        
+
         let text_ascii = "Watermark"; // 9 chars
         let text_cyrillic = "Ватермарк"; // 9 chars (but 18 bytes in UTF-8!)
 
@@ -197,8 +201,12 @@ mod tests {
 
         // Verify that x position remains identical and positive
         let margin_x = (width as f32 * 0.02) as u32; // 20
-        let x_ascii = width.saturating_sub(text_width_ascii).saturating_sub(margin_x);
-        let x_cyrillic = width.saturating_sub(text_width_cyrillic).saturating_sub(margin_x);
+        let x_ascii = width
+            .saturating_sub(text_width_ascii)
+            .saturating_sub(margin_x);
+        let x_cyrillic = width
+            .saturating_sub(text_width_cyrillic)
+            .saturating_sub(margin_x);
 
         assert_eq!(x_ascii, x_cyrillic);
         assert_eq!(x_ascii, 857); // 1000 - 123 - 20 = 857

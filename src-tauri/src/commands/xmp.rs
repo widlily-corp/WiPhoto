@@ -9,8 +9,7 @@ pub fn read_xmp_sidecar(path: String) -> Result<Option<XmpData>, String> {
     if !xmp_path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&xmp_path)
-        .map_err(|e| format!("Read error: {}", e))?;
+    let content = fs::read_to_string(&xmp_path).map_err(|e| format!("Read error: {}", e))?;
     Ok(parse_xmp_content(&content))
 }
 
@@ -94,7 +93,7 @@ pub fn write_xmp_sidecar(
 /// Parse XMP content string into XmpData using roxmltree
 pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
     let doc = roxmltree::Document::parse(content).ok()?;
-    
+
     let mut data = XmpData {
         rating: 0,
         color_label: String::new(),
@@ -118,7 +117,7 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
                 _ => {}
             }
         }
-        
+
         if let Some(subject_node) = desc_node.descendants().find(|n| n.has_tag_name("subject")) {
             for li in subject_node.descendants().filter(|n| n.has_tag_name("li")) {
                 if let Some(text) = li.text() {

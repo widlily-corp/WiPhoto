@@ -36,7 +36,7 @@ pub fn extract_embedded_jpeg(path: &Path) -> Option<Vec<u8>> {
         while i < to_read as usize - 2 {
             if buffer[i] == 0xFF && buffer[i + 1] == 0xD8 && buffer[i + 2] == 0xFF {
                 let start = offset + i as u64;
-                
+
                 // Scan for EOI (0xFF 0xD9)
                 let max_search = (start + 25 * 1024 * 1024).min(file_len);
                 let mut search_offset = start + 2;
@@ -49,7 +49,9 @@ pub fn extract_embedded_jpeg(path: &Path) -> Option<Vec<u8>> {
                     }
 
                     if search_file.seek(SeekFrom::Start(search_offset)).is_ok()
-                        && search_file.read_exact(&mut search_buf[..search_to_read as usize]).is_ok()
+                        && search_file
+                            .read_exact(&mut search_buf[..search_to_read as usize])
+                            .is_ok()
                     {
                         let mut found_eoi = false;
                         for j in 0..(search_to_read as usize - 1) {
@@ -79,9 +81,7 @@ pub fn extract_embedded_jpeg(path: &Path) -> Option<Vec<u8>> {
     if let Some(start) = best_start {
         if best_length > 1024 {
             let mut result = vec![0u8; best_length as usize];
-            if file.seek(SeekFrom::Start(start)).is_ok()
-                && file.read_exact(&mut result).is_ok()
-            {
+            if file.seek(SeekFrom::Start(start)).is_ok() && file.read_exact(&mut result).is_ok() {
                 return Some(result);
             }
         }
@@ -100,7 +100,7 @@ mod tests {
         // Arrange
         let dir = std::env::temp_dir();
         let file_path = dir.join("mock_raw_photo.NEF");
-        
+
         let mut mock_data = vec![0u8; 5000];
         // SOI marker at offset 1000
         mock_data[1000] = 0xFF;

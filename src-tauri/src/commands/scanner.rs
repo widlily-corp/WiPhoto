@@ -4,7 +4,7 @@ use image::imageops::FilterType;
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{Emitter, AppHandle};
+use tauri::{AppHandle, Emitter};
 
 const THUMBNAIL_SIZE: u32 = 256;
 
@@ -97,9 +97,7 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     // Encode to base64
     let mut buf = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut buf);
-    thumb
-        .write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .ok()?;
+    thumb.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
     Some(STANDARD.encode(&buf))
 }
 
@@ -110,9 +108,16 @@ fn load_raw_thumbnail(path: &Path) -> Option<image::DynamicImage> {
         let mut bufreader = std::io::BufReader::new(&file);
         let exif_reader = exif::Reader::new();
         if let Ok(exif) = exif_reader.read_from_container(&mut bufreader) {
-            if let Some(thumb_offset) = exif.get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL) {
-                if let Some(thumb_length) = exif.get_field(exif::Tag::JPEGInterchangeFormatLength, exif::In::THUMBNAIL) {
-                    if let (Some(offset), Some(length)) = (thumb_offset.value.get_uint(0), thumb_length.value.get_uint(0)) {
+            if let Some(thumb_offset) =
+                exif.get_field(exif::Tag::JPEGInterchangeFormat, exif::In::THUMBNAIL)
+            {
+                if let Some(thumb_length) =
+                    exif.get_field(exif::Tag::JPEGInterchangeFormatLength, exif::In::THUMBNAIL)
+                {
+                    if let (Some(offset), Some(length)) = (
+                        thumb_offset.value.get_uint(0),
+                        thumb_length.value.get_uint(0),
+                    ) {
                         use std::io::{Read, Seek, SeekFrom};
                         if let Ok(mut file2) = std::fs::File::open(path) {
                             if file2.seek(SeekFrom::Start(offset as u64)).is_ok() {
@@ -197,11 +202,20 @@ fn process_single_file(path: &Path, cache_dir: &Path) -> Option<ImageInfo> {
         if let Ok(exif_data) = exif_reader.read_from_container(&mut bufreader) {
             // Camera model
             if let Some(field) = exif_data.get_field(exif::Tag::Model, exif::In::PRIMARY) {
-                info.camera_model = field.display_value().to_string().trim_matches('"').to_string();
+                info.camera_model = field
+                    .display_value()
+                    .to_string()
+                    .trim_matches('"')
+                    .to_string();
             }
             // Date taken
-            if let Some(field) = exif_data.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-                info.date_taken = field.display_value().to_string().trim_matches('"').to_string();
+            if let Some(field) = exif_data.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)
+            {
+                info.date_taken = field
+                    .display_value()
+                    .to_string()
+                    .trim_matches('"')
+                    .to_string();
             }
             // GPS
             if let (Some(lat_field), Some(lat_ref), Some(lon_field), Some(lon_ref)) = (
@@ -218,12 +232,14 @@ fn process_single_file(path: &Path, cache_dir: &Path) -> Option<ImageInfo> {
                 }
             }
             // Try to extract dimensions from EXIF (critical for RAW images that standard readers can't parse)
-            if let Some(w_field) = exif_data.get_field(exif::Tag::ImageWidth, exif::In::PRIMARY)
+            if let Some(w_field) = exif_data
+                .get_field(exif::Tag::ImageWidth, exif::In::PRIMARY)
                 .or_else(|| exif_data.get_field(exif::Tag::PixelXDimension, exif::In::PRIMARY))
             {
                 exif_width = w_field.value.get_uint(0);
             }
-            if let Some(h_field) = exif_data.get_field(exif::Tag::ImageLength, exif::In::PRIMARY)
+            if let Some(h_field) = exif_data
+                .get_field(exif::Tag::ImageLength, exif::In::PRIMARY)
                 .or_else(|| exif_data.get_field(exif::Tag::PixelYDimension, exif::In::PRIMARY))
             {
                 exif_height = h_field.value.get_uint(0);
@@ -306,7 +322,10 @@ fn parse_gps_coordinate(value: &exif::Value, reference: &str) -> Option<f64> {
 fn get_modified_time(path: &Path) -> u64 {
     fs::metadata(path)
         .and_then(|m| m.modified())
-        .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).map_err(std::io::Error::other))
+        .and_then(|t| {
+            t.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .map_err(std::io::Error::other)
+        })
         .map(|d| d.as_secs())
         .unwrap_or(0)
 }
@@ -329,7 +348,10 @@ pub async fn scan_folder(
         let _ = fs::create_dir_all(&cache_dir);
 
         if let Err(e) = crate::onnx::init_model() {
-            log::warn!("Failed to initialize ONNX model: {}. Running scan without ML analysis.", e);
+            log::warn!(
+                "Failed to initialize ONNX model: {}. Running scan without ML analysis.",
+                e
+            );
         }
 
         let files = collect_files(&path, recursive);
@@ -342,12 +364,15 @@ pub async fn scan_folder(
         }
 
         let db_mtimes = crate::db::get_folder_mtimes(&path).unwrap_or_default();
-        
-        let _ = app.emit("scan-progress", serde_json::json!({
-            "current": 0,
-            "total": total,
-            "current_file": ""
-        }));
+
+        let _ = app.emit(
+            "scan-progress",
+            serde_json::json!({
+                "current": 0,
+                "total": total,
+                "current_file": ""
+            }),
+        );
 
         let mut cached_paths = Vec::new();
         let mut uncached_files = Vec::new();
@@ -357,7 +382,7 @@ pub async fn scan_folder(
             let path_str = file_path.to_string_lossy().to_string();
             let mtime = get_modified_time(file_path);
             file_paths_set.insert(path_str.clone());
-            
+
             if let Some(&cached_mtime) = db_mtimes.get(&path_str) {
                 if cached_mtime == mtime {
                     cached_paths.push(path_str);
@@ -374,11 +399,14 @@ pub async fn scan_folder(
         for chunk in cached_infos.chunks(50) {
             let _ = app.emit("image-scanned-batch", chunk.to_vec());
             current_count += chunk.len() as u32;
-            let _ = app.emit("scan-progress", serde_json::json!({
-                "current": current_count,
-                "total": total,
-                "current_file": chunk.last().map(|i| i.path.clone()).unwrap_or_default()
-            }));
+            let _ = app.emit(
+                "scan-progress",
+                serde_json::json!({
+                    "current": current_count,
+                    "total": total,
+                    "current_file": chunk.last().map(|i| i.path.clone()).unwrap_or_default()
+                }),
+            );
         }
         final_results.append(&mut cached_infos);
 
@@ -409,21 +437,27 @@ pub async fn scan_folder(
                     let _ = tx.send(info.clone());
                     let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
                     if current % 10 == 0 || current == total {
-                        let _ = app.emit("scan-progress", serde_json::json!({
-                            "current": current,
-                            "total": total,
-                            "current_file": path_str
-                        }));
+                        let _ = app.emit(
+                            "scan-progress",
+                            serde_json::json!({
+                                "current": current,
+                                "total": total,
+                                "current_file": path_str
+                            }),
+                        );
                     }
                     Some((info, *mtime))
                 } else {
                     let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
                     if current % 10 == 0 || current == total {
-                        let _ = app.emit("scan-progress", serde_json::json!({
-                            "current": current,
-                            "total": total,
-                            "current_file": path_str
-                        }));
+                        let _ = app.emit(
+                            "scan-progress",
+                            serde_json::json!({
+                                "current": current,
+                                "total": total,
+                                "current_file": path_str
+                            }),
+                        );
                     }
                     None
                 }
@@ -460,14 +494,22 @@ pub async fn scan_folder(
             }
         }
 
-        log::info!("Folder scan completed. Successfully processed {} files.", final_results.len());
-        
-        let _ = app.emit("scan-finished", serde_json::json!({
-            "total": final_results.len()
-        }));
+        log::info!(
+            "Folder scan completed. Successfully processed {} files.",
+            final_results.len()
+        );
+
+        let _ = app.emit(
+            "scan-finished",
+            serde_json::json!({
+                "total": final_results.len()
+            }),
+        );
 
         Ok::<Vec<ImageInfo>, String>(final_results)
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
 
     Ok(result)
 }

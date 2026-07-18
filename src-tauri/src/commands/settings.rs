@@ -25,8 +25,8 @@ pub fn load_settings() -> AppSettings {
 #[tauri::command]
 pub fn save_settings(settings: AppSettings) -> Result<(), String> {
     let path = settings_path();
-    let content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let content =
+        serde_json::to_string_pretty(&settings).map_err(|e| format!("Serialize error: {}", e))?;
     fs::write(&path, content).map_err(|e| format!("Write error: {}", e))?;
 
     // Ensure cache directory exists

@@ -1,8 +1,8 @@
+use crate::models::image_info::RAW_EXTENSIONS;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::imageops::FilterType;
 use std::fs;
 use std::path::Path;
-use crate::models::image_info::RAW_EXTENSIONS;
 
 const THUMBNAIL_SIZE: u32 = 256;
 
@@ -36,10 +36,14 @@ pub fn get_thumbnail(path: String) -> Result<String, String> {
     }
 
     // Support RAW formats
-    let ext = file_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
         if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
-            image::load_from_memory(&bytes).map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+            image::load_from_memory(&bytes)
+                .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
         } else {
             return Err("Failed to extract preview from RAW file".into());
         }
@@ -69,10 +73,14 @@ pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, St
     }
 
     // Support RAW formats
-    let ext = file_path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
         if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
-            image::load_from_memory(&bytes).map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+            image::load_from_memory(&bytes)
+                .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
         } else {
             return Err("Failed to extract preview from RAW file".into());
         }

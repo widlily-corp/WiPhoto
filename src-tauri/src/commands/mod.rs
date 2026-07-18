@@ -1,10 +1,10 @@
-pub mod scanner;
-pub mod thumbnails;
-pub mod metadata;
-pub mod file_ops;
 pub mod duplicates;
 pub mod editor;
-pub mod settings;
-pub mod xmp;
-pub mod raw_utils;
 pub mod export;
+pub mod file_ops;
+pub mod metadata;
+pub mod raw_utils;
+pub mod scanner;
+pub mod settings;
+pub mod thumbnails;
+pub mod xmp;

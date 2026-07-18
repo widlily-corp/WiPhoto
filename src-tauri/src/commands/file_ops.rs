@@ -30,13 +30,24 @@ pub fn delete_files(paths: Vec<String>) -> Result<Vec<String>, String> {
             continue;
         }
 
-        let filename = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let filename = src
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let mut dest = trash_dir.join(&filename);
 
         // Handle name conflicts
         if dest.exists() {
-            let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
-            let ext = src.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
+            let stem = src
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let ext = src
+                .extension()
+                .map(|e| e.to_string_lossy().to_string())
+                .unwrap_or_default();
             let mut counter = 1;
             loop {
                 let new_name = if ext.is_empty() {
@@ -52,10 +63,16 @@ pub fn delete_files(paths: Vec<String>) -> Result<Vec<String>, String> {
             }
         }
 
-        if fs::rename(src, &dest).is_ok() || fs::copy(src, &dest).map(|_| fs::remove_file(src)).is_ok() {
+        if fs::rename(src, &dest).is_ok()
+            || fs::copy(src, &dest).map(|_| fs::remove_file(src)).is_ok()
+        {
             deleted.push(path.clone());
 
-            let trash_filename = dest.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let trash_filename = dest
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             metadata_map.insert(trash_filename, path.clone());
 
             // Also move XMP sidecar if exists
@@ -212,7 +229,11 @@ fn build_folder_tree(dir: &Path, depth: u32) -> Vec<FolderNode> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 // Skip hidden dirs
                 if name.starts_with('.') {
                     continue;
@@ -278,20 +299,32 @@ pub fn list_trash() -> Result<Vec<TrashItem>, String> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let filename = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if filename == ".trash_metadata.json" || filename.ends_with(".xmp") {
                     continue;
                 }
 
                 let file_size = path.metadata().map(|m| m.len()).unwrap_or(0);
-                let original_path = metadata_map.get(&filename).cloned().unwrap_or_else(|| filename.clone());
+                let original_path = metadata_map
+                    .get(&filename)
+                    .cloned()
+                    .unwrap_or_else(|| filename.clone());
 
-                let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                let ext = path
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
                 let is_video = crate::models::image_info::VIDEO_EXTENSIONS.contains(&ext.as_str());
                 let is_raw = crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str());
 
                 // Generate/load cached thumbnail
-                let thumbnail = super::thumbnails::get_thumbnail(path.to_string_lossy().to_string()).unwrap_or_default();
+                let thumbnail =
+                    super::thumbnails::get_thumbnail(path.to_string_lossy().to_string())
+                        .unwrap_or_default();
 
                 items.push(TrashItem {
                     filename,
@@ -326,7 +359,8 @@ pub fn restore_from_trash(filename: String) -> Result<(), String> {
         std::collections::HashMap::new()
     };
 
-    let original_path = metadata_map.get(&filename)
+    let original_path = metadata_map
+        .get(&filename)
         .ok_or_else(|| "Original path not found in metadata".to_string())?;
 
     let dest_file = Path::new(original_path);
@@ -335,7 +369,9 @@ pub fn restore_from_trash(filename: String) -> Result<(), String> {
         let _ = fs::create_dir_all(parent);
     }
 
-    if fs::rename(&src_file, dest_file).is_ok() || (fs::copy(&src_file, dest_file).is_ok() && fs::remove_file(&src_file).is_ok()) {
+    if fs::rename(&src_file, dest_file).is_ok()
+        || (fs::copy(&src_file, dest_file).is_ok() && fs::remove_file(&src_file).is_ok())
+    {
         // Also restore XMP sidecar if it exists
         let xmp_src = src_file.with_extension("xmp");
         if xmp_src.exists() {
@@ -345,7 +381,10 @@ pub fn restore_from_trash(filename: String) -> Result<(), String> {
 
         // Remove from metadata map
         metadata_map.remove(&filename);
-        let _ = fs::write(&metadata_path, serde_json::to_string_pretty(&metadata_map).unwrap_or_default());
+        let _ = fs::write(
+            &metadata_path,
+            serde_json::to_string_pretty(&metadata_map).unwrap_or_default(),
+        );
 
         Ok(())
     } else {
@@ -361,7 +400,11 @@ pub fn empty_trash() -> Result<(), String> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let filename = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if filename == ".trash_metadata.json" {
                     continue;
                 }
@@ -426,7 +469,11 @@ mod tests {
         std::fs::write(&src_file, "content").unwrap();
 
         // Act
-        let result = copy_files(vec![src_file.to_string_lossy().to_string()], dest_dir.to_string_lossy().to_string()).expect("Failed copy");
+        let result = copy_files(
+            vec![src_file.to_string_lossy().to_string()],
+            dest_dir.to_string_lossy().to_string(),
+        )
+        .expect("Failed copy");
 
         // Assert
         assert_eq!(result, 1);
@@ -448,7 +495,11 @@ mod tests {
         std::fs::write(&src_file, "content").unwrap();
 
         // Act
-        let result = move_files(vec![src_file.to_string_lossy().to_string()], dest_dir.to_string_lossy().to_string()).expect("Failed move");
+        let result = move_files(
+            vec![src_file.to_string_lossy().to_string()],
+            dest_dir.to_string_lossy().to_string(),
+        )
+        .expect("Failed move");
 
         // Assert
         assert_eq!(result.len(), 1);

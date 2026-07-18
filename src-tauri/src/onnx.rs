@@ -32,7 +32,9 @@ pub fn init_model() -> Result<(), String> {
         return Ok(());
     }
 
-    let _guard = INIT_LOCK.lock().map_err(|e| format!("Failed to acquire init lock: {}", e))?;
+    let _guard = INIT_LOCK
+        .lock()
+        .map_err(|e| format!("Failed to acquire init lock: {}", e))?;
 
     if MODEL.get().is_some() {
         return Ok(());
@@ -45,7 +47,8 @@ pub fn init_model() -> Result<(), String> {
     let _ = fs::create_dir_all(&model_dir);
     let model_path = model_dir.join("yolov8n.onnx");
 
-    let needs_download = !model_path.exists() || fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0) < 10_000_000;
+    let needs_download = !model_path.exists()
+        || fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0) < 10_000_000;
 
     if needs_download {
         log::info!("ONNX model not found or corrupt/incomplete. Downloading YOLOv8n from GitHub Releases...");
@@ -82,11 +85,14 @@ fn download_model(dest: &Path) -> Result<(), String> {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
 
-    log::info!("Downloading YOLOv8n ONNX model (size: {:.2} MB)...", total_size as f64 / 1_048_576.0);
+    log::info!(
+        "Downloading YOLOv8n ONNX model (size: {:.2} MB)...",
+        total_size as f64 / 1_048_576.0
+    );
 
     let mut reader = response.into_reader();
-    let mut file = fs::File::create(dest)
-        .map_err(|e| format!("Failed to create destination file: {}", e))?;
+    let mut file =
+        fs::File::create(dest).map_err(|e| format!("Failed to create destination file: {}", e))?;
 
     let mut buffer = [0; 16384];
     let mut downloaded = 0;
@@ -104,7 +110,12 @@ fn download_model(dest: &Path) -> Result<(), String> {
                     if let Some(result) = (downloaded * 100).checked_div(total_size) {
                         let percent = result as u32;
                         if percent >= last_percent + 10 || percent == 100 {
-                            log::info!("Model download progress: {}% ({} / {} bytes)", percent, downloaded, total_size);
+                            log::info!(
+                                "Model download progress: {}% ({} / {} bytes)",
+                                percent,
+                                downloaded,
+                                total_size
+                            );
                             last_percent = percent;
                         }
                     }
@@ -139,14 +150,20 @@ fn iou(box1: &[f32; 4], box2: &[f32; 4]) -> f32 {
 }
 
 fn nms(mut detections: Vec<Detection>, iou_threshold: f32) -> Vec<Detection> {
-    detections.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    detections.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let mut kept = Vec::new();
 
     while !detections.is_empty() {
         let best = detections.remove(0);
         let mut i = 0;
         while i < detections.len() {
-            if detections[i].class_id == best.class_id && iou(&best.bbox, &detections[i].bbox) > iou_threshold {
+            if detections[i].class_id == best.class_id
+                && iou(&best.bbox, &detections[i].bbox) > iou_threshold
+            {
                 detections.remove(i);
             } else {
                 i += 1;

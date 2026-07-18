@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use image::{DynamicImage, GenericImageView};
-use std::path::Path;
 use rayon::prelude::*;
+use std::path::Path;
 
 /// Apply an edit operation to an image and return base64 result
 #[tauri::command]
@@ -10,7 +10,11 @@ pub async fn apply_edit(
     operations: Vec<EditOp>,
     max_preview_size: Option<u32>,
 ) -> Result<String, String> {
-    log::info!("apply_edit called for image: {} with {} operations", path, operations.len());
+    log::info!(
+        "apply_edit called for image: {} with {} operations",
+        path,
+        operations.len()
+    );
     let result = tauri::async_runtime::spawn_blocking(move || {
         let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
@@ -33,8 +37,10 @@ pub async fn apply_edit(
         img.write_to(&mut cursor, image::ImageFormat::Jpeg)
             .map_err(|e| format!("Failed to encode: {}", e))?;
         Ok::<String, String>(STANDARD.encode(&buf))
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
-    
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
     Ok(result)
 }
 
@@ -46,7 +52,11 @@ pub async fn save_edited(
     output_path: Option<String>,
     quality: Option<u8>,
 ) -> Result<String, String> {
-    log::info!("save_edited called for image: {}, output: {:?}", path, output_path);
+    log::info!(
+        "save_edited called for image: {}, output: {:?}",
+        path,
+        output_path
+    );
     let result = tauri::async_runtime::spawn_blocking(move || {
         let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
@@ -60,7 +70,11 @@ pub async fn save_edited(
             let ext = p.extension().unwrap_or_default().to_string_lossy();
             let parent = p.parent().unwrap_or(Path::new("."));
             parent
-                .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+                .join(format!(
+                    "{}_edited.{}",
+                    stem,
+                    if ext.is_empty() { "jpg" } else { &ext }
+                ))
                 .to_string_lossy()
                 .to_string()
         });
@@ -88,10 +102,13 @@ pub async fn save_edited(
         }
 
         // Atomic rename replacement
-        std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        std::fs::rename(&temp_path, &save_path)
+            .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
         Ok::<String, String>(save_path)
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
 
     Ok(result)
 }
@@ -254,7 +271,11 @@ fn adjust_vibrance(img: DynamicImage, value: f64) -> DynamicImage {
         let b = pixel[2] as f64 / 255.0;
         let max_c = r.max(g).max(b);
         let min_c = r.min(g).min(b);
-        let sat = if max_c > 0.0 { (max_c - min_c) / max_c } else { 0.0 };
+        let sat = if max_c > 0.0 {
+            (max_c - min_c) / max_c
+        } else {
+            0.0
+        };
         let factor = 1.0 + amount * (1.0 - sat);
         let gray = 0.299 * r + 0.587 * g + 0.114 * b;
         pixel[0] = clamp_u8((gray + (r - gray) * factor) * 255.0);
@@ -359,14 +380,15 @@ fn rotate_image(img: DynamicImage, degrees: f64) -> DynamicImage {
 
 /// Crop an image
 #[tauri::command]
-pub fn crop_image(
-    path: String,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-) -> Result<String, String> {
-    log::info!("crop_image called for path: {}, rect: (x: {}, y: {}, w: {}, h: {})", path, x, y, width, height);
+pub fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Result<String, String> {
+    log::info!(
+        "crop_image called for path: {}, rect: (x: {}, y: {}, w: {}, h: {})",
+        path,
+        x,
+        y,
+        width,
+        height
+    );
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
     let cropped = img.crop(x, y, width, height);
 
@@ -393,7 +415,8 @@ pub fn get_histogram(path: String) -> Result<HistogramData, String> {
         r_hist[pixel[0] as usize] += 1;
         g_hist[pixel[1] as usize] += 1;
         b_hist[pixel[2] as usize] += 1;
-        let lum = (0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64) as usize;
+        let lum =
+            (0.299 * pixel[0] as f64 + 0.587 * pixel[1] as f64 + 0.114 * pixel[2] as f64) as usize;
         l_hist[lum.min(255)] += 1;
     }
 
@@ -463,7 +486,11 @@ fn hue(c: &[f64; 3]) -> f64 {
     } else {
         60.0 * ((r - g) / (max - min)) + 240.0
     };
-    if h < 0.0 { h + 360.0 } else { h }
+    if h < 0.0 {
+        h + 360.0
+    } else {
+        h
+    }
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
@@ -504,7 +531,11 @@ pub async fn save_cropped_edited_image(
             let ext = p.extension().unwrap_or_default().to_string_lossy();
             let parent = p.parent().unwrap_or(Path::new("."));
             parent
-                .join(format!("{}_edited.{}", stem, if ext.is_empty() { "jpg" } else { &ext }))
+                .join(format!(
+                    "{}_edited.{}",
+                    stem,
+                    if ext.is_empty() { "jpg" } else { &ext }
+                ))
                 .to_string_lossy()
                 .to_string()
         });
@@ -532,10 +563,13 @@ pub async fn save_cropped_edited_image(
         }
 
         // Atomic rename replacement
-        std::fs::rename(&temp_path, &save_path).map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        std::fs::rename(&temp_path, &save_path)
+            .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
         Ok::<String, String>(save_path)
-    }).await.map_err(|e| format!("Task failed: {}", e))??;
-    
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
     Ok(result)
 }

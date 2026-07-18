@@ -63,7 +63,7 @@ pub fn get_folder_mtimes(folder: &str) -> Result<HashMap<String, u64>> {
 
     let mut stmt = conn.prepare("SELECT path, modified_time FROM images WHERE path LIKE ?")?;
     let query_param = format!("{}%", folder_prefix);
-    
+
     let rows = stmt.query_map(params![query_param], |row| {
         let path_str: String = row.get(0)?;
         let modified_time: u64 = row.get(1)?;
@@ -83,21 +83,25 @@ pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
     }
     let db_path = get_db_path();
     let conn = Connection::open(db_path)?;
-    
+
     let mut results = Vec::new();
     for chunk in paths.chunks(500) {
         let placeholders: Vec<String> = (0..chunk.len()).map(|_| "?".to_string()).collect();
-        let query = format!("SELECT 
+        let query = format!(
+            "SELECT 
             path, filename, thumbnail, phash, sharpness, is_best_in_group, group_id,
             faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
             camera_model, date_taken, rating, file_size, width, height,
             animal_species, color_label, flag_status, tags, is_video, is_raw
-        FROM images WHERE path IN ({})", placeholders.join(", "));
-        
+        FROM images WHERE path IN ({})",
+            placeholders.join(", ")
+        );
+
         let mut stmt = conn.prepare(&query)?;
-        
-        let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-        
+
+        let params: Vec<&dyn rusqlite::ToSql> =
+            chunk.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
         let rows = stmt.query_map(&params[..], |row| {
             let path_str: String = row.get(0)?;
             let filename: String = row.get(1)?;
@@ -129,7 +133,8 @@ pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
                 _ => None,
             };
 
-            let animal_species: Vec<String> = serde_json::from_str(&animal_species_str).unwrap_or_default();
+            let animal_species: Vec<String> =
+                serde_json::from_str(&animal_species_str).unwrap_or_default();
             let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
 
             Ok(ImageInfo {
@@ -158,12 +163,12 @@ pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
                 is_raw: is_raw_int != 0,
             })
         })?;
-        
+
         for info in rows.flatten() {
             results.push(info);
         }
     }
-    
+
     Ok(results)
 }
 
@@ -183,13 +188,14 @@ pub fn save_images_batch(images: &[(&ImageInfo, u64)]) -> Result<()> {
                 faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
                 camera_model, date_taken, rating, file_size, width, height,
                 animal_species, color_label, flag_status, tags, is_video, is_raw, modified_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )?;
 
         for (info, mtime) in images {
             let gps_lat = info.gps_location.map(|g| g.0);
             let gps_lon = info.gps_location.map(|g| g.1);
-            let animal_species_str = serde_json::to_string(&info.animal_species).unwrap_or_else(|_| "[]".to_string());
+            let animal_species_str =
+                serde_json::to_string(&info.animal_species).unwrap_or_else(|_| "[]".to_string());
             let tags_str = serde_json::to_string(&info.tags).unwrap_or_else(|_| "[]".to_string());
 
             stmt.execute(params![
