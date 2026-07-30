@@ -1,5 +1,24 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const updaterPath = path.join(__dirname, 'updater.js');
+const updaterCode = fs.readFileSync(updaterPath, 'utf8');
+const updaterContext = {
+  window: {},
+  document: {
+    getElementById: () => null,
+    querySelectorAll: () => [],
+    addEventListener: () => {}
+  },
+  console: console
+};
+updaterContext.window.window = updaterContext.window;
+vm.runInNewContext(updaterCode, updaterContext);
+
+const { isNewerVersion: updaterIsNewerVersion, renderMarkdown, parseReleaseNotes, UpdaterAPI } = updaterContext.window;
 
 // Feature R1: CLIP Search Helper Logic
 function filterAndSortClipResults(results, threshold) {
@@ -296,13 +315,58 @@ describe('Tier 1 & Tier 2: Feature Unit & Boundary Tests (R1 to R7)', () => {
   });
 
   // R6 Tests
-  describe('R6: OTA Updates Version Comparison', () => {
+  describe('R6: OTA Updates Version Comparison & Release Notes Markdown', () => {
     it('should identify target versions newer than current version', () => {
       // Assert
       assert.strictEqual(isNewerVersion('4.2.0', '5.0.0'), true);
       assert.strictEqual(isNewerVersion('5.0.0', '5.0.0'), false);
       assert.strictEqual(isNewerVersion('5.0.0', '4.2.0'), false);
       assert.strictEqual(isNewerVersion('5.0.0', '5.0.1'), true);
+      assert.strictEqual(updaterIsNewerVersion('5.0.0', 'v5.1.0'), true);
+    });
+
+    it('should render markdown release notes into formatted HTML', () => {
+      // Arrange
+      const md = '# Release v5.1.0\n\n## Features\n- Added **OTA updates** modal\n- Improved `speed` and performance';
+
+      // Act
+      const html = renderMarkdown(md);
+
+      // Assert
+      assert.ok(html.includes('<h1>Release v5.1.0</h1>'));
+      assert.ok(html.includes('<h2>Features</h2>'));
+      assert.ok(html.includes('<strong>OTA updates</strong>'));
+      assert.ok(html.includes('<code>speed</code>'));
+      assert.ok(html.includes('<ul>') && html.includes('<li>'));
+    });
+
+    it('should parse release notes payloads correctly', () => {
+      // Arrange
+      const rawPayload = {
+        version: '5.1.0',
+        published_at: '2026-07-30',
+        body: '## Whats New\n- Fixes and enhancements'
+      };
+
+      // Act
+      const parsed = parseReleaseNotes(rawPayload);
+
+      // Assert
+      assert.strictEqual(parsed.available, true);
+      assert.strictEqual(parsed.version, '5.1.0');
+      assert.strictEqual(parsed.date, '2026-07-30');
+      assert.ok(parsed.body.includes('Whats New'));
+    });
+
+    it('should handle empty or missing release notes gracefully', () => {
+      // Act
+      const nullHtml = renderMarkdown(null);
+      const emptyParsed = parseReleaseNotes(null);
+
+      // Assert
+      assert.ok(nullHtml.includes('Нет описания изменений'));
+      assert.strictEqual(emptyParsed.available, false);
+      assert.strictEqual(emptyParsed.version, '');
     });
   });
 
