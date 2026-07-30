@@ -5,6 +5,8 @@ pub mod file_ops;
 pub mod metadata;
 pub mod raw_utils;
 pub mod scanner;
+pub mod search;
 pub mod settings;
 pub mod thumbnails;
 pub mod xmp;
+

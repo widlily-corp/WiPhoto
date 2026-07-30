@@ -168,6 +168,10 @@ fn test_tier4_e2e_scenarios_rust() {
     // Assert: High similarity score for relevant match
     assert!(sim > 0.99);
 
+    // Act: IPC search command search_clip_semantic
+    let search_res = wiphoto_lib::commands::search::search_clip_semantic("dog on a beach".to_string(), 10);
+    assert!(search_res.is_ok());
+
     // Cleanup temp files
     let _ = fs::remove_file(&img_file);
     let _ = fs::remove_file(&xmp_file);

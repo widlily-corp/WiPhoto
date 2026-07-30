@@ -40,11 +40,214 @@ pub fn init_db() -> Result<()> {
             tags TEXT NOT NULL,
             is_video INTEGER NOT NULL,
             is_raw INTEGER NOT NULL,
-            modified_time INTEGER NOT NULL
+            modified_time INTEGER NOT NULL,
+            embedding TEXT
         )",
         [],
     )?;
+    let _ = conn.execute("ALTER TABLE images ADD COLUMN embedding TEXT", []);
     Ok(())
+}
+
+/// Store a 512-dim embedding for an image path in SQLite
+pub fn save_image_embedding(path: &str, embedding: &[f32]) -> Result<()> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
+    let serialized = serde_json::to_string(embedding).unwrap_or_else(|_| "[]".to_string());
+    conn.execute(
+        "UPDATE images SET embedding = ? WHERE path = ?",
+        params![serialized, path],
+    )?;
+    Ok(())
+}
+
+/// Retrieve stored embedding for an image path
+pub fn get_image_embedding(path: &str) -> Result<Option<Vec<f32>>> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare("SELECT embedding FROM images WHERE path = ?")?;
+    let mut rows = stmt.query(params![path])?;
+    if let Some(row) = rows.next()? {
+        let val: Option<String> = row.get(0)?;
+        if let Some(json_str) = val {
+            if let Ok(vec) = serde_json::from_str::<Vec<f32>>(&json_str) {
+                if !vec.is_empty() {
+                    return Ok(Some(vec));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Perform vector similarity search across all stored images using CLIP query embedding
+pub fn search_clip_semantic_db(query_vec: &[f32], limit: usize) -> Result<Vec<(ImageInfo, f32)>> {
+    let db_path = get_db_path();
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT 
+            path, filename, thumbnail, phash, sharpness, is_best_in_group, group_id,
+            faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
+            camera_model, date_taken, rating, file_size, width, height,
+            animal_species, color_label, flag_status, tags, is_video, is_raw, embedding
+        FROM images",
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        let path_str: String = row.get(0)?;
+        let filename: String = row.get(1)?;
+        let thumbnail: String = row.get(2)?;
+        let phash: Option<String> = row.get(3)?;
+        let sharpness: f64 = row.get(4)?;
+        let is_best_in_group_int: i32 = row.get(5)?;
+        let group_id: Option<String> = row.get(6)?;
+        let faces_count: u32 = row.get(7)?;
+        let animals_count: u32 = row.get(8)?;
+        let gps_latitude: Option<f64> = row.get(9)?;
+        let gps_longitude: Option<f64> = row.get(10)?;
+        let aspect_ratio: f64 = row.get(11)?;
+        let camera_model: String = row.get(12)?;
+        let date_taken: String = row.get(13)?;
+        let rating: u8 = row.get(14)?;
+        let file_size: u64 = row.get(15)?;
+        let width: u32 = row.get(16)?;
+        let height: u32 = row.get(17)?;
+        let animal_species_str: String = row.get(18)?;
+        let color_label: String = row.get(19)?;
+        let flag_status: String = row.get(20)?;
+        let tags_str: String = row.get(21)?;
+        let is_video_int: i32 = row.get(22)?;
+        let is_raw_int: i32 = row.get(23)?;
+        let embedding_str: Option<String> = row.get(24)?;
+
+        let gps_location = match (gps_latitude, gps_longitude) {
+            (Some(lat), Some(lon)) => Some((lat, lon)),
+            _ => None,
+        };
+
+        let animal_species: Vec<String> =
+            serde_json::from_str(&animal_species_str).unwrap_or_default();
+        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+        let embedding: Option<Vec<f32>> = embedding_str
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .filter(|v: &Vec<f32>| !v.is_empty());
+
+        Ok((
+            ImageInfo {
+                path: path_str,
+                filename,
+                thumbnail,
+                phash,
+                sharpness,
+                is_best_in_group: is_best_in_group_int != 0,
+                group_id,
+                faces_count,
+                animals_count,
+                gps_location,
+                aspect_ratio,
+                camera_model,
+                date_taken,
+                rating,
+                file_size,
+                width,
+                height,
+                animal_species,
+                color_label,
+                flag_status,
+                tags,
+                is_video: is_video_int != 0,
+                is_raw: is_raw_int != 0,
+            },
+            embedding,
+        ))
+    })?;
+
+    let mut ranked = Vec::new();
+    for (info, emb_opt) in rows.flatten() {
+        let img_vec = match emb_opt {
+            Some(v) => v,
+            None => crate::onnx::extract_image_embedding(std::path::Path::new(&info.path)),
+        };
+        let score = crate::onnx::cosine_similarity(query_vec, &img_vec);
+        if score.is_finite() {
+            ranked.push((info, score));
+        }
+    }
+
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    if limit > 0 && ranked.len() > limit {
+        ranked.truncate(limit);
+    }
+
+    Ok(ranked)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_and_cache_db() {
+        // Arrange
+        let _ = init_db();
+        let folder = "C:/test_folder";
+        let info1 = ImageInfo {
+            path: "C:/test_folder/img1.jpg".into(),
+            filename: "img1.jpg".into(),
+            thumbnail: "dummy_thumb".into(),
+            phash: Some("abcdef".into()),
+            sharpness: 0.8,
+            is_best_in_group: true,
+            group_id: Some("g1".into()),
+            faces_count: 1,
+            animals_count: 0,
+            gps_location: Some((50.0, 10.0)),
+            aspect_ratio: 1.5,
+            camera_model: "Nikon".into(),
+            date_taken: "2024:01:01".into(),
+            rating: 4,
+            file_size: 1024,
+            width: 600,
+            height: 400,
+            animal_species: vec![],
+            color_label: "red".into(),
+            flag_status: "picked".into(),
+            tags: vec!["land".into()],
+            is_video: false,
+            is_raw: false,
+        };
+
+        // Act
+        let save_res = save_images_batch(&[(&info1, 123456u64)]);
+        assert!(save_res.is_ok());
+
+        let cache = get_folder_mtimes(folder).expect("Failed to get cache");
+
+        // Assert
+        assert!(cache.contains_key("C:/test_folder/img1.jpg"));
+        let cached_mtime = cache.get("C:/test_folder/img1.jpg").unwrap();
+        assert_eq!(*cached_mtime, 123456u64);
+
+        // Test embedding save and search
+        let test_emb = vec![0.1f32; crate::onnx::EMBEDDING_DIM];
+        let save_emb_res = save_image_embedding("C:/test_folder/img1.jpg", &test_emb);
+        assert!(save_emb_res.is_ok());
+
+        let fetched_emb = get_image_embedding("C:/test_folder/img1.jpg").unwrap();
+        assert!(fetched_emb.is_some());
+        assert_eq!(fetched_emb.unwrap().len(), crate::onnx::EMBEDDING_DIM);
+
+        let search_res = search_clip_semantic_db(&test_emb, 10).unwrap();
+        assert!(!search_res.is_empty());
+        assert_eq!(search_res[0].0.path, "C:/test_folder/img1.jpg");
+
+        // Delete
+        let del_res = delete_images_batch(&["C:/test_folder/img1.jpg".to_string()]);
+        assert!(del_res.is_ok());
+
+        let cache_after = get_folder_mtimes(folder).unwrap();
+        assert!(!cache_after.contains_key("C:/test_folder/img1.jpg"));
+    }
 }
 
 /// Retrieve all cached images for a given folder path
@@ -250,59 +453,4 @@ pub fn delete_images_batch(paths: &[String]) -> Result<()> {
 
     tx.commit()?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_init_and_cache_db() {
-        // Arrange
-        let _ = init_db();
-        let folder = "C:/test_folder";
-        let info1 = ImageInfo {
-            path: "C:/test_folder/img1.jpg".into(),
-            filename: "img1.jpg".into(),
-            thumbnail: "dummy_thumb".into(),
-            phash: Some("abcdef".into()),
-            sharpness: 0.8,
-            is_best_in_group: true,
-            group_id: Some("g1".into()),
-            faces_count: 1,
-            animals_count: 0,
-            gps_location: Some((50.0, 10.0)),
-            aspect_ratio: 1.5,
-            camera_model: "Nikon".into(),
-            date_taken: "2024:01:01".into(),
-            rating: 4,
-            file_size: 1024,
-            width: 600,
-            height: 400,
-            animal_species: vec![],
-            color_label: "red".into(),
-            flag_status: "picked".into(),
-            tags: vec!["land".into()],
-            is_video: false,
-            is_raw: false,
-        };
-
-        // Act
-        let save_res = save_images_batch(&[(&info1, 123456u64)]);
-        assert!(save_res.is_ok());
-
-        let cache = get_folder_mtimes(folder).expect("Failed to get cache");
-
-        // Assert
-        assert!(cache.contains_key("C:/test_folder/img1.jpg"));
-        let cached_mtime = cache.get("C:/test_folder/img1.jpg").unwrap();
-        assert_eq!(*cached_mtime, 123456u64);
-
-        // Delete
-        let del_res = delete_images_batch(&["C:/test_folder/img1.jpg".to_string()]);
-        assert!(del_res.is_ok());
-
-        let cache_after = get_folder_mtimes(folder).unwrap();
-        assert!(!cache_after.contains_key("C:/test_folder/img1.jpg"));
-    }
 }

@@ -59,6 +59,9 @@ const API = {
   writeXmpSidecar: (path, rating, colorLabel, flagStatus, tags, historyEntry) =>
     invoke('write_xmp_sidecar', { path, rating, colorLabel, flagStatus, tags, historyEntry: historyEntry || null }),
 
+  // ─── Search ───
+  searchClipSemantic: (query, limit) => invoke('search_clip_semantic', { query, limit: limit || 100 }),
+
   // ─── Events ───
   onScanProgress: (callback) => listen('scan-progress', (event) => callback(event.payload)),
   onDupProgress: (callback) => listen('dup-progress', (event) => callback(event.payload)),

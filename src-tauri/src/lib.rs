@@ -4,7 +4,7 @@ pub mod models;
 pub mod onnx;
 
 use commands::{
-    duplicates, editor, export, file_ops, metadata, scanner, settings, thumbnails, xmp,
+    duplicates, editor, export, file_ops, metadata, scanner, search, settings, thumbnails, xmp,
 };
 
 struct FileAndConsoleLogger {
@@ -210,6 +210,8 @@ pub fn run() {
             // XMP
             xmp::read_xmp_sidecar,
             xmp::write_xmp_sidecar,
+            // Search
+            search::search_clip_semantic,
             // Logger
             scanner::log_js,
         ])

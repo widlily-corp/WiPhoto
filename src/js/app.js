@@ -15,6 +15,9 @@ const App = (() => {
     // 1. Initialize Sub-Modules
     Welcome.init();
     Gallery.init();
+    if (typeof Search !== 'undefined') {
+      Search.init();
+    }
     Sidebar.init();
     Viewer.init();
     Editor.init();
