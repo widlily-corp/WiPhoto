@@ -23,7 +23,8 @@ fn get_db_path() -> PathBuf {
 }
 
 use once_cell::sync::Lazy;
-
+#[cfg(test)]
+use parking_lot::Mutex;
 #[cfg(not(test))]
 use r2d2::Pool;
 #[cfg(not(test))]
