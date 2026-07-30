@@ -163,8 +163,13 @@ pub struct XmpData {
     pub color_label: String,
     pub flag_status: String,
     pub tags: Vec<String>,
+    #[serde(default)]
     pub history: Vec<String>,
 }
+
+/// Alias for XMP sidecar metadata matching PROJECT.md contract
+pub type XmpMetadata = XmpData;
+
 
 /// Check if a file extension is supported
 pub fn is_supported_extension(ext: &str) -> bool {

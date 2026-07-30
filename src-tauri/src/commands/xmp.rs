@@ -1,4 +1,4 @@
-use crate::models::image_info::XmpData;
+use crate::models::image_info::{XmpData, XmpMetadata};
 use std::fs;
 use std::path::Path;
 
@@ -12,6 +12,21 @@ pub fn read_xmp_sidecar(path: String) -> Result<Option<XmpData>, String> {
     let content = fs::read_to_string(&xmp_path).map_err(|e| format!("Read error: {}", e))?;
     Ok(parse_xmp_content(&content))
 }
+
+/// Sync XMP sidecar for an image (PROJECT.md contract)
+#[tauri::command]
+pub fn sync_xmp_sidecar(image_path: String, metadata: XmpMetadata) -> Result<(), String> {
+    let history_entry = metadata.history.last().cloned();
+    write_xmp_sidecar(
+        image_path,
+        metadata.rating,
+        metadata.color_label,
+        metadata.flag_status,
+        metadata.tags,
+        history_entry,
+    )
+}
+
 
 /// Write XMP sidecar for an image
 #[tauri::command]
@@ -325,5 +340,34 @@ mod tests {
         // Cleanup
         let _ = fs::remove_file(&sidecar_path);
     }
+
+    #[test]
+    fn test_sync_xmp_sidecar() {
+        let temp_dir = std::env::temp_dir();
+        let img_path = temp_dir.join("test_sync_xmp_contract.jpg").to_string_lossy().to_string();
+        let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
+
+        let _ = fs::remove_file(&sidecar_path);
+
+        let metadata = XmpMetadata {
+            rating: 5,
+            color_label: "blue".to_string(),
+            flag_status: "picked".to_string(),
+            tags: vec!["Nature".to_string()],
+            history: vec!["Contract sync test".to_string()],
+        };
+
+        let res = sync_xmp_sidecar(img_path.clone(), metadata);
+        assert!(res.is_ok());
+        assert!(sidecar_path.exists());
+
+        let read = read_xmp_sidecar(img_path.clone()).unwrap().unwrap();
+        assert_eq!(read.rating, 5);
+        assert_eq!(read.color_label, "blue");
+        assert_eq!(read.flag_status, "picked");
+
+        let _ = fs::remove_file(&sidecar_path);
+    }
 }
+
 

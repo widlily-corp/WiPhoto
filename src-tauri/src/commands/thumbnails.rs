@@ -190,3 +190,21 @@ pub fn auto_prune_thumbnail_cache() -> Result<u32, String> {
     }
     Ok(count)
 }
+
+/// Get asset protocol URL for zero-copy rendering (PROJECT.md contract)
+#[tauri::command]
+pub fn get_image_url(path: String) -> String {
+    format!("tauri://localhost/{}", path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_image_url() {
+        let url = get_image_url("C:/photos/test.jpg".into());
+        assert_eq!(url, "tauri://localhost/C:/photos/test.jpg");
+    }
+}
+

@@ -120,27 +120,34 @@ pub fn handle_asset_custom_protocol(
 }
 
 pub fn decode_percent(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut bytes = s.bytes();
-    while let Some(b) = bytes.next() {
+    let mut bytes = Vec::with_capacity(s.len());
+    let mut input_bytes = s.bytes();
+    while let Some(b) = input_bytes.next() {
         if b == b'%' {
-            let h1 = bytes.next();
-            let h2 = bytes.next();
+            let h1 = input_bytes.next();
+            let h2 = input_bytes.next();
             if let (Some(h1), Some(h2)) = (h1, h2) {
                 let hex = [h1, h2];
                 if let Ok(hex_str) = std::str::from_utf8(&hex) {
                     if let Ok(val) = u8::from_str_radix(hex_str, 16) {
-                        result.push(val as char);
+                        bytes.push(val);
                         continue;
                     }
                 }
+                bytes.push(b'%');
+                bytes.push(h1);
+                bytes.push(h2);
+            } else {
+                bytes.push(b'%');
+                if let Some(h1) = h1 {
+                    bytes.push(h1);
+                }
             }
-            result.push('%');
         } else {
-            result.push(b as char);
+            bytes.push(b);
         }
     }
-    result
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -177,6 +184,7 @@ pub fn run() {
             thumbnails::get_thumbnail,
             thumbnails::load_full_image,
             thumbnails::clear_thumbnail_cache,
+            thumbnails::get_image_url,
             // Metadata
             metadata::read_exif,
             metadata::update_photo_metadata,
@@ -213,11 +221,33 @@ pub fn run() {
             // XMP
             xmp::read_xmp_sidecar,
             xmp::write_xmp_sidecar,
+            xmp::sync_xmp_sidecar,
             // Search
             search::search_clip_semantic,
+            search::search_clip,
             // Logger
             scanner::log_js,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_percent_utf8_cyrillic() {
+        let encoded = "%D1%85";
+        let decoded = decode_percent(encoded);
+        assert_eq!(decoded, "х");
+    }
+
+    #[test]
+    fn test_decode_percent_ascii_and_spaces() {
+        let encoded = "C:/photos/my%20test%20image.jpg";
+        let decoded = decode_percent(encoded);
+        assert_eq!(decoded, "C:/photos/my test image.jpg");
+    }
+}
+
