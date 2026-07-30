@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
+    "dev": "npx --yes serve -l 1420 src",
     "build": "echo 'No frontend build step needed'",
     "test": "node --test src/js/*.test.cjs"
   },
