@@ -178,6 +178,8 @@ pub fn run() {
             thumbnails::clear_thumbnail_cache,
             // Metadata
             metadata::read_exif,
+            metadata::update_photo_metadata,
+            metadata::get_geotagged_photos,
             // File operations
             file_ops::delete_files,
             file_ops::copy_files,

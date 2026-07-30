@@ -17,6 +17,9 @@ const API = {
 
   // ─── Metadata ───
   readExif: (path) => invoke('read_exif', { path }),
+  updatePhotoMetadata: (path, rating, colorLabel, flagStatus, tags) =>
+    invoke('update_photo_metadata', { path, rating: rating ?? null, colorLabel: colorLabel ?? null, flagStatus: flagStatus ?? null, tags: tags ?? null }),
+  getGeotaggedPhotos: () => invoke('get_geotagged_photos'),
 
   // ─── File Operations ───
   deleteFiles: (paths) => invoke('delete_files', { paths }),

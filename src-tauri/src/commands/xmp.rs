@@ -118,6 +118,28 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
             }
         }
 
+        if data.rating == 0 {
+            if let Some(r_node) = desc_node.descendants().find(|n| n.has_tag_name("Rating")) {
+                if let Some(txt) = r_node.text() {
+                    data.rating = txt.trim().parse().unwrap_or(0);
+                }
+            }
+        }
+        if data.color_label.is_empty() {
+            if let Some(l_node) = desc_node.descendants().find(|n| n.has_tag_name("Label")) {
+                if let Some(txt) = l_node.text() {
+                    data.color_label = txt.trim().to_string();
+                }
+            }
+        }
+        if data.flag_status.is_empty() {
+            if let Some(f_node) = desc_node.descendants().find(|n| n.has_tag_name("FlagStatus")) {
+                if let Some(txt) = f_node.text() {
+                    data.flag_status = txt.trim().to_string();
+                }
+            }
+        }
+
         if let Some(subject_node) = desc_node.descendants().find(|n| n.has_tag_name("subject")) {
             for li in subject_node.descendants().filter(|n| n.has_tag_name("li")) {
                 if let Some(text) = li.text() {
@@ -217,4 +239,91 @@ mod tests {
         assert_eq!(data.flag_status, "rejected");
         assert_eq!(data.tags, vec!["Vacation & Travel"]);
     }
+
+    #[test]
+    fn test_parse_xmp_content_element_style() {
+        // Arrange
+        let content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/">
+  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <xmp:Rating>5</xmp:Rating>
+      <xmp:Label>purple</xmp:Label>
+      <xmp:FlagStatus>picked</xmp:FlagStatus>
+      <dc:subject>
+        <rdf:Bag>
+          <rdf:li>Architecture</rdf:li>
+        </rdf:Bag>
+      </dc:subject>
+    </rdf:Description>
+  </rdf:RDF>
+</x:xmpmeta>"#;
+
+        // Act
+        let data = parse_xmp_content(content).expect("Failed to parse element-style XMP");
+
+        // Assert
+        assert_eq!(data.rating, 5);
+        assert_eq!(data.color_label, "purple");
+        assert_eq!(data.flag_status, "picked");
+        assert_eq!(data.tags, vec!["Architecture"]);
+    }
+
+    #[test]
+    fn test_write_and_read_xmp_sidecar_creation_and_update() {
+        // Arrange
+        let temp_dir = std::env::temp_dir();
+        let img_path = temp_dir.join("test_xmp_sync_sample.jpg").to_string_lossy().to_string();
+        let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
+
+        // Clean up previous test runs if any
+        let _ = fs::remove_file(&sidecar_path);
+
+        // Act 1: Initial creation of XMP sidecar
+        let create_res = write_xmp_sidecar(
+            img_path.clone(),
+            5,
+            "green".to_string(),
+            "picked".to_string(),
+            vec!["Portrait".to_string(), "Studio".to_string()],
+            Some("Initial edit session".to_string()),
+        );
+
+        // Assert 1
+        assert!(create_res.is_ok());
+        assert!(sidecar_path.exists());
+
+        let read_1 = read_xmp_sidecar(img_path.clone()).expect("Read failed").expect("Should exist");
+        assert_eq!(read_1.rating, 5);
+        assert_eq!(read_1.color_label, "green");
+        assert_eq!(read_1.flag_status, "picked");
+        assert_eq!(read_1.tags, vec!["Portrait", "Studio"]);
+        assert_eq!(read_1.history, vec!["Initial edit session"]);
+
+        // Act 2: Update XMP sidecar with new values and append to history
+        let update_res = write_xmp_sidecar(
+            img_path.clone(),
+            4,
+            "yellow".to_string(),
+            "picked".to_string(),
+            vec!["Portrait".to_string(), "Outdoor".to_string()],
+            Some("Applied exposure +0.5".to_string()),
+        );
+
+        // Assert 2
+        assert!(update_res.is_ok());
+        let read_2 = read_xmp_sidecar(img_path.clone()).expect("Read failed").expect("Should exist");
+        assert_eq!(read_2.rating, 4);
+        assert_eq!(read_2.color_label, "yellow");
+        assert_eq!(read_2.flag_status, "picked");
+        assert_eq!(read_2.tags, vec!["Portrait", "Outdoor"]);
+        assert_eq!(
+            read_2.history,
+            vec!["Initial edit session", "Applied exposure +0.5"]
+        );
+
+        // Cleanup
+        let _ = fs::remove_file(&sidecar_path);
+    }
 }
+

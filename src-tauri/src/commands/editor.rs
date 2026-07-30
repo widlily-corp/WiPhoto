@@ -122,6 +122,41 @@ pub async fn save_edited(
         std::fs::rename(&temp_path, &save_path)
             .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
 
+        // Sync XMP sidecar when exposure/color edits are saved
+        if !operations.is_empty() {
+            let history_desc = operations
+                .iter()
+                .map(|op| format!("{}: {}", op.tool, op.value))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let entry = format!("Applied edits: {}", history_desc);
+
+            let (rating, label, flag, tags) = match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
+                Ok(Some(existing)) => (existing.rating, existing.color_label, existing.flag_status, existing.tags),
+                _ => (0, String::new(), String::new(), vec![]),
+            };
+
+            let _ = crate::commands::xmp::write_xmp_sidecar(
+                path.clone(),
+                rating,
+                label.clone(),
+                flag.clone(),
+                tags.clone(),
+                Some(entry.clone()),
+            );
+
+            if save_path != path {
+                let _ = crate::commands::xmp::write_xmp_sidecar(
+                    save_path.clone(),
+                    rating,
+                    label,
+                    flag,
+                    tags,
+                    Some(entry),
+                );
+            }
+        }
+
         Ok::<String, String>(save_path)
     })
     .await
@@ -547,7 +582,7 @@ pub async fn save_cropped_edited_image(
         let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
 
         // 1. Apply crop first if present
-        if let Some(rect) = crop_rect {
+        if let Some(ref rect) = crop_rect {
             img = img.crop(rect.x, rect.y, rect.width, rect.height);
         }
 
@@ -597,6 +632,43 @@ pub async fn save_cropped_edited_image(
         // Atomic rename replacement
         std::fs::rename(&temp_path, &save_path)
             .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+
+        // Sync XMP sidecar when crop/edits are saved
+        let mut ops_desc = Vec::new();
+        if let Some(ref rect) = crop_rect {
+            ops_desc.push(format!("crop: {}x{} at ({},{})", rect.width, rect.height, rect.x, rect.y));
+        }
+        for op in &operations {
+            ops_desc.push(format!("{}: {}", op.tool, op.value));
+        }
+
+        if !ops_desc.is_empty() {
+            let entry = format!("Applied edits: {}", ops_desc.join(", "));
+            let (rating, label, flag, tags) = match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
+                Ok(Some(existing)) => (existing.rating, existing.color_label, existing.flag_status, existing.tags),
+                _ => (0, String::new(), String::new(), vec![]),
+            };
+
+            let _ = crate::commands::xmp::write_xmp_sidecar(
+                path.clone(),
+                rating,
+                label.clone(),
+                flag.clone(),
+                tags.clone(),
+                Some(entry.clone()),
+            );
+
+            if save_path != path {
+                let _ = crate::commands::xmp::write_xmp_sidecar(
+                    save_path.clone(),
+                    rating,
+                    label,
+                    flag,
+                    tags,
+                    Some(entry),
+                );
+            }
+        }
 
         Ok::<String, String>(save_path)
     })

@@ -377,7 +377,14 @@ pub async fn scan_folder(
 
         for file_path in &files {
             let path_str = file_path.to_string_lossy().to_string();
-            let mtime = get_modified_time(file_path);
+            let img_mtime = get_modified_time(file_path);
+            let xmp_path = file_path.with_extension("xmp");
+            let xmp_mtime = if xmp_path.exists() {
+                get_modified_time(&xmp_path)
+            } else {
+                0
+            };
+            let mtime = img_mtime.max(xmp_mtime);
             file_paths_set.insert(path_str.clone());
 
             if let Some(&cached_mtime) = db_mtimes.get(&path_str) {

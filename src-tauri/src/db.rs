@@ -5,6 +5,10 @@ use std::fs;
 use std::path::PathBuf;
 
 fn get_db_path() -> PathBuf {
+    if cfg!(test) {
+        let temp_file = std::env::temp_dir().join(format!("wiphoto_test_{}.db", std::process::id()));
+        return temp_file;
+    }
     let dir = dirs::home_dir().unwrap_or_default().join(".wiphoto");
     let _ = fs::create_dir_all(&dir);
     dir.join("library.db")
@@ -45,6 +49,7 @@ pub fn init_db() -> Result<()> {
         )",
         [],
     )?;
+    let _ = conn.execute("ALTER TABLE images ADD COLUMN modified_time INTEGER DEFAULT 0", []);
     let _ = conn.execute("ALTER TABLE images ADD COLUMN embedding TEXT", []);
     Ok(())
 }
@@ -219,6 +224,9 @@ mod tests {
 
         // Act
         let save_res = save_images_batch(&[(&info1, 123456u64)]);
+        if let Err(ref e) = save_res {
+            println!("DB Save Error: {:?}", e);
+        }
         assert!(save_res.is_ok());
 
         let cache = get_folder_mtimes(folder).expect("Failed to get cache");

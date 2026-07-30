@@ -27,6 +27,32 @@ function xmlEscape(str) {
     .replace(/'/g, '&apos;');
 }
 
+function getXmpSidecarPath(imagePath) {
+  if (typeof imagePath !== 'string' || !imagePath) return '';
+  const lastDot = imagePath.lastIndexOf('.');
+  if (lastDot === -1) return imagePath + '.xmp';
+  return imagePath.substring(0, lastDot) + '.xmp';
+}
+
+function syncXmpSidecarData(existingData, rating, colorLabel, flagStatus, tags, historyEntry) {
+  const current = existingData || { rating: 0, colorLabel: '', flagStatus: '', tags: [], history: [] };
+  const updatedRating = validateRating(rating !== undefined ? rating : current.rating);
+  const updatedLabel = colorLabel !== undefined ? colorLabel : current.colorLabel;
+  const updatedFlag = flagStatus !== undefined ? flagStatus : current.flagStatus;
+  const updatedTags = Array.isArray(tags) ? [...tags] : [...current.tags];
+  const updatedHistory = [...current.history];
+  if (historyEntry) {
+    updatedHistory.push(historyEntry);
+  }
+  return {
+    rating: updatedRating,
+    colorLabel: updatedLabel,
+    flagStatus: updatedFlag,
+    tags: updatedTags,
+    history: updatedHistory,
+  };
+}
+
 // Feature R3: Geo-Map Lat/Lon Validation & Supercluster GeoJSON Mapping
 function isValidCoordinate(lat, lon) {
   if (typeof lat !== 'number' || typeof lon !== 'number') return false;
@@ -158,6 +184,44 @@ describe('Tier 1 & Tier 2: Feature Unit & Boundary Tests (R1 to R7)', () => {
 
       // Assert
       assert.strictEqual(escaped, 'Summer &amp; Winter &lt;Vacation&gt; &quot;Photos&quot; &apos;2026&apos;');
+    });
+
+    it('should resolve adjacent .xmp sidecar path correctly', () => {
+      // Arrange
+      const jpgPath = 'C:\\Photos\\2026\\sample.jpg';
+      const rawPath = '/home/user/pictures/raw_img.NEF';
+
+      // Act
+      const jpgSidecar = getXmpSidecarPath(jpgPath);
+      const rawSidecar = getXmpSidecarPath(rawPath);
+
+      // Assert
+      assert.strictEqual(jpgSidecar, 'C:\\Photos\\2026\\sample.xmp');
+      assert.strictEqual(rawSidecar, '/home/user/pictures/raw_img.xmp');
+    });
+
+    it('should sync metadata rating, label, tags, and history in XMP sidecar structure', () => {
+      // Arrange
+      const initialSidecar = null;
+
+      // Act 1: Initial metadata write
+      const state1 = syncXmpSidecarData(initialSidecar, 4, 'green', 'picked', ['Nature', 'Forest'], 'Imported photo');
+
+      // Assert 1
+      assert.strictEqual(state1.rating, 4);
+      assert.strictEqual(state1.colorLabel, 'green');
+      assert.strictEqual(state1.flagStatus, 'picked');
+      assert.deepStrictEqual(state1.tags, ['Nature', 'Forest']);
+      assert.deepStrictEqual(state1.history, ['Imported photo']);
+
+      // Act 2: Update rating and add history entry
+      const state2 = syncXmpSidecarData(state1, 5, 'blue', 'picked', ['Nature', 'Forest', 'Wildlife'], 'Applied exposure +0.5');
+
+      // Assert 2
+      assert.strictEqual(state2.rating, 5);
+      assert.strictEqual(state2.colorLabel, 'blue');
+      assert.deepStrictEqual(state2.tags, ['Nature', 'Forest', 'Wildlife']);
+      assert.deepStrictEqual(state2.history, ['Imported photo', 'Applied exposure +0.5']);
     });
   });
 

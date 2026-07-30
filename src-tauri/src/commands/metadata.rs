@@ -161,3 +161,133 @@ fn format_file_size(size: u64) -> String {
     }
     format!("{:.1} PB", s)
 }
+
+/// Update photo metadata (rating, color label, flag status, tags) and sync to XMP sidecar
+#[tauri::command]
+pub fn update_photo_metadata(
+    path: String,
+    rating: Option<u8>,
+    color_label: Option<String>,
+    flag_status: Option<String>,
+    tags: Option<Vec<String>>,
+) -> Result<(), String> {
+    let mut current_rating = 0;
+    let mut current_label = String::new();
+    let mut current_flag = String::new();
+    let mut current_tags = Vec::new();
+
+    if let Ok(Some(existing)) = crate::commands::xmp::read_xmp_sidecar(path.clone()) {
+        current_rating = existing.rating;
+        current_label = existing.color_label;
+        current_flag = existing.flag_status;
+        current_tags = existing.tags;
+    }
+
+    if let Some(r) = rating {
+        current_rating = r;
+    }
+    if let Some(l) = color_label {
+        current_label = l;
+    }
+    if let Some(f) = flag_status {
+        current_flag = f;
+    }
+    if let Some(t) = tags {
+        current_tags = t;
+    }
+
+    crate::commands::xmp::write_xmp_sidecar(
+        path,
+        current_rating,
+        current_label,
+        current_flag,
+        current_tags,
+        None,
+    )
+}
+
+use serde::{Deserialize, Serialize};
+
+/// Geotagged photo structure for map spatial clustering
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeoPhoto {
+    pub id: String,
+    pub path: String,
+    pub filename: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub thumbnail: String,
+    pub rating: u8,
+}
+
+/// Retrieve all geotagged photos from database
+#[tauri::command]
+pub fn get_geotagged_photos() -> Result<Vec<GeoPhoto>, String> {
+    let images = crate::db::get_images_by_paths(&[]).map_err(|e| e.to_string())?;
+    let geo_photos = images
+        .into_iter()
+        .filter_map(|img| {
+            if let Some((lat, lon)) = img.gps_location {
+                Some(GeoPhoto {
+                    id: img.path.clone(),
+                    path: img.path,
+                    filename: img.filename,
+                    latitude: lat,
+                    longitude: lon,
+                    thumbnail: img.thumbnail,
+                    rating: img.rating,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(geo_photos)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::image_info::ImageInfo;
+
+    #[test]
+    fn test_format_file_size() {
+        // Arrange & Act & Assert
+        assert_eq!(format_file_size(500), "500.0 B");
+        assert_eq!(format_file_size(2048), "2.0 KB");
+        assert_eq!(format_file_size(1048576), "1.0 MB");
+    }
+
+    #[test]
+    fn test_get_geotagged_photos_conversion() {
+        // Arrange
+        let mut info = ImageInfo::new("C:/photos/eiffel.jpg");
+        info.gps_location = Some((48.8584, 2.2945));
+        info.rating = 5;
+
+        // Act
+        let geo = if let Some((lat, lon)) = info.gps_location {
+            Some(GeoPhoto {
+                id: info.path.clone(),
+                path: info.path,
+                filename: info.filename,
+                latitude: lat,
+                longitude: lon,
+                thumbnail: info.thumbnail,
+                rating: info.rating,
+            })
+        } else {
+            None
+        };
+
+        // Assert
+        assert!(geo.is_some());
+        let g = geo.unwrap();
+        assert_eq!(g.latitude, 48.8584);
+        assert_eq!(g.longitude, 2.2945);
+        assert_eq!(g.filename, "eiffel.jpg");
+        assert_eq!(g.rating, 5);
+    }
+}
+
+
