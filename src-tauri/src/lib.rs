@@ -68,7 +68,6 @@ use std::io::Write;
 use std::sync::Mutex;
 
 pub fn handle_asset_custom_protocol(
-    _ctx: tauri::UriSchemeContext<'_>,
     request: tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
     let path_str = request.uri().path();

@@ -198,11 +198,11 @@ const Editor = (() => {
       };
 
       if (operations.length === 0) {
-        const b64 = await API.loadFullImage(currentImage.path, 2000);
-        imgEl.src = Utils.base64Src(b64);
+        const fullPath = await API.loadFullImage(currentImage.path, 2000);
+        imgEl.src = Utils.assetUrl(fullPath);
       } else {
-        const b64 = await API.applyEdit(currentImage.path, operations, 2000);
-        imgEl.src = Utils.base64Src(b64);
+        const editedPath = await API.applyEdit(currentImage.path, operations, 2000);
+        imgEl.src = Utils.assetUrl(editedPath);
       }
     } catch (e) {
       Utils.toast(`Ошибка: ${e}`, 'error');
@@ -215,8 +215,8 @@ const Editor = (() => {
     if (btn) btn.classList.toggle('active', isBeforeAfter);
 
     if (isBeforeAfter && currentImage) {
-      API.loadFullImage(currentImage.path, 2000).then(b64 => {
-        document.getElementById('editor-image').src = Utils.base64Src(b64);
+      API.loadFullImage(currentImage.path, 2000).then(fullPath => {
+        document.getElementById('editor-image').src = Utils.assetUrl(fullPath);
       });
     } else {
       loadPreview();

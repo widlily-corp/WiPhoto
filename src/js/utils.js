@@ -146,9 +146,27 @@ const Utils = {
     return Array.from(selected).map(el => el.dataset.path);
   },
 
-  /** Base64 to image src */
-  base64Src(b64) {
-    return `data:image/jpeg;base64,${b64}`;
+  /** Convert file path to custom asset protocol URL (Zero-Copy) */
+  assetUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('asset://') || path.startsWith('tauri://') || path.startsWith('http://asset.localhost') || path.startsWith('data:') || path.startsWith('blob:')) {
+      return path;
+    }
+    if (window.__TAURI__?.core?.convertFileSrc) {
+      return window.__TAURI__.core.convertFileSrc(path);
+    }
+    const normalized = path.replace(/\\/g, '/');
+    const encoded = normalized.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return `asset://localhost/${encoded.startsWith('/') ? encoded.slice(1) : encoded}`;
+  },
+
+  /** Base64 or file path to image src (Backwards Compatible) */
+  base64Src(val) {
+    if (!val) return '';
+    if (val.startsWith('data:') || val.startsWith('asset://') || val.startsWith('tauri://') || val.startsWith('http://asset.localhost') || val.includes('/') || val.includes('\\')) {
+      return Utils.assetUrl(val);
+    }
+    return `data:image/jpeg;base64,${val}`;
   },
 };
 

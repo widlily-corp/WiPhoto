@@ -109,7 +109,7 @@ const Viewer = (() => {
 
       // Load generated thumbnail as preview
       if (img.thumbnail) {
-        imgEl.src = Utils.base64Src(img.thumbnail);
+        imgEl.src = Utils.assetUrl(img.thumbnail);
       } else {
         imgEl.src = '';
       }
@@ -153,8 +153,8 @@ const Viewer = (() => {
         if (preloadCache.has(img.path)) {
           imgEl.src = preloadCache.get(img.path);
         } else {
-          const b64 = await API.loadFullImage(img.path, 3000);
-          const src = Utils.base64Src(b64);
+          const fullPath = await API.loadFullImage(img.path, 3000);
+          const src = Utils.assetUrl(fullPath);
           imgEl.src = src;
           preloadCache.set(img.path, src);
         }
@@ -222,8 +222,8 @@ const Viewer = (() => {
   async function preloadPath(path) {
     if (preloadCache.has(path)) return;
     try {
-      const b64 = await API.loadFullImage(path, 3000);
-      preloadCache.set(path, Utils.base64Src(b64));
+      const fullPath = await API.loadFullImage(path, 3000);
+      preloadCache.set(path, Utils.assetUrl(fullPath));
     } catch (err) {
       Logger.debug('Viewer', `Failed to preload image at ${path}: ${err}`);
     }

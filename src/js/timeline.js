@@ -84,7 +84,7 @@ const Timeline = (() => {
           });
 
           const imgEl = Utils.el('img', {
-            src: img.thumbnail ? Utils.base64Src(img.thumbnail) : '',
+            src: img.thumbnail ? Utils.assetUrl(img.thumbnail) : '',
             alt: img.filename,
             loading: 'lazy',
           });

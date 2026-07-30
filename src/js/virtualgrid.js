@@ -50,7 +50,7 @@ const VirtualGrid = (() => {
           if (entry.isIntersecting) {
             const img = entry.target;
             if (img.dataset.src) {
-              img.src = img.dataset.src;
+              img.src = Utils.assetUrl(img.dataset.src);
               img.removeAttribute('data-src');
               img.classList.remove('loading');
             }

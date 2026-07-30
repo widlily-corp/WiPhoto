@@ -60,7 +60,7 @@ const Trash = (() => {
           // Previews
           Utils.el('img', {
             className: 'trash-item-thumb',
-            src: item.thumbnail ? Utils.base64Src(item.thumbnail) : ''
+            src: item.thumbnail ? Utils.assetUrl(item.thumbnail) : ''
           }),
           // Info
           Utils.el('div', { className: 'trash-item-info' }, [

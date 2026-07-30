@@ -308,7 +308,7 @@ const Gallery = (() => {
       alt: img.filename,
     });
     if (img.thumbnail) {
-      imgEl.src = Utils.base64Src(img.thumbnail);
+      imgEl.src = Utils.assetUrl(img.thumbnail);
     }
     card.appendChild(imgEl);
 

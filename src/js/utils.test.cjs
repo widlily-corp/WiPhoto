@@ -100,4 +100,37 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       assert.strictEqual(posixTrailing, 'dir');
     });
   });
+
+  describe('Utils.assetUrl', () => {
+    it('should convert local file paths to zero-copy asset protocol URLs', () => {
+      // Arrange
+      const winPath = 'C:\\Users\\Widlily\\Pictures\\image.jpg';
+      const posixPath = '/home/user/pictures/image.png';
+      const existingAsset = 'asset://localhost/C%3A/Users/test.jpg';
+
+      // Act
+      const assetWin = Utils.assetUrl(winPath);
+      const assetPosix = Utils.assetUrl(posixPath);
+      const assetPassthrough = Utils.assetUrl(existingAsset);
+
+      // Assert
+      assert.strictEqual(assetWin, 'asset://localhost/C%3A/Users/Widlily/Pictures/image.jpg');
+      assert.strictEqual(assetPosix, 'asset://localhost/home/user/pictures/image.png');
+      assert.strictEqual(assetPassthrough, existingAsset);
+    });
+
+    it('should handle base64Src correctly with file paths and base64 strings', () => {
+      // Arrange
+      const filePath = 'C:\\photos\\img.jpg';
+      const b64Data = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+      // Act
+      const pathResult = Utils.base64Src(filePath);
+      const b64Result = Utils.base64Src(b64Data);
+
+      // Assert
+      assert.strictEqual(pathResult, 'asset://localhost/C%3A/photos/img.jpg');
+      assert.strictEqual(b64Result, `data:image/jpeg;base64,${b64Data}`);
+    });
+  });
 });

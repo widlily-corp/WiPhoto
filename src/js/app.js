@@ -260,7 +260,7 @@ const App = (() => {
           const [lat, lon] = img.gps_location;
           bounds.push([lat, lon]);
 
-          const thumbSrc = img.thumbnail ? Utils.base64Src(img.thumbnail) : '';
+          const thumbSrc = img.thumbnail ? Utils.assetUrl(img.thumbnail) : '';
 
           // Create marker
           const marker = L.marker([lat, lon]).addTo(mapInstance);

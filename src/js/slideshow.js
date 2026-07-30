@@ -94,15 +94,16 @@ const Slideshow = (() => {
     img.style.opacity = '0';
 
     try {
-      const b64 = await API.loadFullImage(imgInfo.path, 2500);
+      const fullPath = await API.loadFullImage(imgInfo.path, 2500);
+      const src = Utils.assetUrl(fullPath);
       
       // Update image source once loaded
       const tempImg = new Image();
       tempImg.onload = () => {
-        img.src = Utils.base64Src(b64);
+        img.src = src;
         img.style.opacity = '1';
       };
-      tempImg.src = Utils.base64Src(b64);
+      tempImg.src = src;
       
     } catch (err) {
       Logger.error('Slideshow', `Failed to load slide at ${imgInfo.path}`, err);

@@ -23,8 +23,8 @@ const Sidebar = (() => {
 
     try {
       area.innerHTML = '';
-      const b64 = await API.loadFullImage(imageInfo.path, 600);
-      const img = Utils.el('img', { src: Utils.base64Src(b64), alt: imageInfo.filename });
+      const fullPath = await API.loadFullImage(imageInfo.path, 600);
+      const img = Utils.el('img', { src: Utils.assetUrl(fullPath), alt: imageInfo.filename });
       
       // Compute histogram and palette instantly on the frontend when the image loads
       img.onload = () => {
