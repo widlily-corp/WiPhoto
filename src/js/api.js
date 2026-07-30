@@ -70,6 +70,7 @@ const API = {
   onDupProgress: (callback) => listen('dup-progress', (event) => callback(event.payload)),
   onScanFinished: (callback) => listen('scan-finished', (event) => callback(event.payload)),
   onImageScanned: (callback) => listen('image-scanned', (event) => callback(event.payload)),
+  onImageScannedBatch: (callback) => listen('image-scanned-batch', (event) => callback(event.payload)),
   onFileDrop: (callback) => listen('tauri://drag-drop', (event) => callback(event.payload)),
 
   // ─── Dialogs ───

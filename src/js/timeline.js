@@ -92,7 +92,7 @@ const Timeline = (() => {
           thumb.appendChild(imgEl);
 
           // Click handler
-          thumb.addEventListener('click', (e) => {
+          thumb.addEventListener('click', () => {
             // Select in the main gallery structure
             document.querySelectorAll('.timeline-thumb').forEach(t => t.style.outline = 'none');
             thumb.style.outline = '2px solid var(--accent-primary)';

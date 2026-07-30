@@ -32,13 +32,17 @@ const Search = (() => {
     return words.length >= 2 || ['собака', 'пляж', 'закат', 'горы', 'семья', 'dog', 'beach', 'sunset', 'mountain', 'family'].includes(words[0].toLowerCase());
   }
 
+  function clearSemanticSearch() {
+    isSemanticSearchActive = false;
+    lastSearchResults = [];
+    if (typeof Gallery !== 'undefined' && typeof Gallery.clearSemanticSearch === 'function') {
+      Gallery.clearSemanticSearch();
+    }
+  }
+
   async function runSemanticSearch(query, limit = 100) {
     if (!query || typeof query !== 'string' || query.trim() === '') {
-      isSemanticSearchActive = false;
-      lastSearchResults = [];
-      if (typeof Gallery !== 'undefined') {
-        Gallery.applyFilters();
-      }
+      clearSemanticSearch();
       return [];
     }
 
@@ -49,15 +53,8 @@ const Search = (() => {
         lastSearchResults = filtered;
         isSemanticSearchActive = true;
 
-        if (typeof Gallery !== 'undefined') {
-          const matchingPaths = new Set(filtered.map(r => r.path));
-          const allImgs = Gallery.getAllImages();
-          const matchedImgs = allImgs.filter(i => matchingPaths.has(i.path));
-          if (matchedImgs.length > 0) {
-            const pathScoreMap = new Map(filtered.map(r => [r.path, r.score]));
-            matchedImgs.sort((a, b) => (pathScoreMap.get(b.path) || 0) - (pathScoreMap.get(a.path) || 0));
-            Gallery.setImages(matchedImgs);
-          }
+        if (typeof Gallery !== 'undefined' && typeof Gallery.setSemanticSearchResults === 'function') {
+          Gallery.setSemanticSearchResults(filtered);
         }
         return filtered;
       }
@@ -73,6 +70,7 @@ const Search = (() => {
     init,
     filterAndSortClipResults,
     runSemanticSearch,
+    clearSemanticSearch,
     isSemanticQuery,
     get isSemanticSearchActive() { return isSemanticSearchActive; },
     get lastSearchResults() { return lastSearchResults; }

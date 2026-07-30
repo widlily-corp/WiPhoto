@@ -1,17 +1,26 @@
-## 2026-07-30T08:37:20Z
+## 2026-07-30T14:38:19Z
 
-You are the Implementation Worker for Milestone 2: XMP Sidecar Sync (R2).
-Working directory: `c:\Users\Widlily\Documents\projects\wiphoto`
-Metadata directory: `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_m2`
+Scope & Mission: Refactor frontend VirtualGrid, fix UI search/selection bugs, clean up IPC listeners, and setup ESLint v9 with zero errors.
 
-MANDATORY INTEGRITY WARNING:
-DO NOT CHEAT. All implementations must be genuine. DO NOT hardcode test results, create dummy/facade implementations, or circumvent the intended task. A Forensic Auditor will independently verify your work. Integrity violations WILL be detected and your work WILL be rejected.
+Upstream Explorer Reports:
+- Read `c:\Users\Widlily\Documents\projects\wiphoto\.agents\explorer_frontend\handoff.md`
+- Read `c:\Users\Widlily\Documents\projects\wiphoto\.agents\explorer_stability\handoff.md`
 
-Your Task:
-1. Implement real-time bidirectional XMP sidecar synchronization (R2).
-2. Wire up Rust metadata and editing commands (`src-tauri/src/commands/metadata.rs`, `xmp.rs`, `editor.rs`) so that whenever rating, label, tags, or exposure/color edits are saved, a valid standard `.xmp` sidecar file is created/updated adjacent to the original image (`filename.ext` -> `filename.xmp`).
-3. Wire up scanner (`scanner.rs`) to read adjacent `.xmp` files when indexing photos and load existing ratings, tags, and edits.
-4. Add unit and integration tests covering XMP creation, parsing, and update sync in Rust (`xmp.rs` unit tests) and JS (`src/js/tier1_tier2_features.test.cjs`).
-5. Verify `cargo check`, `cargo test`, and `npm test` pass with 100% success rate.
-6. Make atomic conventional commit: `feat(xmp): implement real-time bidirectional xmp sidecar sync`.
-7. Write handoff report to `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_m2\handoff.md` and notify parent.
+Detailed Tasks:
+1. `src/js/virtualgrid.js`: Refactor VirtualGrid rendering.
+   - Throttling scroll & resize events with `requestAnimationFrame`.
+   - Implement DOM card recycling pool (reuse card DOM elements instead of innerHTML = '' / recreating nodes on every scroll frame).
+   - Maintain O(1) tracking of visible cards. Eliminate layout thrashing (avoid reading offsetHeight/scrollTop repeatedly inside loops).
+2. `src/js/gallery.js` & `src/js/search.js`:
+   - Fix selection state management: switch from positional indices to unique file path `Set` so filtering/sorting doesn't corrupt selection.
+   - Fix search data loss bug on query clear (preserve original item list).
+3. `src/js/api.js` & `src/js/welcome.js`:
+   - Fix IPC event listeners memory leak: ensure Tauri `listen()` cleanup functions are stored and invoked on teardown.
+4. Setup ESLint v9 Flat Config (`eslint.config.js`) and linting:
+   - Configure ESLint for ES modules vanilla JS.
+   - Run `npx eslint src/` and fix all syntax, variable scope, unused imports, or style errors until `npx eslint src/` exits cleanly with 0 errors and 0 warnings.
+5. Verification:
+   - Run `npx eslint src/` and verify clean output.
+6. Write `handoff.md` in `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_m2\handoff.md` with:
+   - Observation, Logic Chain, Caveats, Conclusion, Verification Results (`npx eslint src/` output).
+   - Notify parent agent via `send_message`.

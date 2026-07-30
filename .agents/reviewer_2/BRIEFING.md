@@ -1,45 +1,47 @@
-# BRIEFING — 2026-07-30T14:10:55Z
+# BRIEFING — 2026-07-30T15:00:32Z
 
 ## Mission
-Frontend & UI/UX Code & Aesthetics Review for WiPhoto v5.0.0.
+Rust Backend Performance & Error Elimination Review for WiPhoto.
 
 ## 🔒 My Identity
 - Archetype: reviewer / critic
 - Roles: reviewer, critic
-- Working directory: c:\Users\Widlily\Documents\projects\wiphoto\.agents\reviewer_2
-- Original parent: 5f573db1-8ecf-4a1f-be00-aa0431c6bdf2
-- Milestone: v5.0.0 Reviewer 2
+- Working directory: c:\Users\Widlily\Documents\projects\widlily\wiphoto\.agents\reviewer_2
+- Original parent: ac58e14e-3027-4983-9d84-5ca308960c3a
+- Milestone: Rust Backend Review
 - Instance: 1 of 1
 
 ## 🔒 Key Constraints
 - Review-only — do NOT modify implementation code
 - Strict Refined Minimal guidelines enforcement (#08090A, 1px hairlines, 6px border-radius, Inter + JetBrains Mono tabular-nums, max-width: 768px word breaking)
 - Check integrity violations (hardcoded tests, facade implementations, bypasses)
-- Independent verification by running `npm test`
+- Independent verification by running `cargo check`, `cargo clippy`, `cargo test`
+- Panic/unwrap safety, connection pooling in db.rs, async thumbnails, CLIP decoupling, hash fallback, orphan deletion fix.
 
 ## Current Parent
-- Conversation ID: 5f573db1-8ecf-4a1f-be00-aa0431c6bdf2
-- Updated: 2026-07-30T14:10:55Z
+- Conversation ID: ac58e14e-3027-4983-9d84-5ca308960c3a
+- Updated: 2026-07-30T15:00:32Z
 
 ## Review Scope
-- **Files reviewed**: `src/styles/variables.css`, `src/styles/main.css`, `src/styles/components.css`, `src/styles/sidebar.css`, `src/styles/gallery.css`, `src/styles/commandpalette.css`, `src/styles/map.css`, `src/js/commandpalette.js`, `src/js/map.js`, `src/js/updater.js`, `src/js/utils.js`
-- **Interface contracts**: Refined Minimal UI design system rules, User Global Rules
-- **Review criteria**: Correctness, design system adherence, performance, accessibility, integrity, code quality
+- **Files reviewed**: `src-tauri/src/db.rs`, `src-tauri/src/commands/thumbnails.rs`, `src-tauri/src/commands/scanner.rs`, `src-tauri/src/commands/duplicates.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/file_ops.rs`
+- **Interface contracts**: PROJECT.md / Rust backend architectural contracts
+- **Review criteria**: Correctness, performance, error handling & panic safety, clippy warnings, test suite passing (39 tests), integrity check.
 
 ## Review Checklist
-- **Items reviewed**: Frontend stylesheets, JS modules, unit & E2E tests
-- **Verdict**: PASS (APPROVE)
-- **Unverified claims**: None (all verified via file inspection & `npm test`)
+- **Items reviewed**: Backend files inspected & test suite executed
+- **Verdict**: REQUEST_CHANGES
+- **Unverified claims**: None (all verified via static inspection & test execution)
 
 ## Attack Surface
-- **Hypotheses tested**: Input validation in Geo-Map coordinates, Semver parser edge cases, Command Palette keyboard traps.
-- **Vulnerabilities found**: 0 critical, 0 major, 1 minor (optional ARIA label recommendation).
+- **Hypotheses tested**: SQLite handle reuse under WAL mode, async image resizing thread pool safety, ONNX background task decoupling, non-recursive folder orphan deletion path matching, duplicate hash fallback chain, rapid XMP disk write/read loop.
+- **Vulnerabilities found**: 1 Major (Flaky I/O synchronization in `test_xmp_1000_sequential_roundtrip_updates`).
 - **Untested angles**: None.
 
 ## Key Decisions Made
-- Executed `npm test` independently (30 tests passed).
-- Verified strict adherence to Refined Minimal design tokens & scoped word-break rules.
-- Issued verdict: PASS (APPROVE).
+- Executed `cargo check` (passed with 0 errors).
+- Executed `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` (passed with 0 warnings).
+- Executed `cargo test` (38 passed, 1 failed in `xmp_roundtrip_stress.rs`).
+- Issued verdict: REQUEST_CHANGES due to flaky test failure.
 
 ## Artifact Index
 - `.agents/reviewer_2/BRIEFING.md` — Active briefing memory

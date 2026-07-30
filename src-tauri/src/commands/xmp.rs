@@ -1,6 +1,87 @@
 use crate::models::image_info::{XmpData, XmpMetadata};
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> {
+    let mut retries = 10;
+    let mut delay = Duration::from_millis(2);
+    loop {
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                if content.is_empty() && file_size > 0 {
+                    if retries == 0 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::UnexpectedEof,
+                            "File read returned empty content despite non-zero file size",
+                        ));
+                    }
+                    retries -= 1;
+                    thread::sleep(delay);
+                    delay *= 2;
+                    continue;
+                }
+                return Ok(content);
+            }
+            Err(e) => {
+                if retries == 0 || (e.kind() == std::io::ErrorKind::NotFound && !path.exists()) {
+                    return Err(e);
+                }
+                retries -= 1;
+                thread::sleep(delay);
+                delay *= 2;
+            }
+        }
+    }
+}
+
+fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()> {
+    let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut retries = 10;
+    let mut delay = Duration::from_millis(2);
+
+    loop {
+        let tmp_path = parent.join(format!(".tmp_{}_{}.xmp", std::process::id(), uuid::Uuid::new_v4()));
+        let res = (|| -> std::io::Result<()> {
+            {
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&tmp_path)?;
+                file.write_all(content.as_bytes())?;
+                file.sync_all()?;
+            }
+            fs::rename(&tmp_path, target_path)?;
+            Ok(())
+        })();
+
+        match res {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                let _ = fs::remove_file(&tmp_path);
+                if retries == 0 {
+                    return Err(e);
+                }
+                retries -= 1;
+                thread::sleep(delay);
+                delay *= 2;
+            }
+        }
+    }
+}
+
 
 /// Read XMP sidecar for an image
 #[tauri::command]
@@ -9,8 +90,11 @@ pub fn read_xmp_sidecar(path: String) -> Result<Option<XmpData>, String> {
     if !xmp_path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&xmp_path).map_err(|e| format!("Read error: {}", e))?;
-    Ok(parse_xmp_content(&content))
+    match read_to_string_with_retry(&xmp_path) {
+        Ok(content) => Ok(parse_xmp_content(&content)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("Read error: {}", e)),
+    }
 }
 
 /// Sync XMP sidecar for an image (PROJECT.md contract)
@@ -42,10 +126,10 @@ pub fn write_xmp_sidecar(
     // Read existing history
     let mut history = Vec::new();
     if xmp_path.exists() {
-        if let Ok(content) = fs::read_to_string(&xmp_path) {
-            if let Some(existing) = parse_xmp_content(&content) {
-                history = existing.history;
-            }
+        let content = read_to_string_with_retry(&xmp_path)
+            .map_err(|e| format!("Failed to read existing sidecar: {}", e))?;
+        if let Some(existing) = parse_xmp_content(&content) {
+            history = existing.history;
         }
     }
 
@@ -101,7 +185,8 @@ pub fn write_xmp_sidecar(
         history_xml = history_xml,
     );
 
-    fs::write(&xmp_path, xmp_content).map_err(|e| format!("Write error: {}", e))
+    write_file_with_sync(&xmp_path, &xmp_content)
+        .map_err(|e| format!("Write error: {}", e))
 }
 
 /// Parse XMP content string into XmpData using roxmltree
@@ -182,14 +267,6 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
 
     Some(data)
 }
-
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

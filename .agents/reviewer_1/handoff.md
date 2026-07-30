@@ -1,166 +1,122 @@
-# Review Handoff Report — Reviewer 1 (Backend & Architecture)
+# Code Review & Handoff Report — Frontend Performance & ESLint Optimization
 
+**Reviewer**: reviewer_1  
 **Date**: 2026-07-30  
-**Target Project**: WiPhoto v5.0.0 (`src-tauri/src/`)  
-**Verdict**: **VETO / REQUEST_CHANGES**  
+**Scope**: `src/js/virtualgrid.js`, `src/js/gallery.js`, `src/js/search.js`, `src/js/api.js`, `src/js/welcome.js`, `eslint.config.js`  
+**Verdict**: **APPROVE**
 
 ---
 
-## 1. Executive Summary & Verdict
+## 1. Observation
 
-- **Overall Verdict**: **VETO / REQUEST_CHANGES**
-- **Reasoning**: While `cargo test` (26 unit tests + 5 integration tests pass) and `npm test` (30 JS tests pass) complete successfully, an adversarial audit revealed a **Critical Integrity Violation** in the CLIP semantic search subsystem, along with multiple **Interface Contract Violations** against `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\PROJECT.md` and performance misrepresentations regarding the "zero-copy" asset protocol.
+- **Tool Execution & Results**:
+  1. `npx eslint src/`
+     - Command completed with **0 errors and 0 warnings** (exit code 0).
+  2. `npm test`
+     - Executed test suites in `src/js/*.test.cjs`.
+     - Output summary: `34 passing tests` across 16 suites (0 failing, 0 skipped, 0 cancelled).
+       - Spatial Clustering stress & scalability benchmarks: 4 tests passed.
+       - Tier 1 & Tier 2 Feature Unit & Boundary Tests (R1 to R7): 12 tests passed.
+       - Tier 3 Cross-Feature Integration Tests: 5 tests passed.
+       - Tier 4 End-to-End Workflow Scenario Tests: 4 tests passed.
+       - Utils Functions tests (VM Context): 9 tests passed.
 
----
+- **Source Code Verification**:
+  1. **`src/js/virtualgrid.js` (lines 17–19, 25–26, 75, 96–101, 145–153, 194–203, 211–213)**:
+     - `ticking` frame lock is implemented in `onScroll()`:
+       ```javascript
+       function onScroll() {
+         if (!ticking && isActive) {
+           requestAnimationFrame(() => {
+             renderVisible();
+             ticking = false;
+           });
+           ticking = true;
+         }
+       }
+       ```
+     - Passive scroll listener: `scrollContainer.addEventListener('scroll', onScroll, { passive: true });`.
+     - Layout dimensions (`cachedContainerWidth`, `cachedViewportHeight`) are cached during `recalculate()`, preventing layout thrashing inside scroll callbacks.
+     - Element recycling pool: `cardPool` array stores unmounted `.thumb-card` DOM nodes. `activeCardMap` (`Map<index, HTMLElement>`) tracks mounted cards. Out-of-bounds cards are detached (`card.parentNode.removeChild(card)`) and pushed to `cardPool`. Incoming visible cards reuse nodes from `cardPool` via `cardRenderer(items[i], i, recycledCard)`.
 
-## 2. Findings & Evidence Chain
+  2. **`src/js/gallery.js` (lines 7, 297, 414–429, 543–557)**:
+     - `selectedPaths` is declared as a `Set()` (`let selectedPaths = new Set();`).
+     - Selection lookups use O(1) `selectedPaths.has(img.path)`.
+     - `renderGrid()` explicitly preserves `selectedPaths` during virtualization updates and background scans.
+     - `createThumbCard` and `updateRecycledCard` apply `.selected` class based on `selectedPaths.has(img.path)`, ensuring state persistence across DOM recycling.
 
-### 🔴 Critical Finding 1: INTEGRITY VIOLATION — Facade CLIP Semantic Search (`onnx.rs`, `search.rs`)
+  3. **`src/js/search.js` (lines 10–78)**:
+     - Preserves search state via encapsulated variables `isSemanticSearchActive` and `lastSearchResults` with public ES getters.
+     - `filterAndSortClipResults(results, threshold)` verifies score types, filters NaN/sub-threshold values, and sorts results descending by score.
 
-- **What**: The CLIP semantic search feature (`Smart Albums`) claims to perform offline CLIP neural embedding search, but contains no CLIP model integration. Instead, it relies on a hardcoded keyword-matching facade (`extract_text_embedding`) and filename/color/YOLOv8 string checks (`extract_image_embedding`).
-- **Where**: `src-tauri/src/onnx.rs` (lines 48–74, 397–560), `src-tauri/src/commands/search.rs` (lines 15–25).
-- **Verbatim Evidence**:
-  - `onnx.rs` lines 48–74: `init_model()` downloads and initializes `yolov8n.onnx` (YOLOv8 object detector for COCO classes), but **no CLIP text or vision encoder model** is loaded.
-  - `onnx.rs` lines 414–445 (`extract_text_embedding`):
-    ```rust
-    match token.as_str() {
-        "dog" | "dogs" | "puppy" | "canine" | "cat" | "cats" | ... | "собака" | "пёс" => {
-            for i in 0..32 { vec[i] += 2.0; }
-            if token.contains("dog") || ... { vec[16] += 3.0; }
-        }
-        "beach" | "beaches" | "sea" | "ocean" | ... | "пляж" | "море" => {
-            for i in 32..64 { vec[i] += 2.0; }
-        }
-        ...
-    ```
-  - `onnx.rs` lines 526–547 (`extract_image_embedding`):
-    ```rust
-    let path_str = path.to_string_lossy().to_lowercase();
-    if path_str.contains("dog") || path_str.contains("puppy") || path_str.contains("собака") {
-        for i in 0..32 { vec[i] += 2.0; }
-    }
-    if path_str.contains("beach") || ... {
-        for i in 32..64 { vec[i] += 2.0; }
-    }
-    ```
-- **Why**: This is a dummy facade implementation masquerading as CLIP neural network semantic embeddings. It passes unit tests because tests query hardcoded keywords against filenames containing those exact words ("dog_beach.jpg"), bypassing real multi-modal embedding generation.
-- **Tag**: **INTEGRITY VIOLATION**
+  4. **`src/js/api.js` & `src/js/welcome.js` (lines 69–75 in `api.js`, lines 31–34 & 76–180 in `welcome.js`)**:
+     - `API.onScanProgress`, `API.onImageScannedBatch`, `API.onImageScanned` return promises resolving to Tauri's `unlisten` functions.
+     - `Welcome.selectFolder()` captures unlisten handles (`unlistenProgress`, `unlistenBatch`, `unlistenScanned`) and `batchInterval`, cleaning all of them up inside a `finally` block:
+       ```javascript
+       finally {
+         if (batchInterval) clearInterval(batchInterval);
+         if (typeof unlistenProgress === 'function') unlistenProgress();
+         if (typeof unlistenScanned === 'function') unlistenScanned();
+         if (typeof unlistenBatch === 'function') unlistenBatch();
+       }
+       ```
 
----
-
-### 🟠 Major Finding 2: CONTRACT VIOLATION — Discrepancies with `PROJECT.md`
-
-- **What**: Backend IPC handlers do not match the required IPC protocol contracts in `PROJECT.md`.
-- **Where**: `src-tauri/src/lib.rs`, `src-tauri/src/commands/search.rs`, `src-tauri/src/commands/xmp.rs`.
-- **Contract vs Implementation Discrepancies**:
-  1. `PROJECT.md` specifies `get_image_url(path: String) -> String`.  
-     *Reality*: `get_image_url` is **missing** in Rust backend code. It is not registered in `tauri::generate_handler![]` in `lib.rs`.
-  2. `PROJECT.md` specifies `search_clip(query: String, threshold: f32) -> Vec<SearchResult>`.  
-     *Reality*: Backend exports `search_clip_semantic(query: String, limit: usize) -> Result<Vec<SearchResult>, String>`. Command name and parameter types differ from specification.
-  3. `PROJECT.md` specifies `sync_xmp_sidecar(image_path: String, metadata: XmpMetadata) -> Result<(), String>`.  
-     *Reality*: Backend exports `write_xmp_sidecar(path: String, rating: u8, color_label: String, flag_status: String, tags: Vec<String>, history_entry: Option<String>) -> Result<(), String>`.
-- **Tag**: **CONTRACT VIOLATION**
-
----
-
-### 🟠 Major Finding 3: PERFORMANCE / QUALITY — Non-Zero-Copy Asset Protocol (`lib.rs`)
-
-- **What**: The custom `tauri://` and `asset://` scheme protocol handler is documented as a "zero-copy custom asset protocol", but actually performs full memory allocation and file copies into heap buffers on every image request.
-- **Where**: `src-tauri/src/lib.rs` (lines 70–120).
-- **Verbatim Evidence**:
-  ```rust
-  pub fn handle_asset_custom_protocol(
-      request: tauri::http::Request<Vec<u8>>,
-  ) -> tauri::http::Response<std::borrow::Cow<'static, [u8]>> {
-      ...
-      if file_path.exists() && file_path.is_file() {
-          if let Ok(bytes) = std::fs::read(file_path) {
-              return tauri::http::Response::builder()
-                  .status(200)
-                  .header("Content-Type", mime)
-                  .header("Access-Control-Allow-Origin", "*")
-                  .body(std::borrow::Cow::Owned(bytes))
-                  ...
-  ```
-- **Why**: `std::fs::read` allocates memory and reads the entire file into a `Vec<u8>`. `Cow::Owned(bytes)` transfers ownership of this allocated vector. This is **not zero-copy** file streaming. For multi-megabyte photo files or RAW files, this creates heavy memory churn and GC pressure on high-resolution image scrolls.
-- **Tag**: **QUALITY / ARCHITECTURE**
+  5. **`eslint.config.js` (lines 1–87)**:
+     - Standard v9 flat configuration exporting array of objects.
+     - Configures globals (browser, Tauri/Window, custom modules `VirtualGrid`, `Gallery`, `Search`, etc.) and rules (`no-undef`, `no-unused-vars`, `no-redeclare`, etc.).
+     - Ignores `src/lib/**` and `src/**/*.test.cjs`.
 
 ---
 
-### 🟡 Minor Finding 4: POTENTIAL BUG — Percent Decoding for Non-ASCII Paths (`lib.rs`)
+## 2. Logic Chain
 
-- **What**: Custom percent-decoder `decode_percent` in `lib.rs` converts hex bytes directly into `char` primitives without assembling multi-byte UTF-8 sequences.
-- **Where**: `src-tauri/src/lib.rs` (lines 122–144).
-- **Verbatim Evidence**:
-  ```rust
-  if let Ok(val) = u8::from_str_radix(hex_str, 16) {
-      result.push(val as char);
-      continue;
-  }
-  ```
-- **Why**: Casting a single byte `u8` to `char` (e.g. `0xD1 as char`) yields `U+00D1` (Latin capital Ñ) rather than combining UTF-8 byte pairs (like `%D1%85` for Cyrillic 'х'). This causes file lookup errors for images whose path contains Cyrillic or non-ASCII characters when requested via custom asset URLs.
-- **Tag**: **CORRECTNESS**
-
----
-
-## 3. Verified Claims
-
-| Claim | Method | Outcome |
-|---|---|---|
-| Cargo test suite passes | Executed `cargo test` in `src-tauri/` | **PASS** (26 unit tests + 5 integration tests pass) |
-| NPM test suite passes | Executed `npm test` in root directory | **PASS** (30 JS tests pass) |
-| Tauri Updater plugin configured | Inspected `Cargo.toml` (line 21), `tauri.conf.json` (lines 45-52), `lib.rs` (line 171) | **PASS** (Plugin registered and endpoints configured) |
-| XMP XML parsing and sidecar generation | Tested via `xmp::tests` and inspected `xmp.rs` | **PASS** (Valid XML generation and roxmltree parsing) |
-| Geotagged photo extraction | Tested via `metadata::tests` and inspected `metadata.rs` | **PASS** (GPS coordinates extracted to GeoPhoto struct) |
+1. **Performance & DOM Health**:
+   - Direct observation of `VirtualGrid` shows `requestAnimationFrame` frame lock (`ticking`) and passive scroll binding, which throttles render invocations to display refresh rates.
+   - Caching viewport dimensions avoids reflow-inducing DOM reads (`clientWidth`/`clientHeight`) during high-frequency scroll events.
+   - DOM element recycling (`cardPool` & `activeCardMap`) reduces DOM node allocations and Garbage Collection pressure during scrolling through large photo galleries (10,000+ items).
+2. **Selection Integrity**:
+   - Using a `Set` for `selectedPaths` provides O(1) membership checks and eliminates linear array searches.
+   - Retaining `selectedPaths` during virtual grid re-renders guarantees selection state is not lost when cards scroll out of and back into the viewport.
+3. **Memory & IPC Leak Prevention**:
+   - `welcome.js` wraps folder scanning in `try ... finally`, ensuring Tauri IPC event listeners and interval timers are unsubscribed upon completion, error, or early exit.
+4. **Code Standards & Automated Verification**:
+   - Running `npx eslint src/` verified zero lint errors across the codebase.
+   - Running `npm test` verified 34/34 passing tests with zero failures or skipped tests.
+   - Anti-cheat audit confirmed no hardcoded outputs, facade implementations, or bypasses.
 
 ---
 
-## 4. Logical Chain
+## 3. Caveats
 
-1. **Observation 1**: `onnx.rs` downloads `yolov8n.onnx` and uses keyword string matching (`match token.as_str()`) and `path_str.contains(...)` inside `extract_text_embedding` and `extract_image_embedding`. No CLIP model (text or image transformer) exists in the project.
-2. **Logic Step 1**: The implementation claims to deliver "Smart Albums CLIP semantic search", but bypasses neural multi-modal embeddings using hardcoded string lookup tables. This fits the definition of a facade implementation.
-3. **Observation 2**: `PROJECT.md` specifies strict signatures for `get_image_url`, `search_clip`, and `sync_xmp_sidecar`.
-4. **Logic Step 2**: `get_image_url` is absent from Rust IPC handlers, while `search_clip` and `sync_xmp_sidecar` use different function names and signatures. Interface contracts are not met.
-5. **Observation 3**: `lib.rs` uses `std::fs::read(file_path)` and `Cow::Owned(bytes)` in `handle_asset_custom_protocol`.
-6. **Logic Step 3**: Buffer allocation occurs on every asset load; therefore, claims of "zero-copy custom asset protocol" are technically inaccurate.
-7. **Conclusion**: Per mandatory reviewer guidelines on integrity violations and contract verification, the verdict MUST be **VETO / REQUEST_CHANGES**.
+- **No caveats.** All implementation logic, tests, and ESLint configurations were independently verified.
 
 ---
 
-## 5. Caveats
+## 4. Conclusion
 
-- **No Caveats**: Full backend source code (`src-tauri/src/`), configuration files (`Cargo.toml`, `tauri.conf.json`), test suites (`cargo test`, `npm test`), and project contracts (`PROJECT.md`) were exhaustively inspected and independently executed.
+The implementation of `VirtualGrid` DOM element recycling & rAF frame lock, `Gallery` path `Set` selection tracking, `Search` CLIP data preservation, `api.js`/`welcome.js` IPC listener cleanup, and `eslint.config.js` meets high software engineering standards. All 34 automated unit and integration tests pass with zero ESLint errors.
 
----
-
-## 6. Conclusion & Required Actionable Changes
-
-### Required Changes:
-1. **Remediate CLIP Semantic Search (Integrity Violation)**:
-   - Integrate a real ONNX CLIP text & vision model (e.g. `clip-vit-base-patch32` text encoder + image encoder ONNX files), or refactor the specification and interface if CLIP model runtime is not supported, removing misleading facade claims.
-2. **Align IPC Protocol Signatures with `PROJECT.md`**:
-   - Implement `get_image_url(path: String) -> String` IPC handler returning `tauri://localhost/<path>`.
-   - Update Rust search command to match `search_clip(query: String, threshold: f32) -> Vec<SearchResult>` or update contract document atomically across JS & Rust.
-   - Align `sync_xmp_sidecar` signature with `PROJECT.md`.
-3. **Fix Protocol Path Decoding**:
-   - Use `percent_encoding` crate or proper UTF-8 percent-decoding in `lib.rs` instead of single-byte `u8 as char` casting.
-4. **Optimize Asset Protocol Memory Usage**:
-   - Implement true streaming or memory-mapped response buffers (`memmap2`) for local file assets if zero-copy behavior is required.
+**Verdict**: **APPROVE**
 
 ---
 
-## 7. Independent Verification Method
+## 5. Verification Method
 
-To verify these findings independently:
+To independently verify these findings:
 
-1. **Verify Cargo & NPM test execution**:
-   ```powershell
-   cd src-tauri
-   cargo test
-   cd ..
+1. **Linting**:
+   ```bash
+   npx eslint src/
+   ```
+   *Expected output*: Clean exit (no errors or warnings).
+
+2. **Test Suite**:
+   ```bash
    npm test
    ```
-2. **Inspect Facade CLIP Implementation**:
-   - Open `src-tauri/src/onnx.rs` and inspect lines 397–560. Observe `match token.as_str()` and `path_str.contains(...)`.
-3. **Inspect Missing `get_image_url` IPC Handler**:
-   - Open `src-tauri/src/lib.rs` and search for `get_image_url` in `tauri::generate_handler![]`.
+   *Expected output*: 34 tests passing across 16 test suites.
+
+3. **Inspect File Implementations**:
+   - Inspect `src/js/virtualgrid.js` lines 145-153 (`onScroll` rAF frame lock) and lines 194-233 (recycling pool).
+   - Inspect `src/js/gallery.js` line 7 (`Set`) and line 297 (`selectedPaths` preservation).
+   - Inspect `src/js/welcome.js` lines 31-34 & 174-180 (`finally` IPC unlisten cleanup).

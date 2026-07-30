@@ -99,24 +99,23 @@ pub fn handle_asset_custom_protocol(
                 "webm" => "video/webm",
                 _ => "application/octet-stream",
             };
-            return tauri::http::Response::builder()
+            if let Ok(resp) = tauri::http::Response::builder()
                 .status(200)
                 .header("Content-Type", mime)
                 .header("Access-Control-Allow-Origin", "*")
                 .body(std::borrow::Cow::Owned(bytes))
-                .unwrap_or_else(|_| {
-                    tauri::http::Response::builder()
-                        .status(500)
-                        .body(std::borrow::Cow::Borrowed(b"Internal Error" as &[u8]))
-                        .unwrap()
-                });
+            {
+                return resp;
+            }
         }
     }
 
     tauri::http::Response::builder()
         .status(404)
         .body(std::borrow::Cow::Borrowed(b"Not Found" as &[u8]))
-        .unwrap()
+        .unwrap_or_else(|_| {
+            tauri::http::Response::new(std::borrow::Cow::Borrowed(b"Not Found" as &[u8]))
+        })
 }
 
 pub fn decode_percent(s: &str) -> String {

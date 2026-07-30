@@ -11,6 +11,11 @@ fn sha2_hash(input: &str) -> String {
 
 /// Retrieve the cached 256x256 thumbnail if present, falling back to original image
 fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
+    let file_path = std::path::Path::new(path);
+    if !file_path.exists() {
+        return None;
+    }
+
     let hash = sha2_hash(path);
     let cache_dir = dirs::home_dir()
         .unwrap_or_default()
@@ -25,8 +30,30 @@ fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
         }
     }
 
-    // Restrict hashing to thumbnails only
-    None
+    // Fallback 1: Try generating thumbnail on-the-fly
+    if let Ok(thumb_path) =
+        tauri::async_runtime::block_on(super::thumbnails::get_thumbnail(path.to_string()))
+    {
+        if let Ok(img) = image::open(&thumb_path) {
+            return Some(img);
+        }
+    }
+
+    // Fallback 2: Open original image file directly (or RAW embedded preview)
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    if crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str()) {
+        if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
+            if let Ok(img) = image::load_from_memory(&bytes) {
+                return Some(img);
+            }
+        }
+    }
+
+    image::open(file_path).ok()
 }
 
 fn compute_hash_32(img: &image::DynamicImage, method: &str) -> Option<u32> {

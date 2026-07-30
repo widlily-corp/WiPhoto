@@ -1,10 +1,10 @@
 // ═══ Main Application Module & Entry Point ═══
 
 const App = (() => {
-  let activeTab = 'gallery'; // gallery, map, timeline
-  let mapInstance = null;
-  let mapMarkers = [];
-  let leafletLoaded = false;
+  let _activeTab = 'gallery'; // gallery, map, timeline
+  let _mapInstance = null;
+  let _mapMarkers = [];
+  let _leafletLoaded = false;
 
   // Global state
   const state = {
@@ -178,7 +178,7 @@ const App = (() => {
 
     // Toggle active state in view mode buttons (if not editor)
     if (viewName !== 'editor') {
-      activeTab = viewName;
+      _activeTab = viewName;
       document.querySelectorAll('.view-modes button.toolbar-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === viewName);
       });

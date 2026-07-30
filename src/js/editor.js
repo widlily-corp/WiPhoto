@@ -10,7 +10,7 @@ const Editor = (() => {
 
   // v3: Crop State
   let activeCropRect = null;
-  let isCropActive = false;
+  let _isCropActive = false;
   let cropRatio = 'free';
   let cropBox = { left: 0, top: 0, width: 0, height: 0 };
 
@@ -96,7 +96,7 @@ const Editor = (() => {
     historyIndex = 0;
     isBeforeAfter = false;
     activeCropRect = null;
-    isCropActive = false;
+    _isCropActive = false;
 
     // Reset all sliders
     document.querySelectorAll('.slider-control').forEach(ctrl => {
@@ -414,7 +414,7 @@ const Editor = (() => {
 
   // ─── v3: Crop Visual Control ───
   function startCrop() {
-    isCropActive = true;
+    _isCropActive = true;
     document.getElementById('crop-ratio-toolbar')?.classList.remove('hidden');
     
     const cropBoxEl = document.getElementById('crop-box');
@@ -484,7 +484,7 @@ const Editor = (() => {
   }
 
   function cancelCrop() {
-    isCropActive = false;
+    _isCropActive = false;
     document.getElementById('crop-ratio-toolbar')?.classList.add('hidden');
     document.getElementById('crop-box')?.classList.add('hidden');
     applyVisualCropPreview();

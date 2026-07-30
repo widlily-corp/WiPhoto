@@ -1,15 +1,17 @@
 {
   "name": "wiphoto-tauri",
   "private": true,
-  "version": "5.0.0",
+  "version": "5.0.1",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "dev": "npx --yes serve -l 1420 src",
     "build": "echo 'No frontend build step needed'",
+    "lint": "eslint src/",
     "test": "node --test src/js/*.test.cjs"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "@tauri-apps/cli": "^2",
+    "eslint": "^9.0.0"
   }
 }

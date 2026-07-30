@@ -1,6 +1,6 @@
 [package]
 name = "wiphoto"
-version = "5.0.0"
+version = "5.0.1"
 description = "WiPhoto - Professional Photo Manager & Editor"
 authors = ["Widlily Corporation <widlily.corp@gmail.com>"]
 edition = "2021"
@@ -40,6 +40,8 @@ kamadak-exif = "0.5"
 
 # Database
 rusqlite = { version = "0.31", features = ["bundled"] }
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.24.0"
 
 # Logging
 log = "0.4"

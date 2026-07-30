@@ -322,9 +322,10 @@ pub fn list_trash() -> Result<Vec<TrashItem>, String> {
                 let is_raw = crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str());
 
                 // Generate/load cached thumbnail
-                let thumbnail =
-                    super::thumbnails::get_thumbnail(path.to_string_lossy().to_string())
-                        .unwrap_or_default();
+                let thumbnail = tauri::async_runtime::block_on(super::thumbnails::get_thumbnail(
+                    path.to_string_lossy().to_string(),
+                ))
+                .unwrap_or_default();
 
                 items.push(TrashItem {
                     filename,

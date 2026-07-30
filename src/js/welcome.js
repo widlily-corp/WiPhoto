@@ -30,6 +30,7 @@ const Welcome = (() => {
   async function selectFolder(folderPath = null) {
     let unlistenProgress = null;
     let unlistenScanned = null;
+    let unlistenBatch = null;
     let batchInterval = null;
 
     try {
@@ -71,33 +72,41 @@ const Welcome = (() => {
       }, 150);
 
       // Listen for progress events
-      unlistenProgress = await API.onScanProgress((data) => {
-        const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
-        if (progressEl) {
-          document.getElementById('progress-fill').style.width = `${pct}%`;
-          document.getElementById('progress-text').textContent = `Сканирование: ${data.current} / ${data.total}`;
-        }
-        if (galleryProgressBar) {
-          galleryProgressBar.style.width = `${pct}%`;
-        }
-        const fn = data.current_file ? Utils.getFilename(data.current_file) : '';
-        document.getElementById('status-text').textContent = `Сканирование: ${data.current} / ${data.total} │ ${fn}`;
-      });
+      if (typeof API.onScanProgress === 'function') {
+        unlistenProgress = await API.onScanProgress((data) => {
+          const pct = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+          if (progressEl) {
+            document.getElementById('progress-fill').style.width = `${pct}%`;
+            document.getElementById('progress-text').textContent = `Сканирование: ${data.current} / ${data.total}`;
+          }
+          if (galleryProgressBar) {
+            galleryProgressBar.style.width = `${pct}%`;
+          }
+          const fn = data.current_file ? Utils.getFilename(data.current_file) : '';
+          document.getElementById('status-text').textContent = `Сканирование: ${data.current} / ${data.total} │ ${fn}`;
+        });
+      }
 
       // Listen for progressive image scans
-      unlistenScanned = await API.onImageScanned((info) => {
-        scanBuffer.push(info);
-      });
+      if (typeof API.onImageScannedBatch === 'function') {
+        unlistenBatch = await API.onImageScannedBatch((batch) => {
+          if (Array.isArray(batch)) {
+            scanBuffer.push(...batch);
+          } else if (batch) {
+            scanBuffer.push(batch);
+          }
+        });
+      }
+      if (typeof API.onImageScanned === 'function') {
+        unlistenScanned = await API.onImageScanned((info) => {
+          scanBuffer.push(info);
+        });
+      }
 
       Logger.debug('Welcome', "Starting API.scanFolder IPC call");
       // Start scan
       const images = await API.scanFolder(folder, recursive);
       Logger.debug('Welcome', "API.scanFolder resolved with " + (images ? images.length : 'null') + " images");
-
-      // Clear interval and unlisten
-      if (batchInterval) clearInterval(batchInterval);
-      if (unlistenProgress) unlistenProgress();
-      if (unlistenScanned) unlistenScanned();
 
       if (galleryProgressBar) {
         galleryProgressBar.style.width = '100%';
@@ -156,16 +165,17 @@ const Welcome = (() => {
         }, 800);
       }
     } catch (err) {
-      if (batchInterval) clearInterval(batchInterval);
-      if (unlistenProgress) unlistenProgress();
-      if (unlistenScanned) unlistenScanned();
-
       Logger.error('Welcome', "Scan folder failed", err);
       Utils.toast(`Ошибка сканирования: ${err}`, 'error');
       document.getElementById('welcome-screen').classList.add('active');
       document.getElementById('main-app').classList.remove('active');
       document.getElementById('scan-progress')?.classList.add('hidden');
       document.getElementById('gallery-scan-progress')?.classList.add('hidden');
+    } finally {
+      if (batchInterval) clearInterval(batchInterval);
+      if (typeof unlistenProgress === 'function') unlistenProgress();
+      if (typeof unlistenScanned === 'function') unlistenScanned();
+      if (typeof unlistenBatch === 'function') unlistenBatch();
     }
   }
 

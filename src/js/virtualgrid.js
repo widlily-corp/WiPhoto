@@ -10,38 +10,46 @@ const VirtualGrid = (() => {
   let columns = 1;
   let rowHeight = 0;
   let totalRows = 0;
-  let visibleStartRow = 0;
-  let visibleEndRow = 0;
+  let visibleStartRow = -1;
+  let visibleEndRow = -1;
   let bufferRows = 3;
-  let renderedCards = new Map(); // row -> DOM elements
-  let spacerTop = null;
-  let spacerBottom = null;
+
+  // DOM recycling pool and active card map
+  let cardPool = []; // Pool of detached .thumb-card DOM elements for reuse
+  let activeCardMap = new Map(); // Map<index, HTMLElement> for currently rendered cards
+
+  // Cached container dimensions to avoid layout reads during scroll
+  let cachedContainerWidth = 0;
+  let cachedViewportHeight = 0;
+
+  // Frame lock for rAF scroll handling
+  let ticking = false;
+
   let contentArea = null;
   let isActive = false;
   let resizeObserver = null;
   let lazyObserver = null;
 
-  let renderedStartIdx = -1;
-  let renderedEndIdx = -1;
-
   // Callbacks
-  let onCardClick = null;
-  let onCardDoubleClick = null;
-  let onCardContextMenu = null;
+  let _onCardClick = null;
+  let _onCardDoubleClick = null;
+  let _onCardContextMenu = null;
   let cardRenderer = null;
 
   function init(config) {
     container = config.container;
     scrollContainer = config.scrollContainer;
-    onCardClick = config.onCardClick;
-    onCardDoubleClick = config.onCardDoubleClick;
-    onCardContextMenu = config.onCardContextMenu;
+    _onCardClick = config.onCardClick;
+    _onCardDoubleClick = config.onCardDoubleClick;
+    _onCardContextMenu = config.onCardContextMenu;
     cardRenderer = config.cardRenderer;
 
     // Create layout structure
-    spacerTop = Utils.el('div', { className: 'vgrid-spacer-top' });
     contentArea = Utils.el('div', { className: 'vgrid-content' });
-    spacerBottom = Utils.el('div', { className: 'vgrid-spacer-bottom' });
+    contentArea.style.position = 'absolute';
+    contentArea.style.top = '0';
+    contentArea.style.left = '0';
+    contentArea.style.right = '0';
 
     // Initialize IntersectionObserver for lazy loading
     if (window.IntersectionObserver) {
@@ -63,14 +71,16 @@ const VirtualGrid = (() => {
       });
     }
 
-    // Listen to scroll events (throttled)
-    scrollContainer.addEventListener('scroll', Utils.throttle(onScroll, 16));
+    // Listen to scroll events with rAF frame lock & passive listener
+    scrollContainer.addEventListener('scroll', onScroll, { passive: true });
 
-    // Track container resizes
+    // Track container resizes and cache dimensions
     resizeObserver = new ResizeObserver(Utils.debounce(() => {
       if (isActive) {
-        recalculate();
-        renderVisible();
+        requestAnimationFrame(() => {
+          recalculate();
+          renderVisible();
+        });
       }
     }, 100));
     resizeObserver.observe(scrollContainer);
@@ -82,19 +92,22 @@ const VirtualGrid = (() => {
     thumbSize = newThumbSize || thumbSize;
     isActive = true;
 
-    // Reset visible range to force rendering after container clear
+    // Recycle all active cards into cardPool
+    for (const card of activeCardMap.values()) {
+      if (card.parentNode) {
+        card.parentNode.removeChild(card);
+      }
+      cardPool.push(card);
+    }
+    activeCardMap.clear();
+
     visibleStartRow = -1;
     visibleEndRow = -1;
-    renderedStartIdx = -1;
-    renderedEndIdx = -1;
 
-    // Clear existing
+    // Reset layout containers
     container.innerHTML = '';
-    renderedCards.clear();
-
-    container.appendChild(spacerTop);
+    container.style.position = 'relative';
     container.appendChild(contentArea);
-    container.appendChild(spacerBottom);
 
     recalculate();
     renderVisible();
@@ -109,12 +122,15 @@ const VirtualGrid = (() => {
   }
 
   function recalculate() {
-    const containerWidth = scrollContainer.clientWidth - 16; // minus padding
-    columns = Math.max(1, Math.floor((containerWidth + gap) / (thumbSize + gap)));
+    if (!scrollContainer) return;
+    cachedContainerWidth = Math.max(0, scrollContainer.clientWidth - 16);
+    cachedViewportHeight = scrollContainer.clientHeight || 0;
+
+    columns = Math.max(1, Math.floor((cachedContainerWidth + gap) / (thumbSize + gap)));
     rowHeight = thumbSize + gap;
     totalRows = Math.ceil(items.length / columns);
     
-    Logger.debug('VirtualGrid', `recalculate: scrollContainer clientWidth=${scrollContainer.clientWidth}, containerWidth=${containerWidth}, columns=${columns}, totalRows=${totalRows}`);
+    Logger.debug('VirtualGrid', `recalculate: clientWidth=${scrollContainer.clientWidth}, containerWidth=${cachedContainerWidth}, columns=${columns}, totalRows=${totalRows}`);
 
     // Set grid layout on content area
     contentArea.style.display = 'grid';
@@ -122,18 +138,39 @@ const VirtualGrid = (() => {
     contentArea.style.gap = `${gap}px`;
     contentArea.style.padding = '4px';
 
-    // Total scrollable height via spacers
+    // Set total scrollable height
+    container.style.height = `${totalRows * rowHeight}px`;
+
     updateSpacers();
   }
 
   function onScroll() {
-    if (!isActive) return;
-    renderVisible();
+    if (!ticking && isActive) {
+      requestAnimationFrame(() => {
+        renderVisible();
+        ticking = false;
+      });
+      ticking = true;
+    }
   }
 
   function renderVisible() {
+    if (!isActive) return;
+
+    if (items.length === 0) {
+      for (const card of activeCardMap.values()) {
+        if (card.parentNode) card.parentNode.removeChild(card);
+        cardPool.push(card);
+      }
+      activeCardMap.clear();
+      visibleStartRow = -1;
+      visibleEndRow = -1;
+      updateSpacers();
+      return;
+    }
+
     const scrollTop = scrollContainer.scrollTop;
-    const viewportHeight = scrollContainer.clientHeight;
+    const viewportHeight = cachedViewportHeight || scrollContainer.clientHeight;
 
     const newStartRow = Math.max(0, Math.floor(scrollTop / rowHeight) - bufferRows);
     const newEndRow = Math.min(
@@ -141,93 +178,65 @@ const VirtualGrid = (() => {
       Math.ceil((scrollTop + viewportHeight) / rowHeight) + bufferRows
     );
     
-    Logger.debug('VirtualGrid', `renderVisible: scrollTop=${scrollTop}, viewportHeight=${viewportHeight}, rowHeight=${rowHeight}, newStartRow=${newStartRow}, newEndRow=${newEndRow}`);
-
     // Early exit if nothing changed
     if (newStartRow === visibleStartRow && newEndRow === visibleEndRow) {
-      Logger.debug('VirtualGrid', "renderVisible early exit (nothing changed)");
       return;
     }
 
     visibleStartRow = newStartRow;
     visibleEndRow = newEndRow;
 
-    // Disconnect old lazy observations before rendering new set
     if (lazyObserver) {
       lazyObserver.disconnect();
     }
 
-    // Determine which items to render
     const startIdx = visibleStartRow * columns;
     const endIdx = Math.min((visibleEndRow + 1) * columns, items.length);
-    
-    Logger.debug('VirtualGrid', `renderVisible rendering items range: ${startIdx} to ${endIdx}`);
 
-    if (renderedStartIdx === -1 || renderedEndIdx === -1 || startIdx >= renderedEndIdx || endIdx <= renderedStartIdx) {
-      // No overlap or first render
-      const fragment = document.createDocumentFragment();
-      for (let i = startIdx; i < endIdx; i++) {
-        const card = cardRenderer(items[i], i);
-        fragment.appendChild(card);
+    // 1. Recycle elements that scrolled out of the visible window
+    for (const [idx, card] of activeCardMap.entries()) {
+      if (idx < startIdx || idx >= endIdx) {
+        if (card.parentNode) {
+          card.parentNode.removeChild(card);
+        }
+        activeCardMap.delete(idx);
+        cardPool.push(card);
       }
-      contentArea.innerHTML = '';
-      contentArea.appendChild(fragment);
-      
-      renderedStartIdx = startIdx;
-      renderedEndIdx = endIdx;
-      updateSpacers();
-      Logger.debug('VirtualGrid', "renderVisible complete, appended items count: " + contentArea.children.length);
-      return;
     }
 
-    // We have overlap!
-    // 1. Remove elements that left the range from the top
-    if (startIdx > renderedStartIdx) {
-      const removeCount = startIdx - renderedStartIdx;
-      for (let i = 0; i < removeCount; i++) {
-        if (contentArea.firstChild) {
-          contentArea.removeChild(contentArea.firstChild);
+    // 2. Render or recycle elements for new visible indices
+    for (let i = startIdx; i < endIdx; i++) {
+      if (activeCardMap.has(i)) {
+        continue;
+      }
+
+      const recycledCard = cardPool.length > 0 ? cardPool.pop() : null;
+      const card = cardRenderer ? cardRenderer(items[i], i, recycledCard) : null;
+      if (!card) continue;
+
+      activeCardMap.set(i, card);
+
+      // Find next mounted node to insert before to maintain DOM order, or append
+      let inserted = false;
+      for (let nextIdx = i + 1; nextIdx < endIdx; nextIdx++) {
+        const nextCard = activeCardMap.get(nextIdx);
+        if (nextCard && nextCard.parentNode === contentArea) {
+          contentArea.insertBefore(card, nextCard);
+          inserted = true;
+          break;
         }
       }
-    }
-    // 2. Remove elements that left the range from the bottom
-    if (endIdx < renderedEndIdx) {
-      const removeCount = renderedEndIdx - endIdx;
-      for (let i = 0; i < removeCount; i++) {
-        if (contentArea.lastChild) {
-          contentArea.removeChild(contentArea.lastChild);
-        }
-      }
-    }
-    // 3. Prepend elements that entered from the top
-    if (startIdx < renderedStartIdx) {
-      for (let i = renderedStartIdx - 1; i >= startIdx; i--) {
-        const card = cardRenderer(items[i], i);
-        contentArea.insertBefore(card, contentArea.firstChild);
-      }
-    }
-    // 4. Append elements that entered from the bottom
-    if (endIdx > renderedEndIdx) {
-      for (let i = renderedEndIdx; i < endIdx; i++) {
-        const card = cardRenderer(items[i], i);
+      if (!inserted) {
         contentArea.appendChild(card);
       }
     }
 
-    renderedStartIdx = startIdx;
-    renderedEndIdx = endIdx;
-
     updateSpacers();
-    Logger.debug('VirtualGrid', "renderVisible complete, appended items count: " + contentArea.children.length);
   }
 
   function updateSpacers() {
-    const topHeight = visibleStartRow * rowHeight;
-    const renderedRows = visibleEndRow - visibleStartRow + 1;
-    const bottomHeight = Math.max(0, (totalRows - visibleStartRow - renderedRows) * rowHeight);
-
-    spacerTop.style.height = `${topHeight}px`;
-    spacerBottom.style.height = `${bottomHeight}px`;
+    const topHeight = visibleStartRow > 0 ? visibleStartRow * rowHeight : 0;
+    contentArea.style.transform = `translateY(${topHeight}px)`;
   }
 
   function getItemAtIndex(index) {
@@ -241,14 +250,22 @@ const VirtualGrid = (() => {
 
   function getVisibleRange() {
     return {
-      start: visibleStartRow * columns,
+      start: Math.max(0, visibleStartRow) * columns,
       end: Math.min((visibleEndRow + 1) * columns, items.length),
     };
   }
 
+  function getRenderedCard(index) {
+    return activeCardMap.get(index) || null;
+  }
+
   function destroy() {
     isActive = false;
-    renderedCards.clear();
+    for (const card of activeCardMap.values()) {
+      if (card.parentNode) card.parentNode.removeChild(card);
+    }
+    activeCardMap.clear();
+    cardPool = [];
     if (resizeObserver) {
       resizeObserver.disconnect();
     }
@@ -266,8 +283,11 @@ const VirtualGrid = (() => {
     getItemAtIndex,
     scrollToIndex,
     getVisibleRange,
+    getRenderedCard,
+    getActiveCards: () => activeCardMap,
     destroy,
   };
 })();
 
 window.VirtualGrid = VirtualGrid;
+

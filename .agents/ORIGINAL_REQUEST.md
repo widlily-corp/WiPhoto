@@ -48,7 +48,37 @@ Integrity mode: development
 - [ ] Проект успешно собирается (`npm run build` / `cargo build`), все тесты проходят (`cargo test`, `npm run test`).
 - [ ] В локальном Git есть коммиты с изменениями, и тег `v5.0.0` запушен в `origin`.
 
-## Follow-up — 2026-07-30T08:59:19Z
+## 2026-07-30T14:28:55Z
 
-Произошла перезагрузка сервера и ошибка лимитов, но пользователь просит продолжать. Пожалуйста, возобнови работу (оркестрацию и выполнение майлстоунов M2, M3, M4 и последующих) с того места, где вы остановились.
+<USER_REQUEST>
+Production-grade update for the WiPhoto desktop application. The goal is to fully optimize performance (both frontend and backend) and eliminate any existing errors or bottlenecks to ensure a smooth, bug-free user experience.
+
+Working directory: C:\Users\Widlily\Documents\projects\wiphoto
+Integrity mode: development
+
+## Requirements
+
+### R1. Frontend UI Performance Optimization
+Optimize the gallery and timeline views for smooth scrolling (60fps target) with large datasets. This includes refining the virtual grid rendering, eliminating layout thrashing, and ensuring efficient DOM updates.
+
+### R2. Backend Performance Optimization (Rust)
+Optimize backend operations, specifically folder scanning, thumbnail generation, and caching mechanisms. Minimize I/O bottlenecks, avoid blocking the main Tauri UI thread, and utilize multi-threading efficiently.
+
+### R3. Error Elimination and Stability
+Identify and resolve any existing bugs, silent errors, or race conditions in both the frontend JavaScript and backend Rust code. Ensure stable startup, scanning, and viewing flows without crashes or hangs.
+
+## Acceptance Criteria
+
+### Verification & Quality
+- [ ] The `VirtualGrid` implementation only renders visible items (plus a small buffer) and does not cause layout thrashing during scroll.
+- [ ] Backend thumbnail generation and folder scanning utilize multi-threading (e.g., `rayon` or asynchronous tasks) and do not freeze the UI.
+- [ ] Codebase passes all static analysis: `npx eslint src/` (or equivalent linter) returns 0 errors.
+- [ ] Rust backend passes `cargo check` and `cargo clippy -- -D warnings` with 0 warnings/errors.
+- [ ] The application successfully compiles and builds via `npm run tauri -- build` without any errors.
+</USER_REQUEST>
+
+## Follow-up — 2026-07-30T14:37:40Z
+
+Due to a server restart, your background tasks and orchestrator were stopped. Please revive the orchestrator and continue the execution of the WiPhoto performance optimization and stability task exactly where you left off.
+
 

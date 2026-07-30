@@ -48,20 +48,31 @@ fn collect_files(root: &str, recursive: bool) -> Vec<PathBuf> {
 
 /// Generate a thumbnail file path (Zero-Copy)
 fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(cached) = super::thumbnails::get_cached_thumbnail_path(&path_str) {
+        return Some(cached);
+    }
+
     // Create cache key from path hash
-    let hash = sha2_hash(path.to_string_lossy().as_ref());
+    let hash = sha2_hash(&path_str);
     let cache_file = cache_dir.join(format!("{}.jpg", hash));
 
-    // Check cache first
+    // Check disk cache first
     if cache_file.exists() {
-        return Some(cache_file.to_string_lossy().to_string());
+        let cache_file_str = cache_file.to_string_lossy().to_string();
+        super::thumbnails::update_in_memory_thumbnail_cache(path_str, cache_file_str.clone());
+        return Some(cache_file_str);
     }
 
     let ext = path.extension()?.to_string_lossy().to_lowercase();
 
     // For videos, generate a placeholder thumbnail
     if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-        return generate_video_placeholder(path, cache_dir, &hash);
+        let res = generate_video_placeholder(path, cache_dir, &hash);
+        if let Some(ref thumb_path) = res {
+            super::thumbnails::update_in_memory_thumbnail_cache(path_str, thumb_path.clone());
+        }
+        return res;
     }
 
     // Try to load the image
@@ -91,7 +102,9 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     let _ = fs::create_dir_all(cache_dir);
     let _ = thumb.save_with_format(&cache_file, image::ImageFormat::Jpeg);
 
-    Some(cache_file.to_string_lossy().to_string())
+    let cache_file_str = cache_file.to_string_lossy().to_string();
+    super::thumbnails::update_in_memory_thumbnail_cache(path_str, cache_file_str.clone());
+    Some(cache_file_str)
 }
 
 /// Try to load RAW thumbnail from embedded JPEG
@@ -283,20 +296,6 @@ fn process_single_file(path: &Path, cache_dir: &Path) -> Option<ImageInfo> {
         }
     }
 
-    // Real face & animal & object recognition via ONNX
-    if !info.is_video {
-        if let Some(analysis) = crate::onnx::analyze_image(path) {
-            info.faces_count = analysis.faces_count;
-            info.animals_count = analysis.animals_count;
-            info.animal_species = analysis.animal_species;
-            for tag in analysis.tags {
-                if !info.tags.contains(&tag) {
-                    info.tags.push(tag);
-                }
-            }
-        }
-    }
-
     Some(info)
 }
 
@@ -306,7 +305,13 @@ fn parse_gps_coordinate(value: &exif::Value, reference: &str) -> Option<f64> {
             let deg = rats[0].to_f64();
             let min = rats[1].to_f64();
             let sec = rats[2].to_f64();
+            if !deg.is_finite() || !min.is_finite() || !sec.is_finite() {
+                return None;
+            }
             let mut coord = deg + min / 60.0 + sec / 3600.0;
+            if !coord.is_finite() {
+                return None;
+            }
             let ref_str = reference.trim_matches('"').trim();
             if ref_str == "S" || ref_str == "W" {
                 coord = -coord;
@@ -315,6 +320,66 @@ fn parse_gps_coordinate(value: &exif::Value, reference: &str) -> Option<f64> {
         }
         _ => None,
     }
+}
+
+fn is_direct_child(folder: &Path, file_path: &Path) -> bool {
+    let parent = match file_path.parent() {
+        Some(p) => p,
+        None => return false,
+    };
+    let parent_str = parent
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_string();
+    let folder_str = folder
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_string();
+    parent_str.eq_ignore_ascii_case(&folder_str)
+}
+
+fn enqueue_background_onnx_tasks(files: Vec<PathBuf>) {
+    if files.is_empty() {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            let model_init = crate::onnx::init_model().is_ok();
+            for file_path in files {
+                let ext = file_path
+                    .extension()
+                    .map(|e| e.to_string_lossy().to_lowercase())
+                    .unwrap_or_default();
+                if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+                    continue;
+                }
+                let path_str = file_path.to_string_lossy().to_string();
+                if model_init {
+                    if let Some(analysis) = crate::onnx::analyze_image(&file_path) {
+                        if let Ok(mut infos) = crate::db::get_images_by_paths(std::slice::from_ref(&path_str)) {
+                            if let Some(info) = infos.first_mut() {
+                                info.faces_count = analysis.faces_count;
+                                info.animals_count = analysis.animals_count;
+                                info.animal_species = analysis.animal_species;
+                                for tag in analysis.tags {
+                                    if !info.tags.contains(&tag) {
+                                        info.tags.push(tag);
+                                    }
+                                }
+                                let _ = crate::db::save_images_batch(&[(info, get_modified_time(&file_path))]);
+                            }
+                        }
+                    }
+                }
+                // Extract 512-dim vector embedding and save to SQLite
+                let embedding = crate::onnx::extract_image_embedding(&file_path);
+                let _ = crate::db::save_image_embedding(&path_str, &embedding);
+            }
+        })
+        .await;
+    });
 }
 
 fn get_modified_time(path: &Path) -> u64 {
@@ -344,13 +409,6 @@ pub async fn scan_folder(
             .join("cache")
             .join("thumbnails");
         let _ = fs::create_dir_all(&cache_dir);
-
-        if let Err(e) = crate::onnx::init_model() {
-            log::warn!(
-                "Failed to initialize ONNX model: {}. Running scan without ML analysis.",
-                e
-            );
-        }
 
         let files = collect_files(&path, recursive);
         let total = files.len() as u32;
@@ -484,10 +542,17 @@ pub async fn scan_folder(
             if let Err(e) = crate::db::save_images_batch(&to_save_refs) {
                 log::error!("Failed to save scanned images to database: {}", e);
             }
+            let newly_scanned_paths: Vec<PathBuf> =
+                uncached_files.into_iter().map(|(p, _)| p).collect();
+            enqueue_background_onnx_tasks(newly_scanned_paths);
         }
 
         let mut to_delete = Vec::new();
+        let root_path_buf = PathBuf::from(&path);
         for cached_path in db_mtimes.keys() {
+            if !recursive && !is_direct_child(&root_path_buf, Path::new(cached_path)) {
+                continue;
+            }
             if !file_paths_set.contains(cached_path) {
                 to_delete.push(cached_path.clone());
             }
@@ -521,8 +586,13 @@ pub async fn scan_folder(
 
 /// Get file count in a directory (for preview)
 #[tauri::command]
-pub fn count_files(path: String, recursive: bool) -> u32 {
-    collect_files(&path, recursive).len() as u32
+pub async fn count_files(path: String, recursive: bool) -> Result<u32, String> {
+    let count = tauri::async_runtime::spawn_blocking(move || {
+        collect_files(&path, recursive).len() as u32
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?;
+    Ok(count)
 }
 
 /// JS error logger command

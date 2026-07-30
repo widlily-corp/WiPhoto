@@ -16,7 +16,7 @@ const Logger = (() => {
     if (localStorage.getItem('wiphoto-debug') === 'true') {
       currentLevel = Levels.DEBUG;
     }
-  } catch (e) {
+  } catch {
     // Ignore localStorage errors
   }
 

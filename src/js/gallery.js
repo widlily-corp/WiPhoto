@@ -4,7 +4,7 @@
 const Gallery = (() => {
   let allImages = [];
   let filteredImages = [];
-  let selectedIndices = new Set();
+  let selectedPaths = new Set();
   let lastSelectedIndex = -1;
   let currentFilter = 'all';
   let currentSort = 'name';
@@ -13,6 +13,7 @@ const Gallery = (() => {
   let duplicateGroups = [];
   let currentFolderFilter = '';  // v3: folder-level filtering
   let currentTagFilter = '';     // v3: tag filtering
+  let semanticPathScoreMap = null; // Map<path, score> for CLIP semantic search
 
   const grid = () => document.getElementById('gallery-grid');
   const emptyState = () => document.getElementById('gallery-empty');
@@ -34,10 +35,9 @@ const Gallery = (() => {
         if (!card) return;
 
         const path = card.dataset.path;
-        const idx = parseInt(card.dataset.index);
         
         let dragPaths = [];
-        if (selectedIndices.has(idx)) {
+        if (selectedPaths.has(path)) {
           dragPaths = getSelectedImages().map(img => img.path);
         } else {
           dragPaths = [path];
@@ -57,7 +57,7 @@ const Gallery = (() => {
       g.addEventListener('click', (e) => {
         const card = e.target.closest('.thumb-card');
         if (card) {
-          const idx = parseInt(card.dataset.index);
+          const idx = parseInt(card.dataset.index, 10);
           handleClick(idx, e);
         }
       });
@@ -65,8 +65,7 @@ const Gallery = (() => {
       g.addEventListener('dblclick', (e) => {
         const card = e.target.closest('.thumb-card');
         if (card) {
-          const idx = parseInt(card.dataset.index);
-          const img = allImages[idx]; // wait, filteredImages? We need VirtualGrid.getItemAtIndex(idx)
+          const idx = parseInt(card.dataset.index, 10);
           handleDoubleClick(VirtualGrid.getItemAtIndex(idx));
         }
       });
@@ -74,7 +73,7 @@ const Gallery = (() => {
       g.addEventListener('contextmenu', (e) => {
         const card = e.target.closest('.thumb-card');
         if (card) {
-          const idx = parseInt(card.dataset.index);
+          const idx = parseInt(card.dataset.index, 10);
           handleContextMenu(e, VirtualGrid.getItemAtIndex(idx), idx);
         }
       });
@@ -84,7 +83,7 @@ const Gallery = (() => {
     const zoomSlider = document.getElementById('zoom-slider');
     if (zoomSlider) {
       zoomSlider.addEventListener('input', (e) => {
-        thumbSize = parseInt(e.target.value);
+        thumbSize = parseInt(e.target.value, 10);
         grid().style.setProperty('--thumb-size', `${thumbSize}px`);
         VirtualGrid.updateThumbSize(thumbSize);
       });
@@ -151,6 +150,8 @@ const Gallery = (() => {
   function setImages(images) {
     Logger.debug('Gallery', "setImages called with: " + images.length + " images");
     allImages = images;
+    selectedPaths.clear();
+    semanticPathScoreMap = null;
     updateBadges();
     applyFilters();
     Logger.debug('Gallery', "setImages finished applying filters");
@@ -176,6 +177,20 @@ const Gallery = (() => {
     }
   }
 
+  function setSemanticSearchResults(results) {
+    if (!Array.isArray(results) || results.length === 0) {
+      semanticPathScoreMap = null;
+    } else {
+      semanticPathScoreMap = new Map(results.map(r => [r.path, r.score]));
+    }
+    applyFilters();
+  }
+
+  function clearSemanticSearch() {
+    semanticPathScoreMap = null;
+    applyFilters();
+  }
+
   function updateBadges() {
     const set = (id, count) => {
       const el = document.getElementById(id);
@@ -191,6 +206,11 @@ const Gallery = (() => {
 
   function applyFilters() {
     let images = [...allImages];
+
+    // Semantic CLIP Search Filter
+    if (semanticPathScoreMap !== null) {
+      images = images.filter(i => semanticPathScoreMap.has(i.path));
+    }
 
     // Folder filter (v3)
     if (currentFolderFilter) {
@@ -251,15 +271,19 @@ const Gallery = (() => {
     }
 
     // Sort
-    images.sort((a, b) => {
-      switch (currentSort) {
-        case 'date': return (b.date_taken || '').localeCompare(a.date_taken || '');
-        case 'size': return b.file_size - a.file_size;
-        case 'camera': return (a.camera_model || '').localeCompare(b.camera_model || '');
-        case 'rating': return b.rating - a.rating;
-        default: return a.filename.localeCompare(b.filename);
-      }
-    });
+    if (semanticPathScoreMap !== null && currentSort === 'name') {
+      images.sort((a, b) => (semanticPathScoreMap.get(b.path) || 0) - (semanticPathScoreMap.get(a.path) || 0));
+    } else {
+      images.sort((a, b) => {
+        switch (currentSort) {
+          case 'date': return (b.date_taken || '').localeCompare(a.date_taken || '');
+          case 'size': return b.file_size - a.file_size;
+          case 'camera': return (a.camera_model || '').localeCompare(b.camera_model || '');
+          case 'rating': return b.rating - a.rating;
+          default: return a.filename.localeCompare(b.filename);
+        }
+      });
+    }
 
     filteredImages = images;
     Logger.debug('Gallery', "applyFilters: filteredImages count: " + filteredImages.length);
@@ -270,7 +294,7 @@ const Gallery = (() => {
   }
 
   function renderGrid() {
-    selectedIndices.clear();
+    // Note: Do NOT clear selectedPaths here so background scan updates do not wipe selection state.
     Logger.debug('Gallery', "renderGrid: filteredImages count: " + filteredImages.length);
 
     if (filteredImages.length === 0) {
@@ -291,18 +315,120 @@ const Gallery = (() => {
     updateStatusBar();
   }
 
-  function createThumbCard(img, index) {
-    const card = Utils.el('div', {
-      className: `thumb-card${img.flag_status === 'picked' ? ' picked' : ''}${img.flag_status === 'rejected' ? ' rejected' : ''}${selectedIndices.has(index) ? ' selected' : ''}`,
-      'data-path': img.path,
-      'data-index': index,
-      draggable: 'true',
-      role: 'button',
-      tabindex: '0',
-      'aria-label': img.filename,
-    });
+  function updateRecycledCard(card, img) {
+    // 1. Image
+    let imgEl = card.querySelector('.thumb-img');
+    if (!imgEl) {
+      imgEl = Utils.el('img', { className: 'thumb-img' });
+      card.insertBefore(imgEl, card.firstChild);
+    }
+    imgEl.alt = img.filename;
+    imgEl.src = img.thumbnail ? Utils.assetUrl(img.thumbnail) : '';
 
-    // Thumbnail image (rendered directly since grid is virtualized)
+    // 2. Video play indicator
+    let videoPlayEl = card.querySelector('.thumb-badge-video-play');
+    if (img.is_video) {
+      if (!videoPlayEl) {
+        videoPlayEl = Utils.el('div', { className: 'thumb-badge-video-play', textContent: '▶' });
+        card.appendChild(videoPlayEl);
+      }
+    } else if (videoPlayEl) {
+      videoPlayEl.remove();
+    }
+
+    // 3. Overlay & filename
+    let filenameEl = card.querySelector('.thumb-filename');
+    if (filenameEl) {
+      filenameEl.textContent = img.filename;
+    } else {
+      let overlay = card.querySelector('.thumb-overlay');
+      if (!overlay) {
+        overlay = Utils.el('div', { className: 'thumb-overlay' });
+        card.appendChild(overlay);
+      }
+      filenameEl = Utils.el('div', { className: 'thumb-filename', textContent: img.filename });
+      overlay.appendChild(filenameEl);
+    }
+
+    // 4. Rating
+    let ratingEl = card.querySelector('.thumb-rating');
+    if (img.rating > 0) {
+      if (!ratingEl) {
+        ratingEl = Utils.el('div', { className: 'thumb-rating' });
+        card.appendChild(ratingEl);
+      }
+      ratingEl.innerHTML = '';
+      for (let r = 0; r < img.rating; r++) {
+        ratingEl.appendChild(Utils.el('span', { className: 'thumb-star', textContent: '★' }));
+      }
+    } else if (ratingEl) {
+      ratingEl.remove();
+    }
+
+    // 5. Color label
+    let colorEl = card.querySelector('.thumb-color-label');
+    if (img.color_label) {
+      if (!colorEl) {
+        colorEl = Utils.el('div');
+        card.appendChild(colorEl);
+      }
+      colorEl.className = `thumb-color-label ${img.color_label}`;
+    } else if (colorEl) {
+      colorEl.remove();
+    }
+
+    // 6. Flag indicator
+    let flagEl = card.querySelector('.thumb-flag');
+    if (img.flag_status) {
+      const flagChar = img.flag_status === 'picked' ? '✓' : '✗';
+      const flagStyle = img.flag_status === 'picked' ? 'color: var(--flag-picked, #10b981)' : 'color: var(--flag-rejected, #ef4444)';
+      if (!flagEl) {
+        flagEl = Utils.el('span', { className: 'thumb-flag' });
+        card.appendChild(flagEl);
+      }
+      flagEl.textContent = flagChar;
+      flagEl.style.cssText = flagStyle;
+    } else if (flagEl) {
+      flagEl.remove();
+    }
+
+    // 7. Badges
+    let badgesEl = card.querySelector('.thumb-badges');
+    if (badgesEl) badgesEl.remove();
+
+    const badges = Utils.el('div', { className: 'thumb-badges' });
+    if (img.is_best_in_group) {
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-best', textContent: '★' }));
+    } else if (img.group_id) {
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-dup', textContent: '⊞' }));
+    }
+    if (img.is_raw) {
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-raw', textContent: 'RAW' }));
+    }
+    if (img.is_video) {
+      badges.appendChild(Utils.el('span', { className: 'thumb-badge-video', textContent: 'VID' }));
+    }
+    if (badges.children.length) card.appendChild(badges);
+  }
+
+  function createThumbCard(img, index, recycledCard = null) {
+    const isSelected = selectedPaths.has(img.path);
+    const card = recycledCard || Utils.el('div');
+
+    card.className = `thumb-card${img.flag_status === 'picked' ? ' picked' : ''}${img.flag_status === 'rejected' ? ' rejected' : ''}${isSelected ? ' selected' : ''}`;
+    card.dataset.path = img.path;
+    card.dataset.index = index;
+    card.setAttribute('draggable', 'true');
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', img.filename);
+
+    if (recycledCard) {
+      updateRecycledCard(card, img);
+      return card;
+    }
+
+    // Thumbnail image
     const imgEl = Utils.el('img', {
       className: 'thumb-img',
       alt: img.filename,
@@ -369,8 +495,11 @@ const Gallery = (() => {
   }
 
   function handleClick(index, e) {
+    const img = filteredImages[index];
+    if (!img) return;
+
     if (e.ctrlKey || e.metaKey) {
-      toggleSelection(index);
+      toggleSelection(img.path, index);
       lastSelectedIndex = index;
       updateStatusBar();
       showPreview();
@@ -386,13 +515,14 @@ const Gallery = (() => {
     }
     
     clearSelection();
-    selectIndex(index);
+    selectPath(img.path, index);
     lastSelectedIndex = index;
     updateStatusBar();
     showPreview();
   }
 
   function handleDoubleClick(img) {
+    if (!img) return;
     if (img.is_video) {
       Viewer.open(img);
       return;
@@ -402,45 +532,48 @@ const Gallery = (() => {
 
   function handleContextMenu(e, img, index) {
     e.preventDefault();
-    if (!selectedIndices.has(index)) {
+    if (!img) return;
+    if (!selectedPaths.has(img.path)) {
       clearSelection();
-      selectIndex(index);
+      selectPath(img.path, index);
     }
     ContextMenu.show(e.clientX, e.clientY, img);
   }
 
-  function selectIndex(index) {
-    selectedIndices.add(index);
-    // Update DOM: find card by data-index in the virtual grid's content area
-    const card = grid().querySelector(`[data-index="${index}"]`);
+  function selectPath(path, index) {
+    selectedPaths.add(path);
+    const card = VirtualGrid.getRenderedCard(index);
     if (card) card.classList.add('selected');
   }
 
-  function toggleSelection(index) {
-    if (selectedIndices.has(index)) {
-      selectedIndices.delete(index);
-      const card = grid().querySelector(`[data-index="${index}"]`);
+  function toggleSelection(path, index) {
+    if (selectedPaths.has(path)) {
+      selectedPaths.delete(path);
+      const card = VirtualGrid.getRenderedCard(index);
       if (card) card.classList.remove('selected');
       return;
     }
-    selectIndex(index);
+    selectPath(path, index);
   }
 
   function rangeSelect(from, to) {
     const start = Math.min(from, to);
     const end = Math.max(from, to);
     for (let i = start; i <= end; i++) {
-      selectIndex(i);
+      const img = filteredImages[i];
+      if (img) {
+        selectPath(img.path, i);
+      }
     }
   }
 
   function clearSelection() {
-    selectedIndices.clear();
+    selectedPaths.clear();
     grid().querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   }
 
   function getSelectedImages() {
-    return Array.from(selectedIndices).map(i => filteredImages[i]).filter(Boolean);
+    return allImages.filter(img => selectedPaths.has(img.path));
   }
 
   function showPreview() {
@@ -451,13 +584,15 @@ const Gallery = (() => {
   }
 
   function selectAll() {
-    filteredImages.forEach((_, i) => selectIndex(i));
+    filteredImages.forEach((img, i) => {
+      selectPath(img.path, i);
+    });
     updateStatusBar();
   }
 
   function updateStatusBar() {
     const total = filteredImages.length;
-    const sel = selectedIndices.size;
+    const sel = selectedPaths.size;
     const parts = [`${total} файлов`, `${sel} выбрано`];
     if (sel === 1) {
       const img = getSelectedImages()[0];
@@ -487,18 +622,6 @@ const Gallery = (() => {
     
     contextualCount.textContent = `Выбрано: ${sel} файл(ов)`;
     contextualBar.classList.remove('hidden');
-
-    // Dynamic layout logging
-    const mainApp = document.getElementById('main-app');
-    const mainContent = document.querySelector('.main-content');
-    const centerArea = document.getElementById('center-area');
-    const viewGallery = document.getElementById('view-gallery');
-    const logEl = (name, el) => {
-      if (!el) return `${name}=null`;
-      const cs = window.getComputedStyle(el);
-      return `${name}: clientH=${el.clientHeight}, compH=${cs.height}, display=${cs.display}, position=${cs.position}, flex=${cs.flex}`;
-    };
-    Logger.debug('Layout', `${logEl('main-app', mainApp)} | ${logEl('main-content', mainContent)} | ${logEl('center-area', centerArea)} | ${logEl('view-gallery', viewGallery)}`);
   }
 
   function setRating(rating) {
@@ -528,6 +651,7 @@ const Gallery = (() => {
   function removeImages(paths) {
     const pathSet = new Set(paths);
     allImages = allImages.filter(i => !pathSet.has(i.path));
+    paths.forEach(p => selectedPaths.delete(p));
     applyFilters();
     updateBadges();
   }
@@ -606,13 +730,14 @@ const Gallery = (() => {
     // v3 additions
     filterByFolder, filterByTag, clearTagFilter, getAllTags,
     addTagToSelected, removeTagFromSelected, addImageBatch,
+    setSemanticSearchResults, clearSemanticSearch,
   };
 })();
 
 // ─── Context Menu ───
 const ContextMenu = (() => {
   const menu = () => document.getElementById('context-menu');
-  let currentImage = null;
+  let _currentImage = null;
 
   function init() {
     document.addEventListener('click', () => hide());
@@ -629,7 +754,7 @@ const ContextMenu = (() => {
   }
 
   function show(x, y, image) {
-    currentImage = image;
+    _currentImage = image;
     const m = menu();
     m.style.left = `${Math.min(x, window.innerWidth - 220)}px`;
     m.style.top = `${Math.min(y, window.innerHeight - 400)}px`;
@@ -672,10 +797,8 @@ const ContextMenu = (() => {
         if (selected.length === 1) {
           const img = selected[0];
           const oldName = img.filename;
-          // Use prompt-style rename (modal would be better, but keeping it simple)
           const ext = oldName.split('.').pop();
           const stem = oldName.substring(0, oldName.lastIndexOf('.'));
-          // Trigger inline rename via a prompt toast
           const newName = prompt('Новое имя файла:', stem);
           if (newName && newName !== stem) {
             const sep = img.path.includes('/') ? '/' : '\\';
@@ -733,3 +856,4 @@ const ContextMenu = (() => {
 
 window.Gallery = Gallery;
 window.ContextMenu = ContextMenu;
+

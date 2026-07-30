@@ -138,7 +138,7 @@ const Tags = (() => {
     dropdown.innerHTML = '';
     activeAutocompleteIdx = -1;
 
-    autocompleteList.forEach((tag, idx) => {
+    autocompleteList.forEach((tag) => {
       const item = Utils.el('div', {
         className: 'tag-autocomplete-item',
         textContent: tag,

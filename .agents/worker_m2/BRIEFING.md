@@ -1,53 +1,57 @@
-# BRIEFING — 2026-07-30T08:47:37Z
+# BRIEFING — 2026-07-30T19:41:00Z
 
 ## Mission
-Implement real-time bidirectional XMP sidecar synchronization (R2) in WiPhoto.
+Refactor frontend VirtualGrid, fix UI search/selection bugs, clean up IPC listeners, and setup ESLint v9 with zero errors.
 
 ## 🔒 My Identity
-- Archetype: implementer / qa / specialist
+- Archetype: worker_frontend_m2
 - Roles: implementer, qa, specialist
 - Working directory: c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_m2
-- Original parent: 5f573db1-8ecf-4a1f-be00-aa0431c6bdf2
-- Milestone: Milestone 2 (XMP Sidecar Sync - R2)
+- Original parent: ac58e14e-3027-4983-9d84-5ca308960c3a
+- Milestone: m2
 
 ## 🔒 Key Constraints
-- DO NOT CHEAT. All implementations must be genuine.
-- Minimal change principle.
-- Strict adherence to Conventional Commits: `feat(xmp): implement real-time bidirectional xmp sidecar sync`.
-- Verify `cargo check`, `cargo test`, and `npm test` with 100% pass rate.
+- CODE_ONLY network mode.
+- Minimal changes, follow minimal change principle.
+- ESLint v9 zero errors and zero warnings.
 
 ## Current Parent
-- Conversation ID: 5f573db1-8ecf-4a1f-be00-aa0431c6bdf2
-- Updated: 2026-07-30T08:47:37Z
+- Conversation ID: ac58e14e-3027-4983-9d84-5ca308960c3a
+- Updated: 2026-07-30T19:41:00Z
 
 ## Task Summary
-- **What to build**: Real-time bidirectional XMP sidecar sync. Write XMP sidecars on metadata/edit updates; read XMP sidecar files during scanning.
-- **Success criteria**:
-  - `src-tauri/src/commands/metadata.rs`, `xmp.rs`, `editor.rs` generate and update adjacent `.xmp` sidecars when rating, label, tags, or exposure/color edits are saved.
-  - `scanner.rs` reads adjacent `.xmp` files when indexing photos and loads ratings, tags, labels, edits, invalidating cache when `.xmp` sidecars are modified.
-  - Rust unit tests in `xmp.rs` and JS integration tests in `src/js/tier1_tier2_features.test.cjs` pass.
-  - `cargo check`, `cargo test`, `npm test` all 100% pass.
-  - Atomic commit `feat(xmp): implement real-time bidirectional xmp sidecar sync` completed.
+- **What to build**: VirtualGrid refactoring (rAF scroll & resize throttling, DOM card recycling pool, O(1) active cards Map, layout thrashing elimination), Gallery & Search selection fix (unique file path Set, search query clear data loss prevention), IPC listener cleanup in api.js & welcome.js (try-finally unlisten execution), ESLint v9 Flat Config setup.
+- **Success criteria**: npx eslint src/ exits cleanly with 0 errors and 0 warnings, npm test passes 34/34 tests.
+- **Interface contracts**: Upstream reports from explorer_frontend and explorer_stability.
+- **Code layout**: src/js/*.js.
+
+## Key Decisions Made
+- Implemented `updateRecycledCard` in `gallery.js` to update existing DOM elements when cards scroll into view instead of clearing `innerHTML = ''` and recreating DOM nodes.
+- Preserved `allImages` in `search.js` by using `Gallery.setSemanticSearchResults` and `Gallery.clearSemanticSearch`.
+- Wrapped Tauri IPC unlisten callbacks in `finally` blocks in `welcome.js` to eliminate listener leaks.
+- Configured ESLint v9 flat config in `eslint.config.js` and resolved all 32 lint issues to 0 errors / 0 warnings.
+
+## Artifact Index
+- ORIGINAL_REQUEST.md — Initial task assignment
+- handoff.md — Detailed handoff report for parent agent
 
 ## Change Tracker
 - **Files modified**:
-  - `src-tauri/src/commands/xmp.rs`: Enhanced XML parsing for child elements, history preservation, and unit tests.
-  - `src-tauri/src/commands/metadata.rs`: Added `update_photo_metadata` command for metadata update and sidecar sync.
-  - `src-tauri/src/commands/editor.rs`: Added sidecar update sync on saving image edits in `save_edited` and `save_cropped_edited_image`.
-  - `src-tauri/src/commands/scanner.rs`: Updated mtime cache freshness check to include adjacent `.xmp` sidecars.
-  - `src-tauri/src/db.rs`: Added column check for `modified_time` and `embedding` in DB init.
-  - `src-tauri/src/lib.rs`: Registered `update_photo_metadata` in Tauri invoke handler.
-  - `src/js/api.js`: Added `updatePhotoMetadata` wrapper to `API` object.
-  - `src/js/tier1_tier2_features.test.cjs`: Added XMP path resolution and metadata sync unit tests.
-- **Build status**: PASS (cargo check, cargo test, npm test)
+  - `package.json`: added `"lint": "eslint src/"` and `"eslint": "^9.0.0"`
+  - `eslint.config.js`: created ESLint v9 flat configuration
+  - `src/js/virtualgrid.js`: rAF frame lock, getActiveCards export, layout thrashing prevention
+  - `src/js/gallery.js`: DOM node recycling pool helper, path-based Set selection, active card Map selection updates
+  - `src/js/search.js`: preserved allImages on search clear, use Gallery.setSemanticSearchResults / clearSemanticSearch
+  - `src/js/api.js`: added onImageScannedBatch listener
+  - `src/js/welcome.js`: try-finally IPC listener cleanup & batch scan listener support
+  - `src/js/app.js`, `src/js/commandpalette.js`, `src/js/editor.js`, `src/js/logger.js`, `src/js/tags.js`, `src/js/timeline.js`: fixed variable scope, unused parameters, and catch bindings
+- **Build status**: PASS (ESLint 0 errors, node test 34/34 pass)
 - **Pending issues**: None
 
 ## Quality Status
-- **Build/test result**: 100% Pass
-  - `cargo test`: 26 lib tests + 4 e2e tests passed (0 failures).
-  - `npm test`: 27 tests passed (0 failures).
-- **Lint status**: 0 violations.
-- **Tests added/modified**: `test_parse_xmp_content_element_style`, `test_write_and_read_xmp_sidecar_creation_and_update`, `should resolve adjacent .xmp sidecar path correctly`, `should sync metadata rating, label, tags, and history in XMP sidecar structure`.
+- **Build/test result**: 34/34 unit tests passed
+- **Lint status**: 0 errors, 0 warnings (`npx eslint src/`)
+- **Tests added/modified**: Existing test suite verified
 
 ## Loaded Skills
-- None
+None

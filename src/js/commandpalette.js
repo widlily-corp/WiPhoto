@@ -143,7 +143,7 @@ const CommandPalette = (() => {
     if (previousFocusedElement && typeof previousFocusedElement.focus === 'function') {
       try {
         previousFocusedElement.focus();
-      } catch (e) {
+      } catch {
         // Ignore focus errors
       }
     }

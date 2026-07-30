@@ -1,66 +1,106 @@
 use crate::models::image_info::RAW_EXTENSIONS;
 use image::imageops::FilterType;
+use once_cell::sync::Lazy;
+use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
 const THUMBNAIL_SIZE: u32 = 256;
 
+static THUMBNAIL_PATH_CACHE: Lazy<RwLock<HashMap<String, String>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+/// Helper: Store thumbnail mapping in memory cache
+pub fn update_in_memory_thumbnail_cache(path: String, thumb_path: String) {
+    THUMBNAIL_PATH_CACHE.write().insert(path, thumb_path);
+}
+
+/// Helper: Lookup thumbnail path from memory cache
+pub fn get_cached_thumbnail_path(path: &str) -> Option<String> {
+    let cache_read = THUMBNAIL_PATH_CACHE.read();
+    if let Some(cached_file) = cache_read.get(path) {
+        if Path::new(cached_file).exists() {
+            return Some(cached_file.clone());
+        }
+    }
+    None
+}
+
 /// Retrieve cached thumbnail file path (Zero-Copy)
 #[tauri::command]
-pub fn get_thumbnail(path: String) -> Result<String, String> {
+pub async fn get_thumbnail(path: String) -> Result<String, String> {
     let file_path = Path::new(&path);
     if !file_path.exists() {
         return Err("File not found".into());
     }
 
-    let cache_dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".wiphoto")
-        .join("cache")
-        .join("thumbnails");
-    let _ = fs::create_dir_all(&cache_dir);
-
-    let hash = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(path.as_bytes());
-        hex::encode(hasher.finalize())
-    };
-    let cache_file = cache_dir.join(format!("{}.jpg", hash));
-
-    if cache_file.exists() {
-        return Ok(cache_file.to_string_lossy().to_string());
+    // Fast-path: Check in-memory path cache first
+    if let Some(cached_file) = get_cached_thumbnail_path(&path) {
+        return Ok(cached_file);
     }
 
-    // Support RAW formats
-    let ext = file_path
-        .extension()
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-    let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
-        if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
-            image::load_from_memory(&bytes)
-                .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
-        } else {
-            return Err("Failed to extract preview from RAW file".into());
+    let path_clone = path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache_dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".wiphoto")
+            .join("cache")
+            .join("thumbnails");
+        let _ = fs::create_dir_all(&cache_dir);
+
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(path_clone.as_bytes());
+            hex::encode(hasher.finalize())
+        };
+        let cache_file = cache_dir.join(format!("{}.jpg", hash));
+        let cache_file_str = cache_file.to_string_lossy().to_string();
+
+        if cache_file.exists() {
+            THUMBNAIL_PATH_CACHE
+                .write()
+                .insert(path_clone, cache_file_str.clone());
+            return Ok(cache_file_str);
         }
-    } else {
-        image::open(file_path).map_err(|e| format!("Failed to open image: {}", e))?
-    };
 
-    // Resize using fast Triangle filter
-    let thumb = img.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, FilterType::Triangle);
+        // Support RAW formats
+        let ext = Path::new(&path_clone)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+            if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(Path::new(&path_clone)) {
+                image::load_from_memory(&bytes)
+                    .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+            } else {
+                return Err("Failed to extract preview from RAW file".into());
+            }
+        } else {
+            image::open(Path::new(&path_clone))
+                .map_err(|e| format!("Failed to open image: {}", e))?
+        };
 
-    thumb
-        .save_with_format(&cache_file, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+        // Resize using fast Triangle filter
+        let thumb = img.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, FilterType::Triangle);
 
-    Ok(cache_file.to_string_lossy().to_string())
+        thumb
+            .save_with_format(&cache_file, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+        THUMBNAIL_PATH_CACHE
+            .write()
+            .insert(path_clone, cache_file_str.clone());
+        Ok(cache_file_str)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Load full-resolution image file path (Zero-Copy, with preview cache for RAW/resized)
 #[tauri::command]
-pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, String> {
+pub async fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, String> {
     let file_path = Path::new(&path);
     if !file_path.exists() {
         return Err("File not found".into());
@@ -78,60 +118,67 @@ pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, St
         return Ok(path);
     }
 
-    let cache_dir = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".wiphoto")
-        .join("cache")
-        .join("previews");
-    let _ = fs::create_dir_all(&cache_dir);
+    let path_clone = path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let cache_dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".wiphoto")
+            .join("cache")
+            .join("previews");
+        let _ = fs::create_dir_all(&cache_dir);
 
-    let hash = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(path.as_bytes());
-        if let Some(max) = max_size {
-            hasher.update(max.to_string().as_bytes());
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(path_clone.as_bytes());
+            if let Some(max) = max_size {
+                hasher.update(max.to_string().as_bytes());
+            }
+            hex::encode(hasher.finalize())
+        };
+        let preview_file = cache_dir.join(format!("{}.jpg", hash));
+
+        if preview_file.exists() {
+            return Ok(preview_file.to_string_lossy().to_string());
         }
-        hex::encode(hasher.finalize())
-    };
-    let preview_file = cache_dir.join(format!("{}.jpg", hash));
 
-    if preview_file.exists() {
-        return Ok(preview_file.to_string_lossy().to_string());
-    }
-
-    // Support RAW formats and resizing
-    let img = if is_raw {
-        if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
-            image::load_from_memory(&bytes)
-                .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+        // Support RAW formats and resizing
+        let img = if is_raw {
+            if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(Path::new(&path_clone)) {
+                image::load_from_memory(&bytes)
+                    .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+            } else {
+                return Err("Failed to extract preview from RAW file".into());
+            }
         } else {
-            return Err("Failed to extract preview from RAW file".into());
-        }
-    } else {
-        image::open(file_path).map_err(|e| format!("Failed to open: {}", e))?
-    };
+            image::open(Path::new(&path_clone)).map_err(|e| format!("Failed to open: {}", e))?
+        };
 
-    let img = if let Some(max) = max_size {
-        let (w, h) = image::GenericImageView::dimensions(&img);
-        if w > max || h > max {
-            img.resize(max, max, FilterType::Triangle)
+        let img = if let Some(max) = max_size {
+            let (w, h) = image::GenericImageView::dimensions(&img);
+            if w > max || h > max {
+                img.resize(max, max, FilterType::Triangle)
+            } else {
+                img
+            }
         } else {
             img
-        }
-    } else {
-        img
-    };
+        };
 
-    img.save_with_format(&preview_file, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to save preview: {}", e))?;
+        img.save_with_format(&preview_file, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save preview: {}", e))?;
 
-    Ok(preview_file.to_string_lossy().to_string())
+        Ok(preview_file.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Clear thumbnail cache
 #[tauri::command]
 pub fn clear_thumbnail_cache() -> Result<u32, String> {
+    THUMBNAIL_PATH_CACHE.write().clear();
+
     let cache_dir = dirs::home_dir()
         .unwrap_or_default()
         .join(".wiphoto")
