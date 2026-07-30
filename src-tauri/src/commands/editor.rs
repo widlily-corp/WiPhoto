@@ -131,10 +131,16 @@ pub async fn save_edited(
                 .join(", ");
             let entry = format!("Applied edits: {}", history_desc);
 
-            let (rating, label, flag, tags) = match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
-                Ok(Some(existing)) => (existing.rating, existing.color_label, existing.flag_status, existing.tags),
-                _ => (0, String::new(), String::new(), vec![]),
-            };
+            let (rating, label, flag, tags) =
+                match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
+                    Ok(Some(existing)) => (
+                        existing.rating,
+                        existing.color_label,
+                        existing.flag_status,
+                        existing.tags,
+                    ),
+                    _ => (0, String::new(), String::new(), vec![]),
+                };
 
             let _ = crate::commands::xmp::write_xmp_sidecar(
                 path.clone(),
@@ -636,7 +642,10 @@ pub async fn save_cropped_edited_image(
         // Sync XMP sidecar when crop/edits are saved
         let mut ops_desc = Vec::new();
         if let Some(ref rect) = crop_rect {
-            ops_desc.push(format!("crop: {}x{} at ({},{})", rect.width, rect.height, rect.x, rect.y));
+            ops_desc.push(format!(
+                "crop: {}x{} at ({},{})",
+                rect.width, rect.height, rect.x, rect.y
+            ));
         }
         for op in &operations {
             ops_desc.push(format!("{}: {}", op.tool, op.value));
@@ -644,10 +653,16 @@ pub async fn save_cropped_edited_image(
 
         if !ops_desc.is_empty() {
             let entry = format!("Applied edits: {}", ops_desc.join(", "));
-            let (rating, label, flag, tags) = match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
-                Ok(Some(existing)) => (existing.rating, existing.color_label, existing.flag_status, existing.tags),
-                _ => (0, String::new(), String::new(), vec![]),
-            };
+            let (rating, label, flag, tags) =
+                match crate::commands::xmp::read_xmp_sidecar(path.clone()) {
+                    Ok(Some(existing)) => (
+                        existing.rating,
+                        existing.color_label,
+                        existing.flag_status,
+                        existing.tags,
+                    ),
+                    _ => (0, String::new(), String::new(), vec![]),
+                };
 
             let _ = crate::commands::xmp::write_xmp_sidecar(
                 path.clone(),

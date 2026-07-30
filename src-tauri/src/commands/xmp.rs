@@ -27,7 +27,6 @@ pub fn sync_xmp_sidecar(image_path: String, metadata: XmpMetadata) -> Result<(),
     )
 }
 
-
 /// Write XMP sidecar for an image
 #[tauri::command]
 pub fn write_xmp_sidecar(
@@ -148,7 +147,10 @@ pub fn parse_xmp_content(content: &str) -> Option<XmpData> {
             }
         }
         if data.flag_status.is_empty() {
-            if let Some(f_node) = desc_node.descendants().find(|n| n.has_tag_name("FlagStatus")) {
+            if let Some(f_node) = desc_node
+                .descendants()
+                .find(|n| n.has_tag_name("FlagStatus"))
+            {
                 if let Some(txt) = f_node.text() {
                     data.flag_status = txt.trim().to_string();
                 }
@@ -288,7 +290,10 @@ mod tests {
     fn test_write_and_read_xmp_sidecar_creation_and_update() {
         // Arrange
         let temp_dir = std::env::temp_dir();
-        let img_path = temp_dir.join("test_xmp_sync_sample.jpg").to_string_lossy().to_string();
+        let img_path = temp_dir
+            .join("test_xmp_sync_sample.jpg")
+            .to_string_lossy()
+            .to_string();
         let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
 
         // Clean up previous test runs if any
@@ -308,7 +313,9 @@ mod tests {
         assert!(create_res.is_ok());
         assert!(sidecar_path.exists());
 
-        let read_1 = read_xmp_sidecar(img_path.clone()).expect("Read failed").expect("Should exist");
+        let read_1 = read_xmp_sidecar(img_path.clone())
+            .expect("Read failed")
+            .expect("Should exist");
         assert_eq!(read_1.rating, 5);
         assert_eq!(read_1.color_label, "green");
         assert_eq!(read_1.flag_status, "picked");
@@ -327,7 +334,9 @@ mod tests {
 
         // Assert 2
         assert!(update_res.is_ok());
-        let read_2 = read_xmp_sidecar(img_path.clone()).expect("Read failed").expect("Should exist");
+        let read_2 = read_xmp_sidecar(img_path.clone())
+            .expect("Read failed")
+            .expect("Should exist");
         assert_eq!(read_2.rating, 4);
         assert_eq!(read_2.color_label, "yellow");
         assert_eq!(read_2.flag_status, "picked");
@@ -344,7 +353,10 @@ mod tests {
     #[test]
     fn test_sync_xmp_sidecar() {
         let temp_dir = std::env::temp_dir();
-        let img_path = temp_dir.join("test_sync_xmp_contract.jpg").to_string_lossy().to_string();
+        let img_path = temp_dir
+            .join("test_sync_xmp_contract.jpg")
+            .to_string_lossy()
+            .to_string();
         let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
 
         let _ = fs::remove_file(&sidecar_path);
@@ -369,5 +381,3 @@ mod tests {
         let _ = fs::remove_file(&sidecar_path);
     }
 }
-
-

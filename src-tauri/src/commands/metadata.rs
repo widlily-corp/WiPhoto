@@ -289,5 +289,3 @@ mod tests {
         assert_eq!(g.rating, 5);
     }
 }
-
-

@@ -250,4 +250,3 @@ mod tests {
         assert_eq!(decoded, "C:/photos/my test image.jpg");
     }
 }
-

@@ -87,7 +87,10 @@ fn test_tier3_cross_feature_combinations_rust() {
     assert!(init_res.is_ok());
 
     // Create test image data with EXIF GPS and XMP tags
-    let img_path = format!("{}/temp_test_image.jpg", std::env::temp_dir().to_string_lossy());
+    let img_path = format!(
+        "{}/temp_test_image.jpg",
+        std::env::temp_dir().to_string_lossy()
+    );
     let info = ImageInfo {
         path: img_path.clone(),
         filename: "temp_test_image.jpg".into(),
@@ -195,15 +198,22 @@ fn test_ota_updater_configuration_and_plugin_registration() {
 
     // Assert: Verify plugins.updater is configured in tauri.conf.json
     let updater_conf = &conf_val["plugins"]["updater"];
-    assert!(updater_conf.is_object(), "plugins.updater object must exist");
+    assert!(
+        updater_conf.is_object(),
+        "plugins.updater object must exist"
+    );
 
-    let endpoints = updater_conf["endpoints"].as_array().expect("Endpoints array must exist");
+    let endpoints = updater_conf["endpoints"]
+        .as_array()
+        .expect("Endpoints array must exist");
     assert!(!endpoints.is_empty(), "Updater endpoints must not be empty");
     assert!(
         endpoints[0].as_str().unwrap_or("").contains("github.com"),
         "Updater endpoint should target GitHub Releases"
     );
 
-    let pubkey = updater_conf["pubkey"].as_str().expect("Pubkey must be configured");
+    let pubkey = updater_conf["pubkey"]
+        .as_str()
+        .expect("Pubkey must be configured");
     assert!(!pubkey.is_empty(), "Updater pubkey must not be empty");
 }

@@ -207,4 +207,3 @@ mod tests {
         assert_eq!(url, "tauri://localhost/C:/photos/test.jpg");
     }
 }
-

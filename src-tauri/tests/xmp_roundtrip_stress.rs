@@ -5,7 +5,10 @@ use wiphoto_lib::commands::xmp;
 fn test_xmp_1000_sequential_roundtrip_updates() {
     // Arrange: Create temp image path
     let temp_dir = std::env::temp_dir();
-    let img_path = temp_dir.join("wiphoto_stress_1000_roundtrip.jpg").to_string_lossy().to_string();
+    let img_path = temp_dir
+        .join("wiphoto_stress_1000_roundtrip.jpg")
+        .to_string_lossy()
+        .to_string();
     let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
 
     let _ = fs::remove_file(&sidecar_path);
@@ -18,7 +21,8 @@ fn test_xmp_1000_sequential_roundtrip_updates() {
             1 => "green",
             2 => "blue",
             _ => "yellow",
-        }.to_string();
+        }
+        .to_string();
         let status = if i % 2 == 0 { "picked" } else { "rejected" }.to_string();
         let tags = vec![format!("Tag_{}", i), format!("Batch_{}", i / 100)];
         let history_msg = format!("Edit iteration #{}", i);
@@ -37,12 +41,34 @@ fn test_xmp_1000_sequential_roundtrip_updates() {
             .expect("Read returned Result::Err")
             .expect("Read returned None for existing sidecar");
 
-        assert_eq!(read_data.rating, rating, "Rating mismatch at iteration {}", i);
-        assert_eq!(read_data.color_label, label, "Color label mismatch at iteration {}", i);
-        assert_eq!(read_data.flag_status, status, "Flag status mismatch at iteration {}", i);
+        assert_eq!(
+            read_data.rating, rating,
+            "Rating mismatch at iteration {}",
+            i
+        );
+        assert_eq!(
+            read_data.color_label, label,
+            "Color label mismatch at iteration {}",
+            i
+        );
+        assert_eq!(
+            read_data.flag_status, status,
+            "Flag status mismatch at iteration {}",
+            i
+        );
         assert_eq!(read_data.tags, tags, "Tags mismatch at iteration {}", i);
-        assert_eq!(read_data.history.len(), i, "History length mismatch at iteration {}", i);
-        assert_eq!(read_data.history[i - 1], history_msg, "Latest history entry mismatch at iteration {}", i);
+        assert_eq!(
+            read_data.history.len(),
+            i,
+            "History length mismatch at iteration {}",
+            i
+        );
+        assert_eq!(
+            read_data.history[i - 1],
+            history_msg,
+            "Latest history entry mismatch at iteration {}",
+            i
+        );
     }
 
     // Clean up
@@ -52,7 +78,10 @@ fn test_xmp_1000_sequential_roundtrip_updates() {
 #[test]
 fn test_xmp_special_characters_and_unicode_escaping() {
     let temp_dir = std::env::temp_dir();
-    let img_path = temp_dir.join("wiphoto_stress_unicode.jpg").to_string_lossy().to_string();
+    let img_path = temp_dir
+        .join("wiphoto_stress_unicode.jpg")
+        .to_string_lossy()
+        .to_string();
     let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
 
     let _ = fs::remove_file(&sidecar_path);
@@ -80,7 +109,10 @@ fn test_xmp_special_characters_and_unicode_escaping() {
         complex_tags.clone(),
         Some(complex_history.to_string()),
     );
-    assert!(write_res.is_ok(), "Failed to write XMP with complex unicode characters");
+    assert!(
+        write_res.is_ok(),
+        "Failed to write XMP with complex unicode characters"
+    );
 
     // Act: Read sidecar back
     let read_data = xmp::read_xmp_sidecar(img_path.clone())
@@ -101,13 +133,18 @@ fn test_xmp_special_characters_and_unicode_escaping() {
 #[test]
 fn test_xmp_large_payload_and_malformed_xml_handling() {
     let temp_dir = std::env::temp_dir();
-    let img_path = temp_dir.join("wiphoto_stress_large.jpg").to_string_lossy().to_string();
+    let img_path = temp_dir
+        .join("wiphoto_stress_large.jpg")
+        .to_string_lossy()
+        .to_string();
     let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
 
     let _ = fs::remove_file(&sidecar_path);
 
     // 1. Write 500 tags
-    let large_tags: Vec<String> = (0..500).map(|i| format!("Tag_Category_{}_Value", i)).collect();
+    let large_tags: Vec<String> = (0..500)
+        .map(|i| format!("Tag_Category_{}_Value", i))
+        .collect();
     let write_res = xmp::write_xmp_sidecar(
         img_path.clone(),
         3,

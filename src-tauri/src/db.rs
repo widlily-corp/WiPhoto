@@ -10,7 +10,11 @@ fn get_db_path() -> PathBuf {
             .chars()
             .filter(|c| c.is_alphanumeric())
             .collect::<String>();
-        let temp_file = std::env::temp_dir().join(format!("wiphoto_test_{}_{}.db", std::process::id(), thread_id));
+        let temp_file = std::env::temp_dir().join(format!(
+            "wiphoto_test_{}_{}.db",
+            std::process::id(),
+            thread_id
+        ));
         return temp_file;
     }
     let dir = dirs::home_dir().unwrap_or_default().join(".wiphoto");
@@ -61,7 +65,10 @@ pub fn init_db() -> Result<()> {
         )",
         [],
     )?;
-    let _ = conn.execute("ALTER TABLE images ADD COLUMN modified_time INTEGER DEFAULT 0", []);
+    let _ = conn.execute(
+        "ALTER TABLE images ADD COLUMN modified_time INTEGER DEFAULT 0",
+        [],
+    );
     let _ = conn.execute("ALTER TABLE images ADD COLUMN embedding TEXT", []);
     Ok(())
 }
@@ -307,7 +314,8 @@ pub fn get_images_by_paths(paths: &[String]) -> Result<Vec<ImageInfo>> {
             faces_count, animals_count, gps_latitude, gps_longitude, aspect_ratio,
             camera_model, date_taken, rating, file_size, width, height,
             animal_species, color_label, flag_status, tags, is_video, is_raw
-        FROM images".to_string();
+        FROM images"
+            .to_string();
 
         let mut stmt = conn.prepare(&query)?;
         let rows = stmt.query_map([], |row| {

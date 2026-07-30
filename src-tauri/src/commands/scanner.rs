@@ -169,7 +169,8 @@ fn generate_video_placeholder(_path: &Path, cache_dir: &Path, hash: &str) -> Opt
         }
     }
     let _ = fs::create_dir_all(cache_dir);
-    let _ = image::DynamicImage::ImageRgba8(img).save_with_format(&cache_file, image::ImageFormat::Jpeg);
+    let _ = image::DynamicImage::ImageRgba8(img)
+        .save_with_format(&cache_file, image::ImageFormat::Jpeg);
     Some(cache_file.to_string_lossy().to_string())
 }
 

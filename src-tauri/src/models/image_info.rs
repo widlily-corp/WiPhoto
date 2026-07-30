@@ -170,7 +170,6 @@ pub struct XmpData {
 /// Alias for XMP sidecar metadata matching PROJECT.md contract
 pub type XmpMetadata = XmpData;
 
-
 /// Check if a file extension is supported
 pub fn is_supported_extension(ext: &str) -> bool {
     let ext_lower = ext.to_lowercase();
