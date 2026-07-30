@@ -4,9 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WiPhoto</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles/variables.css" />
   <link rel="stylesheet" href="styles/main.css" />
   <link rel="stylesheet" href="styles/components.css" />
@@ -15,6 +12,8 @@
   <link rel="stylesheet" href="styles/editor.css" />
   <link rel="stylesheet" href="styles/crop.css" />
   <link rel="stylesheet" href="styles/commandpalette.css" />
+  <link rel="stylesheet" href="lib/leaflet.css" />
+  <link rel="stylesheet" href="styles/map.css" />
 </head>
 <body>
   <!-- ═══════ WELCOME SCREEN ═══════ -->
@@ -689,6 +688,29 @@
     </div>
   </div>
 
+  <!-- OTA Updater Modal -->
+  <div id="modal-updater" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-updater">
+      <div class="modal-header">
+        <h2>Доступно обновление WiPhoto</h2>
+        <button class="modal-close" data-close="modal-updater">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="updater-info">
+          <span class="updater-version-tag" id="updater-version-tag">Новая версия: v5.1.0</span>
+          <div class="updater-notes-label">Список изменений:</div>
+          <div id="updater-release-notes" class="updater-release-notes"></div>
+        </div>
+        <div id="updater-status-message" class="progress-text hidden"></div>
+        <div class="setting-actions">
+          <button class="btn btn-secondary" id="btn-updater-postpone">Отложить</button>
+          <button class="btn btn-primary" id="btn-updater-install">Обновить сейчас</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Slideshow -->
   <div id="slideshow-overlay" class="slideshow-overlay hidden">
     <img id="slideshow-image" src="" alt="Slideshow" />
@@ -762,7 +784,11 @@
   <script src="js/settings.js"></script>
   <script src="js/shortcuts.js"></script>
   <script src="js/timeline.js"></script>
+  <script src="lib/leaflet.js"></script>
+  <script src="lib/supercluster.min.js"></script>
+  <script src="js/map.js"></script>
   <script src="js/slideshow.js"></script>
+  <script src="js/updater.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

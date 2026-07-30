@@ -208,98 +208,12 @@ const App = (() => {
     Settings.showDuplicateFinder();
   }
 
-  // Dynamic script loader for Leaflet
-  function loadLeaflet() {
-    return new Promise((resolve, reject) => {
-      if (leafletLoaded) {
-        resolve();
-        return;
-      }
-
-      // Link Leaflet CSS
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-
-      // Script Leaflet JS
-      const script = document.createElement('script');
-      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-      script.onload = () => {
-        leafletLoaded = true;
-        resolve();
-      };
-      script.onerror = () => reject(new Error('Не удалось загрузить Leaflet Map API с CDN unpkg'));
-      document.head.appendChild(script);
-    });
-  }
-
-  // Render Leaflet Map
-  async function renderMap() {
+  // Render Leaflet Map with Supercluster offline
+  function renderMap() {
     try {
-      await loadLeaflet();
-      
-      const mapContainer = document.getElementById('map-container');
-      if (!mapContainer) return;
-
-      // Initialize map instance if not already initialized
-      if (!mapInstance) {
-        mapInstance = L.map('map-container').setView([55.7558, 37.6173], 4); // Centered on Moscow as default
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(mapInstance);
+      if (typeof WiPhotoMap !== 'undefined') {
+        WiPhotoMap.render(Gallery.getFilteredImages());
       }
-
-      // Clear existing markers
-      mapMarkers.forEach(m => mapInstance.removeLayer(m));
-      mapMarkers = [];
-
-      const images = Gallery.getFilteredImages();
-      const bounds = [];
-
-      images.forEach(img => {
-        if (img.gps_location && img.gps_location.length === 2) {
-          const [lat, lon] = img.gps_location;
-          bounds.push([lat, lon]);
-
-          const thumbSrc = img.thumbnail ? Utils.assetUrl(img.thumbnail) : '';
-
-          // Create marker
-          const marker = L.marker([lat, lon]).addTo(mapInstance);
-          
-          // Bind popup showing file preview
-          const popupContent = `
-            <div style="text-align: center; font-family: var(--font-family); font-size: 11px;">
-              <img src="${thumbSrc}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 4px; display: block; margin: 0 auto 6px; border: 1px solid var(--border-subtle); cursor: pointer;" onclick="App.openPopupImage('${img.path}')" />
-              <div style="font-weight: 500; color: #fff; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${img.filename}</div>
-              <div style="color: var(--text-muted); margin-top: 2px;">${lat.toFixed(4)}, ${lon.toFixed(4)}</div>
-            </div>
-          `;
-          
-          marker.bindPopup(popupContent, {
-            className: 'wiphoto-map-popup'
-          });
-
-          // Open preview in sidebar on marker click
-          marker.on('click', () => {
-            Sidebar.showPreview(img);
-          });
-
-          mapMarkers.push(marker);
-        }
-      });
-
-      // Fit map bounds to show all markers if any exist
-      if (bounds.length > 0) {
-        mapInstance.fitBounds(bounds, { padding: [40, 40] });
-      }
-
-      // Invalidate map size so it renders correctly inside the layout container
-      setTimeout(() => {
-        mapInstance.invalidateSize();
-      }, 200);
-
     } catch (err) {
       Utils.toast(`Ошибка инициализации карты: ${err.message}`, 'error');
     }
@@ -307,10 +221,14 @@ const App = (() => {
 
   // Helper function globally accessible to handle clicks on map popup images
   function openPopupImage(path) {
-    const images = Gallery.getFilteredImages();
-    const img = images.find(i => i.path === path);
-    if (img) {
-      Viewer.open(img);
+    if (typeof WiPhotoMap !== 'undefined') {
+      WiPhotoMap.openPhotoView(path);
+    } else {
+      const images = Gallery.getFilteredImages();
+      const img = images.find(i => i.path === path);
+      if (img) {
+        Viewer.open(img);
+      }
     }
   }
 

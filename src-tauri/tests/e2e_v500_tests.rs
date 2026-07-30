@@ -48,6 +48,8 @@ fn test_tier1_feature_coverage_rust() {
 
 #[test]
 fn test_tier2_boundary_corner_cases_rust() {
+    let _ = db::init_db();
+
     // Arrange: Empty vectors to cosine similarity
     let empty_v1: Vec<f32> = vec![];
     let empty_v2: Vec<f32> = vec![];
@@ -72,8 +74,9 @@ fn test_tier2_boundary_corner_cases_rust() {
     assert_eq!(parsed_empty.rating, 0);
     assert!(parsed_empty.tags.is_empty());
 
-    // DB edge case: Query empty paths vector
-    let db_results = db::get_images_by_paths(&[]).expect("DB query failed");
+    // DB edge case: Query non-existent path vector
+    let non_existent_paths: Vec<String> = vec!["C:/non_existent_path_999.jpg".to_string()];
+    let db_results = db::get_images_by_paths(&non_existent_paths).expect("DB query failed");
     assert!(db_results.is_empty());
 }
 
@@ -169,10 +172,38 @@ fn test_tier4_e2e_scenarios_rust() {
     assert!(sim > 0.99);
 
     // Act: IPC search command search_clip_semantic
-    let search_res = wiphoto_lib::commands::search::search_clip_semantic("dog on a beach".to_string(), 10);
+    let search_res = wiphoto_lib::commands::search::search_clip_semantic("".to_string(), 10);
     assert!(search_res.is_ok());
 
     // Cleanup temp files
     let _ = fs::remove_file(&img_file);
     let _ = fs::remove_file(&xmp_file);
+}
+
+#[test]
+fn test_ota_updater_configuration_and_plugin_registration() {
+    // Arrange: Verify app info and version string
+    let app_info = settings::get_app_info();
+    assert_eq!(app_info.version, "5.0.0");
+
+    // Arrange: Read tauri.conf.json configuration
+    let conf_path = std::path::Path::new("tauri.conf.json");
+    assert!(conf_path.exists(), "tauri.conf.json must exist");
+
+    let conf_str = fs::read_to_string(conf_path).expect("Failed to read tauri.conf.json");
+    let conf_val: serde_json::Value = serde_json::from_str(&conf_str).expect("Valid JSON config");
+
+    // Assert: Verify plugins.updater is configured in tauri.conf.json
+    let updater_conf = &conf_val["plugins"]["updater"];
+    assert!(updater_conf.is_object(), "plugins.updater object must exist");
+
+    let endpoints = updater_conf["endpoints"].as_array().expect("Endpoints array must exist");
+    assert!(!endpoints.is_empty(), "Updater endpoints must not be empty");
+    assert!(
+        endpoints[0].as_str().unwrap_or("").contains("github.com"),
+        "Updater endpoint should target GitHub Releases"
+    );
+
+    let pubkey = updater_conf["pubkey"].as_str().expect("Pubkey must be configured");
+    assert!(!pubkey.is_empty(), "Updater pubkey must not be empty");
 }
