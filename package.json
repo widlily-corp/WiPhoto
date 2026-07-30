@@ -1,12 +1,12 @@
 {
   "name": "wiphoto-tauri",
   "private": true,
-  "version": "4.2.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "tauri": "tauri",
     "build": "echo 'No frontend build step needed'",
-    "test": "node --test src/js/utils.test.cjs"
+    "test": "node --test src/js/*.test.cjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

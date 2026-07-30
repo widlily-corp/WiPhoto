@@ -1,5 +1,4 @@
 use crate::models::image_info::{self, ImageInfo, RAW_EXTENSIONS, VIDEO_EXTENSIONS};
-use base64::{engine::general_purpose::STANDARD, Engine};
 use image::imageops::FilterType;
 use rayon::prelude::*;
 use std::fs;
@@ -47,7 +46,7 @@ fn collect_files(root: &str, recursive: bool) -> Vec<PathBuf> {
     files
 }
 
-/// Generate a thumbnail as base64 string
+/// Generate a thumbnail file path (Zero-Copy)
 fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     // Create cache key from path hash
     let hash = sha2_hash(path.to_string_lossy().as_ref());
@@ -55,16 +54,14 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
 
     // Check cache first
     if cache_file.exists() {
-        if let Ok(bytes) = fs::read(&cache_file) {
-            return Some(STANDARD.encode(&bytes));
-        }
+        return Some(cache_file.to_string_lossy().to_string());
     }
 
     let ext = path.extension()?.to_string_lossy().to_lowercase();
 
     // For videos, generate a placeholder thumbnail
     if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-        return Some(generate_video_placeholder(path));
+        return generate_video_placeholder(path, cache_dir, &hash);
     }
 
     // Try to load the image
@@ -94,11 +91,7 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     let _ = fs::create_dir_all(cache_dir);
     let _ = thumb.save_with_format(&cache_file, image::ImageFormat::Jpeg);
 
-    // Encode to base64
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
-    thumb.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
-    Some(STANDARD.encode(&buf))
+    Some(cache_file.to_string_lossy().to_string())
 }
 
 /// Try to load RAW thumbnail from embedded JPEG
@@ -146,7 +139,12 @@ fn load_raw_thumbnail(path: &Path) -> Option<image::DynamicImage> {
     image::open(path).ok()
 }
 
-fn generate_video_placeholder(_path: &Path) -> String {
+fn generate_video_placeholder(_path: &Path, cache_dir: &Path, hash: &str) -> Option<String> {
+    let cache_file = cache_dir.join(format!("vid_{}.jpg", hash));
+    if cache_file.exists() {
+        return Some(cache_file.to_string_lossy().to_string());
+    }
+
     // Create a simple dark thumbnail with play icon for videos
     let mut img = image::RgbaImage::new(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
     // Fill with dark grey
@@ -170,10 +168,9 @@ fn generate_video_placeholder(_path: &Path) -> String {
             }
         }
     }
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
-    let _ = image::DynamicImage::ImageRgba8(img).write_to(&mut cursor, image::ImageFormat::Jpeg);
-    STANDARD.encode(&buf)
+    let _ = fs::create_dir_all(cache_dir);
+    let _ = image::DynamicImage::ImageRgba8(img).save_with_format(&cache_file, image::ImageFormat::Jpeg);
+    Some(cache_file.to_string_lossy().to_string())
 }
 
 fn sha2_hash(input: &str) -> String {

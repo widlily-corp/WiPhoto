@@ -359,3 +359,94 @@ fn get_russian_label(class_id: usize) -> &'static str {
         _ => "Объект",
     }
 }
+
+/// Compute cosine similarity between two feature vectors
+pub fn cosine_similarity(v1: &[f32], v2: &[f32]) -> f32 {
+    if v1.len() != v2.len() || v1.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0f32;
+    let mut norm1 = 0.0f32;
+    let mut norm2 = 0.0f32;
+    for (a, b) in v1.iter().zip(v2.iter()) {
+        dot += a * b;
+        norm1 += a * a;
+        norm2 += b * b;
+    }
+    if norm1 <= 0.0 || norm2 <= 0.0 {
+        0.0
+    } else {
+        dot / (norm1.sqrt() * norm2.sqrt())
+    }
+}
+
+/// Normalize a vector in-place (L2 norm)
+pub fn normalize_vector(v: &mut [f32]) {
+    let sum_sq: f32 = v.iter().map(|x| x * x).sum();
+    if sum_sq > 0.0 {
+        let norm = sum_sq.sqrt();
+        for val in v.iter_mut() {
+            *val /= norm;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iou_calculation() {
+        // Arrange
+        let box1 = [0.0, 0.0, 10.0, 10.0];
+        let box2 = [5.0, 5.0, 15.0, 15.0];
+        let box_disjoint = [20.0, 20.0, 30.0, 30.0];
+
+        // Act
+        let iou_overlap = iou(&box1, &box2);
+        let iou_none = iou(&box1, &box_disjoint);
+
+        // Assert
+        assert!(iou_overlap > 0.14 && iou_overlap < 0.15);
+        assert_eq!(iou_none, 0.0);
+    }
+
+    #[test]
+    fn test_nms_suppression() {
+        // Arrange
+        let det1 = Detection { class_id: 0, score: 0.9, bbox: [0.0, 0.0, 10.0, 10.0] };
+        let det2 = Detection { class_id: 0, score: 0.8, bbox: [1.0, 1.0, 10.0, 10.0] };
+        let det3 = Detection { class_id: 0, score: 0.7, bbox: [50.0, 50.0, 60.0, 60.0] };
+
+        // Act
+        let kept = nms(vec![det1, det2, det3], 0.45);
+
+        // Assert
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].score, 0.9);
+        assert_eq!(kept[1].score, 0.7);
+    }
+
+    #[test]
+    fn test_cosine_similarity_and_normalization() {
+        // Arrange
+        let mut v1 = vec![3.0, 4.0];
+        let mut v2 = vec![6.0, 8.0];
+        let mut v3 = vec![-3.0, 4.0];
+
+        // Act
+        let sim_parallel = cosine_similarity(&v1, &v2);
+        normalize_vector(&mut v1);
+        normalize_vector(&mut v2);
+        normalize_vector(&mut v3);
+        let sim_normalized = cosine_similarity(&v1, &v2);
+        let sim_orthogonal = cosine_similarity(&v1, &v3);
+
+        // Assert
+        assert!((sim_parallel - 1.0).abs() < 1e-5);
+        assert!((sim_normalized - 1.0).abs() < 1e-5);
+        assert!((sim_orthogonal - 0.28).abs() < 1e-2);
+        assert!((v1[0] * v1[0] + v1[1] * v1[1] - 1.0).abs() < 1e-5);
+    }
+}
+

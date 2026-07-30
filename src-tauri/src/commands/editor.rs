@@ -1,9 +1,9 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
 use image::{DynamicImage, GenericImageView};
 use rayon::prelude::*;
+use std::fs;
 use std::path::Path;
 
-/// Apply an edit operation to an image and return base64 result
+/// Apply an edit operation to an image and return preview file path (Zero-Copy)
 #[tauri::command]
 pub async fn apply_edit(
     path: String,
@@ -31,12 +31,29 @@ pub async fn apply_edit(
             img = apply_single_edit(img, op);
         }
 
-        // Encode result
-        let mut buf = Vec::new();
-        let mut cursor = std::io::Cursor::new(&mut buf);
-        img.write_to(&mut cursor, image::ImageFormat::Jpeg)
-            .map_err(|e| format!("Failed to encode: {}", e))?;
-        Ok::<String, String>(STANDARD.encode(&buf))
+        let cache_dir = dirs::home_dir()
+            .unwrap_or_default()
+            .join(".wiphoto")
+            .join("cache")
+            .join("previews");
+        let _ = fs::create_dir_all(&cache_dir);
+
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(path.as_bytes());
+            hasher.update(format!("{:?}", operations).as_bytes());
+            if let Some(m) = max_preview_size {
+                hasher.update(m.to_string().as_bytes());
+            }
+            hex::encode(hasher.finalize())
+        };
+        let preview_file = cache_dir.join(format!("edit_{}.jpg", hash));
+
+        img.save_with_format(&preview_file, image::ImageFormat::Jpeg)
+            .map_err(|e| format!("Failed to save preview: {}", e))?;
+
+        Ok::<String, String>(preview_file.to_string_lossy().to_string())
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
@@ -378,7 +395,7 @@ fn rotate_image(img: DynamicImage, degrees: f64) -> DynamicImage {
     }
 }
 
-/// Crop an image
+/// Crop an image and return preview file path (Zero-Copy)
 #[tauri::command]
 pub fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Result<String, String> {
     log::info!(
@@ -392,12 +409,27 @@ pub fn crop_image(path: String, x: u32, y: u32, width: u32, height: u32) -> Resu
     let mut img = image::open(&path).map_err(|e| format!("Failed to open: {}", e))?;
     let cropped = img.crop(x, y, width, height);
 
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
+    let cache_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".wiphoto")
+        .join("cache")
+        .join("previews");
+    let _ = fs::create_dir_all(&cache_dir);
+
+    let hash = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(path.as_bytes());
+        hasher.update(format!("crop_{}_{}_{}_{}", x, y, width, height).as_bytes());
+        hex::encode(hasher.finalize())
+    };
+    let preview_file = cache_dir.join(format!("crop_{}.jpg", hash));
+
     cropped
-        .write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to encode: {}", e))?;
-    Ok(STANDARD.encode(&buf))
+        .save_with_format(&preview_file, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save cropped preview: {}", e))?;
+
+    Ok(preview_file.to_string_lossy().to_string())
 }
 
 /// Get image histogram data

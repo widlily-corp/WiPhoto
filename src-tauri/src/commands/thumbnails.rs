@@ -1,12 +1,11 @@
 use crate::models::image_info::RAW_EXTENSIONS;
-use base64::{engine::general_purpose::STANDARD, Engine};
 use image::imageops::FilterType;
 use std::fs;
 use std::path::Path;
 
 const THUMBNAIL_SIZE: u32 = 256;
 
-/// Generate or retrieve cached thumbnail as base64
+/// Retrieve cached thumbnail file path (Zero-Copy)
 #[tauri::command]
 pub fn get_thumbnail(path: String) -> Result<String, String> {
     let file_path = Path::new(&path);
@@ -30,9 +29,7 @@ pub fn get_thumbnail(path: String) -> Result<String, String> {
     let cache_file = cache_dir.join(format!("{}.jpg", hash));
 
     if cache_file.exists() {
-        if let Ok(bytes) = fs::read(&cache_file) {
-            return Ok(STANDARD.encode(&bytes));
-        }
+        return Ok(cache_file.to_string_lossy().to_string());
     }
 
     // Support RAW formats
@@ -54,17 +51,14 @@ pub fn get_thumbnail(path: String) -> Result<String, String> {
     // Resize using fast Triangle filter
     let thumb = img.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, FilterType::Triangle);
 
-    let _ = thumb.save_with_format(&cache_file, image::ImageFormat::Jpeg);
-
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
     thumb
-        .write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to encode: {}", e))?;
-    Ok(STANDARD.encode(&buf))
+        .save_with_format(&cache_file, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+    Ok(cache_file.to_string_lossy().to_string())
 }
 
-/// Load full-resolution image as base64 (for preview/editor)
+/// Load full-resolution image file path (Zero-Copy, with preview cache for RAW/resized)
 #[tauri::command]
 pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, String> {
     let file_path = Path::new(&path);
@@ -72,12 +66,42 @@ pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, St
         return Err("File not found".into());
     }
 
-    // Support RAW formats
     let ext = file_path
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+
+    let is_raw = RAW_EXTENSIONS.contains(&ext.as_str());
+
+    // If standard image and no max_size resize requested, return original file path directly
+    if !is_raw && max_size.is_none() {
+        return Ok(path);
+    }
+
+    let cache_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".wiphoto")
+        .join("cache")
+        .join("previews");
+    let _ = fs::create_dir_all(&cache_dir);
+
+    let hash = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(path.as_bytes());
+        if let Some(max) = max_size {
+            hasher.update(max.to_string().as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    };
+    let preview_file = cache_dir.join(format!("{}.jpg", hash));
+
+    if preview_file.exists() {
+        return Ok(preview_file.to_string_lossy().to_string());
+    }
+
+    // Support RAW formats and resizing
+    let img = if is_raw {
         if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
             image::load_from_memory(&bytes)
                 .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
@@ -99,11 +123,10 @@ pub fn load_full_image(path: String, max_size: Option<u32>) -> Result<String, St
         img
     };
 
-    let mut buf = Vec::new();
-    let mut cursor = std::io::Cursor::new(&mut buf);
-    img.write_to(&mut cursor, image::ImageFormat::Jpeg)
-        .map_err(|e| format!("Failed to encode: {}", e))?;
-    Ok(STANDARD.encode(&buf))
+    img.save_with_format(&preview_file, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save preview: {}", e))?;
+
+    Ok(preview_file.to_string_lossy().to_string())
 }
 
 /// Clear thumbnail cache
