@@ -24,7 +24,6 @@ fn get_db_path() -> PathBuf {
 
 use once_cell::sync::Lazy;
 
-
 #[cfg(not(test))]
 use r2d2::Pool;
 #[cfg(not(test))]
@@ -77,7 +76,9 @@ where
             let conn = open_conn_raw()?;
             map.insert(tid, conn);
         }
-        let conn = map.get_mut(&tid).ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
+        let conn = map
+            .get_mut(&tid)
+            .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)?;
         f(conn)
     }
     #[cfg(not(test))]
@@ -564,9 +565,10 @@ pub fn save_images_batch(images: &[(&ImageInfo, u64)]) -> Result<()> {
             for (info, mtime) in images {
                 let gps_lat = info.gps_location.map(|g| g.0);
                 let gps_lon = info.gps_location.map(|g| g.1);
-                let animal_species_str =
-                    serde_json::to_string(&info.animal_species).unwrap_or_else(|_| "[]".to_string());
-                let tags_str = serde_json::to_string(&info.tags).unwrap_or_else(|_| "[]".to_string());
+                let animal_species_str = serde_json::to_string(&info.animal_species)
+                    .unwrap_or_else(|_| "[]".to_string());
+                let tags_str =
+                    serde_json::to_string(&info.tags).unwrap_or_else(|_| "[]".to_string());
 
                 stmt.execute(params![
                     info.path,
@@ -622,4 +624,3 @@ pub fn delete_images_batch(paths: &[String]) -> Result<()> {
         Ok(())
     })
 }
-

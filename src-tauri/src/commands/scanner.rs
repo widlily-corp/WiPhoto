@@ -358,7 +358,9 @@ fn enqueue_background_onnx_tasks(files: Vec<PathBuf>) {
                 let path_str = file_path.to_string_lossy().to_string();
                 if model_init {
                     if let Some(analysis) = crate::onnx::analyze_image(&file_path) {
-                        if let Ok(mut infos) = crate::db::get_images_by_paths(std::slice::from_ref(&path_str)) {
+                        if let Ok(mut infos) =
+                            crate::db::get_images_by_paths(std::slice::from_ref(&path_str))
+                        {
                             if let Some(info) = infos.first_mut() {
                                 info.faces_count = analysis.faces_count;
                                 info.animals_count = analysis.animals_count;
@@ -368,7 +370,10 @@ fn enqueue_background_onnx_tasks(files: Vec<PathBuf>) {
                                         info.tags.push(tag);
                                     }
                                 }
-                                let _ = crate::db::save_images_batch(&[(info, get_modified_time(&file_path))]);
+                                let _ = crate::db::save_images_batch(&[(
+                                    info,
+                                    get_modified_time(&file_path),
+                                )]);
                             }
                         }
                     }
@@ -587,11 +592,10 @@ pub async fn scan_folder(
 /// Get file count in a directory (for preview)
 #[tauri::command]
 pub async fn count_files(path: String, recursive: bool) -> Result<u32, String> {
-    let count = tauri::async_runtime::spawn_blocking(move || {
-        collect_files(&path, recursive).len() as u32
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?;
+    let count =
+        tauri::async_runtime::spawn_blocking(move || collect_files(&path, recursive).len() as u32)
+            .await
+            .map_err(|e| format!("Task failed: {}", e))?;
     Ok(count)
 }
 

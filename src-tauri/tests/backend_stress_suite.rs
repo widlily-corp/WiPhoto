@@ -94,15 +94,26 @@ fn test_multi_threaded_folder_scan_simulation() {
         .par_iter()
         .map(|path| {
             let meta = fs::metadata(path).ok();
-            if meta.is_some() { 1 } else { 0 }
+            if meta.is_some() {
+                1
+            } else {
+                0
+            }
         })
         .sum();
 
     let duration = start.elapsed();
     assert_eq!(processed_count, 100);
-    assert!(duration.as_millis() < 50, "Rayon 100 files processing took {:?}", duration);
+    assert!(
+        duration.as_millis() < 50,
+        "Rayon 100 files processing took {:?}",
+        duration
+    );
 
-    println!("  ✓ Multi-threaded Folder Scan Simulation passed (100 files in {:?})", duration);
+    println!(
+        "  ✓ Multi-threaded Folder Scan Simulation passed (100 files in {:?})",
+        duration
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -180,7 +191,9 @@ fn test_bktree_10000_items_duplicate_query_benchmark() {
         threshold: u32,
         results: &mut Vec<usize>,
     ) {
-        if nodes.is_empty() { return; }
+        if nodes.is_empty() {
+            return;
+        }
         let node = &nodes[node_idx];
         let dist = hamming(node.hash, query_hash);
         if dist <= threshold {
@@ -203,7 +216,11 @@ fn test_bktree_10000_items_duplicate_query_benchmark() {
     for i in 0..item_count {
         let hash = (i as u64).wrapping_mul(0x9E3779B97F4A7C15);
         if tree_nodes.is_empty() {
-            tree_nodes.push(BKNode { hash, index: i, children: HashMap::new() });
+            tree_nodes.push(BKNode {
+                hash,
+                index: i,
+                children: HashMap::new(),
+            });
             continue;
         }
         let mut curr = 0;
@@ -213,7 +230,11 @@ fn test_bktree_10000_items_duplicate_query_benchmark() {
                 curr = idx;
             } else {
                 let new_idx = tree_nodes.len();
-                tree_nodes.push(BKNode { hash, index: i, children: HashMap::new() });
+                tree_nodes.push(BKNode {
+                    hash,
+                    index: i,
+                    children: HashMap::new(),
+                });
                 tree_nodes[curr].children.insert(dist, new_idx);
                 break;
             }
@@ -227,7 +248,9 @@ fn test_bktree_10000_items_duplicate_query_benchmark() {
     let mut total_matches = 0;
 
     for q in 0..query_count {
-        let query_hash = (q as u64).wrapping_mul(7919u64).wrapping_mul(0x9E3779B97F4A7C15u64);
+        let query_hash = (q as u64)
+            .wrapping_mul(7919u64)
+            .wrapping_mul(0x9E3779B97F4A7C15u64);
         let mut matches = Vec::new();
         bktree_query(&tree_nodes, 0, query_hash, 8, &mut matches);
         total_matches += matches.len();
@@ -248,4 +271,3 @@ fn test_bktree_10000_items_duplicate_query_benchmark() {
         build_duration, query_duration, avg_query_ms, total_matches
     );
 }
-

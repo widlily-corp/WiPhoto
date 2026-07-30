@@ -52,7 +52,11 @@ fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()
     let mut delay = Duration::from_millis(2);
 
     loop {
-        let tmp_path = parent.join(format!(".tmp_{}_{}.xmp", std::process::id(), uuid::Uuid::new_v4()));
+        let tmp_path = parent.join(format!(
+            ".tmp_{}_{}.xmp",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
         let res = (|| -> std::io::Result<()> {
             {
                 let mut file = fs::OpenOptions::new()
@@ -81,7 +85,6 @@ fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()
         }
     }
 }
-
 
 /// Read XMP sidecar for an image
 #[tauri::command]
@@ -185,8 +188,7 @@ pub fn write_xmp_sidecar(
         history_xml = history_xml,
     );
 
-    write_file_with_sync(&xmp_path, &xmp_content)
-        .map_err(|e| format!("Write error: {}", e))
+    write_file_with_sync(&xmp_path, &xmp_content).map_err(|e| format!("Write error: {}", e))
 }
 
 /// Parse XMP content string into XmpData using roxmltree
