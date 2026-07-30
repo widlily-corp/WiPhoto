@@ -190,15 +190,15 @@
 .modal-content {
   position: relative;
   z-index: 1;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-normal);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   max-width: 520px;
   width: 100%;
   max-height: 85vh;
   overflow-y: auto;
-  animation: modal-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  animation: modal-in var(--transition-fast) both;
 }
 
 .modal-duplicates {
@@ -651,6 +651,7 @@
   color: var(--text-muted);
 }
 .stats-val {
+  font-family: var(--font-mono);
   font-weight: 500;
   color: var(--text-primary);
   text-align: right;
@@ -658,6 +659,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .stats-sparkline-title {
   font-size: 9px;

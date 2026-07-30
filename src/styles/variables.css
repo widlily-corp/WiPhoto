@@ -1,19 +1,19 @@
-/* ═══ WiPhoto Design Tokens ═══ */
+/* ═══ WiPhoto Design Tokens — Refined Minimal (Linear/Stripe style) ═══ */
 :root {
   /* ─── Core Colors ─── */
   --bg-primary: #08090A;
-  --bg-secondary: #060708;
-  --bg-tertiary: #101114;
-  --bg-elevated: #14161B;
-  --bg-hover: #191B21;
-  --bg-active: #22252D;
+  --bg-secondary: #0C0D0E;
+  --bg-tertiary: #121417;
+  --bg-elevated: #16181D;
+  --bg-hover: #1E2026;
+  --bg-active: #282B34;
 
   /* ─── Accent ─── */
   --accent-primary: #5E6AD2;
   --accent-hover: #7176E0;
   --accent-soft: rgba(94, 106, 210, 0.12);
   --accent-glow: rgba(94, 106, 210, 0.25);
-  --accent-gradient: linear-gradient(135deg, #5E6AD2, #7176E0, #9c9ffd);
+  --accent-gradient: linear-gradient(135deg, #5E6AD2, #7176E0, #9C9FFD);
 
   /* ─── Text ─── */
   --text-primary: #F5F6F6;
@@ -21,42 +21,42 @@
   --text-muted: #5A5D64;
   --text-accent: #7176E0;
 
-  /* ─── Borders ─── */
-  --border-subtle: #121417;
-  --border-normal: #1D2025;
-  --border-hover: #2B2F37;
+  /* ─── Fine 1px Hairline Borders ─── */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-normal: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.22);
   --border-accent: #5E6AD2;
 
   /* ─── Status Colors ─── */
-  --color-success: #10b981;
-  --color-warning: #fbbf24;
-  --color-danger: #ef4444;
+  --color-success: #10B981;
+  --color-warning: #FBBF24;
+  --color-danger: #EF4444;
   --color-info: #5E6AD2;
 
   /* ─── Rating Stars ─── */
-  --star-active: #fbbf24;
-  --star-inactive: #3e4049;
+  --star-active: #FBBF24;
+  --star-inactive: #3E4049;
 
   /* ─── Flag Colors ─── */
-  --flag-picked: #10b981;
-  --flag-rejected: #ef4444;
+  --flag-picked: #10B981;
+  --flag-rejected: #EF4444;
 
   /* ─── Color Labels ─── */
-  --label-red: #ef4444;
-  --label-yellow: #fbbf24;
-  --label-green: #10b981;
-  --label-blue: #3b82f6;
-  --label-purple: #8b5cf6;
+  --label-red: #EF4444;
+  --label-yellow: #FBBF24;
+  --label-green: #10B981;
+  --label-blue: #3B82F6;
+  --label-purple: #8B5CF6;
 
-  /* ─── Shadows ─── */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
-  --shadow-glow: 0 0 20px var(--accent-glow);
+  /* ─── Refined Hairline Shadows ─── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 16px var(--accent-glow);
 
   /* ─── Typography ─── */
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-md: 13px;
@@ -73,17 +73,17 @@
   --space-xl: 24px;
   --space-2xl: 32px;
 
-  /* ─── Border Radius ─── */
+  /* ─── Border Radius (6px standard for Refined Minimal) ─── */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 16px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
   --radius-full: 9999px;
 
-  /* ─── Transitions ─── */
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* ─── GPU Transitions ─── */
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
 
   /* ─── Layout ─── */
   --toolbar-height: 48px;

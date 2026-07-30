@@ -4,56 +4,73 @@ const CommandPalette = (() => {
   let isOpen = false;
   let selectedIndex = 0;
   let filteredCommands = [];
+  let previousFocusedElement = null;
 
   const commands = [
     // Files
-    { id: 'select-folder', name: 'Выбрать папку для сканирования', group: 'Файлы', action: () => Welcome.selectFolder() },
-    { id: 'settings', name: 'Открыть настройки', group: 'Файлы', action: () => Settings.open() },
-    { id: 'about', name: 'О программе WiPhoto', group: 'Файлы', action: () => Settings.showAbout() },
+    { id: 'select-folder', name: 'Выбрать папку для сканирования', group: 'Файлы', shortcut: 'Ctrl+O', action: () => Welcome.selectFolder() },
+    { id: 'settings', name: 'Открыть настройки', group: 'Файлы', shortcut: 'Ctrl+,', action: () => Settings.open() },
+    { id: 'about', name: 'О программе WiPhoto', group: 'Файлы', shortcut: '', action: () => Settings.showAbout() },
     
     // View
-    { id: 'view-gallery', name: 'Перейти в режим: Галерея', group: 'Вид', action: () => App.switchView('gallery') },
-    { id: 'view-map', name: 'Перейти в режим: Карта', group: 'Вид', action: () => App.switchView('map') },
-    { id: 'view-timeline', name: 'Перейти в режим: Таймлайн', group: 'Вид', action: () => App.switchView('timeline') },
-    { id: 'toggle-left-sidebar', name: 'Свернуть/развернуть левый сайдбар', group: 'Вид', action: () => document.getElementById('toggle-left')?.click() },
-    { id: 'toggle-right-sidebar', name: 'Свернуть/развернуть правый сайдбар', group: 'Вид', action: () => document.getElementById('toggle-right')?.click() },
-    
+    { id: 'view-gallery', name: 'Перейти в режим: Галерея', group: 'Вид', shortcut: 'G', action: () => App.switchView('gallery') },
+    { id: 'view-map', name: 'Перейти в режим: Карта', group: 'Вид', shortcut: 'M', action: () => App.switchView('map') },
+    { id: 'view-timeline', name: 'Перейти в режим: Таймлайн', group: 'Вид', shortcut: 'T', action: () => App.switchView('timeline') },
+    { id: 'toggle-left-sidebar', name: 'Свернуть/развернуть левый сайдбар', group: 'Вид', shortcut: 'Ctrl+[', action: () => document.getElementById('toggle-left')?.click() },
+    { id: 'toggle-right-sidebar', name: 'Свернуть/развернуть правый сайдбар', group: 'Вид', shortcut: 'Ctrl+]', action: () => document.getElementById('toggle-right')?.click() },
+    { id: 'slideshow', name: 'Запустить слайдшоу', group: 'Вид', shortcut: 'F8', action: () => document.getElementById('btn-slideshow')?.click() },
+
     // Edit
-    { id: 'edit-photo', name: 'Редактировать выбранное изображение', group: 'Редактирование', action: () => {
+    { id: 'edit-photo', name: 'Редактировать выбранное изображение', group: 'Редактирование', shortcut: 'Enter', action: () => {
         const sel = Gallery.getSelectedImages();
         if (sel.length > 0) App.openEditor(sel[0]);
         else Utils.toast('Выберите фотографию для редактирования', 'warning');
     }},
-    { id: 'undo-edit', name: 'Отменить действие в редакторе (Undo)', group: 'Редактирование', action: () => {
+    { id: 'undo-edit', name: 'Отменить действие в редакторе (Undo)', group: 'Редактирование', shortcut: 'Ctrl+Z', action: () => {
         if (document.getElementById('view-editor').classList.contains('active')) Editor.undo();
         else Utils.toast('Редактор не активен', 'warning');
     }},
-    { id: 'redo-edit', name: 'Повторить действие в редакторе (Redo)', group: 'Редактирование', action: () => {
+    { id: 'redo-edit', name: 'Повторить действие в редакторе (Redo)', group: 'Редактирование', shortcut: 'Ctrl+Y', action: () => {
         if (document.getElementById('view-editor').classList.contains('active')) Editor.redo();
         else Utils.toast('Редактор не активен', 'warning');
     }},
-    { id: 'preset-cinematic', name: 'Применить пресет: Cinematic', group: 'Редактирование', action: () => {
+    { id: 'preset-cinematic', name: 'Применить пресет: Cinematic', group: 'Редактирование', shortcut: '', action: () => {
         if (document.getElementById('view-editor').classList.contains('active')) document.getElementById('btn-preset-cinematic')?.click();
         else Utils.toast('Редактор не активен', 'warning');
     }},
-    { id: 'preset-bw', name: 'Применить пресет: BW Classic', group: 'Редактирование', action: () => {
+    { id: 'preset-bw', name: 'Применить пресет: BW Classic', group: 'Редактирование', shortcut: '', action: () => {
         if (document.getElementById('view-editor').classList.contains('active')) document.getElementById('btn-preset-bw')?.click();
         else Utils.toast('Редактор не активен', 'warning');
     }},
-    { id: 'preset-vibrant', name: 'Применить пресет: Vibrant', group: 'Редактирование', action: () => {
+    { id: 'preset-vibrant', name: 'Применить пресет: Vibrant', group: 'Редактирование', shortcut: '', action: () => {
         if (document.getElementById('view-editor').classList.contains('active')) document.getElementById('btn-preset-vibrant')?.click();
         else Utils.toast('Редактор не активен', 'warning');
     }},
+    { id: 'preset-moody', name: 'Применить пресет: Moody', group: 'Редактирование', shortcut: '', action: () => {
+        if (document.getElementById('view-editor').classList.contains('active')) document.getElementById('btn-preset-moody')?.click();
+        else Utils.toast('Редактор не активен', 'warning');
+    }},
 
-    // Navigation / Filters
-    { id: 'filter-all', name: 'Фильтр: Показать все файлы', group: 'Навигация', action: () => document.querySelector('.filter-btn[data-filter="all"]')?.click() },
-    { id: 'filter-best', name: 'Фильтр: Показать только лучшие (★)', group: 'Навигация', action: () => document.querySelector('.filter-btn[data-filter="best"]')?.click() },
-    { id: 'filter-duplicates', name: 'Фильтр: Показать дубликаты', group: 'Навигация', action: () => document.querySelector('.filter-btn[data-filter="duplicates"]')?.click() },
-    { id: 'filter-picked', name: 'Фильтр: Показать отмеченные (Picked)', group: 'Навигация', action: () => document.querySelector('.filter-btn[data-filter="picked"]')?.click() },
-    { id: 'filter-rejected', name: 'Фильтр: Показать отклоненные (Rejected)', group: 'Навигация', action: () => document.querySelector('.filter-btn[data-filter="rejected"]')?.click() },
-    { id: 'nav-trash', name: 'Открыть корзину', group: 'Навигация', action: () => {
+    // Tools & Operations
+    { id: 'find-duplicates', name: 'Поиск дубликатов', group: 'Инструменты', shortcut: '', action: () => {
+        if (typeof Batch !== 'undefined') Batch.openDuplicateFinder();
+    }},
+    { id: 'batch-rename', name: 'Пакетное переименование', group: 'Инструменты', shortcut: 'F2', action: () => {
+        if (typeof Batch !== 'undefined') Batch.openBatchRename();
+    }},
+    { id: 'batch-export', name: 'Пакетный экспорт', group: 'Инструменты', shortcut: 'Ctrl+E', action: () => {
+        if (typeof Batch !== 'undefined') Batch.openBatchExport();
+    }},
+    { id: 'nav-trash', name: 'Открыть корзину удалённых файлов', group: 'Инструменты', shortcut: 'Del', action: () => {
         if (typeof Trash !== 'undefined') Trash.open();
     }},
+
+    // Navigation / Filters
+    { id: 'filter-all', name: 'Фильтр: Показать все файлы', group: 'Фильтры', shortcut: '', action: () => document.querySelector('.filter-btn[data-filter="all"]')?.click() },
+    { id: 'filter-best', name: 'Фильтр: Показать только лучшие (★)', group: 'Фильтры', shortcut: '', action: () => document.querySelector('.filter-btn[data-filter="best"]')?.click() },
+    { id: 'filter-duplicates', name: 'Фильтр: Показать дубликаты', group: 'Фильтры', shortcut: '', action: () => document.querySelector('.filter-btn[data-filter="duplicates"]')?.click() },
+    { id: 'filter-picked', name: 'Фильтр: Показать отмеченные (Picked)', group: 'Фильтры', shortcut: '', action: () => document.querySelector('.filter-btn[data-filter="picked"]')?.click() },
+    { id: 'filter-rejected', name: 'Фильтр: Показать отклоненные (Rejected)', group: 'Фильтры', shortcut: '', action: () => document.querySelector('.filter-btn[data-filter="rejected"]')?.click() }
   ];
 
   const palette = () => document.getElementById('command-palette');
@@ -61,7 +78,7 @@ const CommandPalette = (() => {
   const list = () => document.getElementById('command-palette-list');
 
   function init() {
-    // Keyboard listener for Cmd+K / Ctrl+K
+    // Global keyboard listener for Cmd+K / Ctrl+K
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -110,6 +127,7 @@ const CommandPalette = (() => {
   function show() {
     isOpen = true;
     selectedIndex = 0;
+    previousFocusedElement = document.activeElement;
     palette()?.classList.remove('hidden');
     const inputEl = input();
     if (inputEl) {
@@ -122,18 +140,39 @@ const CommandPalette = (() => {
   function hide() {
     isOpen = false;
     palette()?.classList.add('hidden');
+    if (previousFocusedElement && typeof previousFocusedElement.focus === 'function') {
+      try {
+        previousFocusedElement.focus();
+      } catch (e) {
+        // Ignore focus errors
+      }
+    }
+  }
+
+  function filterPaletteItems(items, query) {
+    if (!Array.isArray(items)) return [];
+    if (!query || typeof query !== 'string' || query.trim() === '') return items;
+    const q = query.toLowerCase().trim();
+    return items.filter(item => {
+      const nameMatch = item.name && item.name.toLowerCase().includes(q);
+      const titleMatch = item.title && item.title.toLowerCase().includes(q);
+      const groupMatch = item.group && item.group.toLowerCase().includes(q);
+      const catMatch = item.category && item.category.toLowerCase().includes(q);
+      const shortcutMatch = item.shortcut && item.shortcut.toLowerCase().includes(q);
+      return nameMatch || titleMatch || groupMatch || catMatch || shortcutMatch;
+    });
+  }
+
+  function clampSelectedIndex(index, totalItems) {
+    if (totalItems <= 0) return -1;
+    if (index < 0) return 0;
+    if (index >= totalItems) return totalItems - 1;
+    return index;
   }
 
   function filter(query) {
-    const q = query.toLowerCase().trim();
-    if (!q) {
-      filteredCommands = [...commands];
-    } else {
-      filteredCommands = commands.filter(cmd => 
-        cmd.name.toLowerCase().includes(q) || cmd.group.toLowerCase().includes(q)
-      );
-    }
-    selectedIndex = 0;
+    filteredCommands = filterPaletteItems(commands, query);
+    selectedIndex = clampSelectedIndex(0, filteredCommands.length);
     render();
   }
 
@@ -162,6 +201,8 @@ const CommandPalette = (() => {
         }));
       }
 
+      const shortcutText = cmd.shortcut || getShortcutLabel(cmd.id);
+
       const item = Utils.el('div', {
         className: `command-palette__item${index === selectedIndex ? ' active' : ''}`,
         onClick: () => {
@@ -170,7 +211,7 @@ const CommandPalette = (() => {
         }
       }, [
         Utils.el('span', { className: 'command-palette__item-name', textContent: cmd.name }),
-        Utils.el('span', { className: 'command-palette__item-shortcut', textContent: getShortcutLabel(cmd.id) })
+        shortcutText ? Utils.el('span', { className: 'command-palette__item-shortcut', textContent: shortcutText }) : document.createTextNode('')
       ]);
 
       fragment.appendChild(item);
@@ -206,15 +247,21 @@ const CommandPalette = (() => {
       'view-gallery': 'G',
       'view-map': 'M',
       'view-timeline': 'T',
+      'toggle-left-sidebar': 'Ctrl+[',
+      'toggle-right-sidebar': 'Ctrl+]',
+      'slideshow': 'F8',
       'undo-edit': 'Ctrl+Z',
       'redo-edit': 'Ctrl+Y',
       'edit-photo': 'Enter',
-      'nav-trash': '🗑️'
+      'batch-rename': 'F2',
+      'batch-export': 'Ctrl+E',
+      'nav-trash': 'Del'
     };
     return shortcuts[id] || '';
   }
 
-  return { init, show, hide, toggle };
+  return { init, show, hide, toggle, filterPaletteItems, clampSelectedIndex, getCommands: () => commands };
 })();
 
 window.CommandPalette = CommandPalette;
+

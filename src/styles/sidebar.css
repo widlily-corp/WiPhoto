@@ -328,6 +328,7 @@
 
 .meta-value {
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
