@@ -170,7 +170,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .register_uri_scheme_protocol("asset", |_ctx, req| handle_asset_custom_protocol(req))
-        .register_uri_scheme_protocol("tauri", |_ctx, req| handle_asset_custom_protocol(req))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
