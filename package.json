@@ -1,7 +1,7 @@
 {
   "name": "wiphoto-tauri",
   "private": true,
-  "version": "5.0.2",
+  "version": "5.0.3",
   "type": "module",
   "scripts": {
     "tauri": "tauri",

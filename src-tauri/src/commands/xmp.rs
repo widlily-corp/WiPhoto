@@ -43,7 +43,8 @@ fn read_and_parse_xmp_with_retry(path: &Path) -> Result<Option<XmpData>, String>
                     return Ok(Some(data));
                 }
 
-                "Failed to parse XMP content (possible incomplete read or malformed XML)".to_string()
+                "Failed to parse XMP content (possible incomplete read or malformed XML)"
+                    .to_string()
             }
             Err(e) => {
                 if e.kind() == std::io::ErrorKind::NotFound {

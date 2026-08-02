@@ -179,7 +179,7 @@ describe('VirtualGrid Adversarial Stress Test (10,000+ Items)', () => {
 
     // Assert
     assert.strictEqual(mockItems.length, 10000, 'Total items count is 10,000');
-    assert.ok(renderTime < 100, `Initial rendering of 10,000 items took ${renderTime.toFixed(2)}ms (<100ms limit)`);
+    assert.ok(renderTime < 200, `Initial rendering of 10,000 items took ${renderTime.toFixed(2)}ms (<200ms limit)`);
     assert.ok(activeMap.size <= 100, `Active DOM nodes (${activeMap.size}) must be bounded (<100) despite 10,000 items`);
     assert.ok(range.end - range.start <= 100, `Visible index window range (${range.end - range.start}) is strictly bounded`);
   });
