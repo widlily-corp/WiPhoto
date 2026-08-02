@@ -1,91 +1,80 @@
-# Forensic Audit Report & Handoff Report
+# Forensic Audit Report — WiPhoto v5.0.0
 
-**Work Product**: WiPhoto Performance Optimization & Error Elimination Update (`src/` and `src-tauri/`)  
-**Working Directory**: `c:\Users\Widlily\Documents\projects\wiphoto\.agents\auditor_v3`  
-**Integrity Mode**: `development`  
-**Verdict**: **INTEGRITY VIOLATION** (Rejected due to test execution failure in `cargo test`)
+**Work Product**: `c:\Users\Widlily\Documents\projects\wiphoto`
+**Profile**: General Project
+**Auditor Identity**: teamwork_preview_auditor (`.agents/auditor_v3`)
+**Verdict**: **INTEGRITY VIOLATION / CHEATING DETECTED**
 
 ---
 
 ## 1. Observation
 
-### Observation 1.1: Static Analysis Verification
-- **Command**: `npx eslint src/`
-  - **Result**: PASSED (Exit code: 0, 0 errors, 0 warnings).
-- **Command**: `cargo check` (in `src-tauri`)
-  - **Result**: PASSED (Finished `dev` profile [unoptimized + debuginfo] in 1.16s, 0 errors).
-- **Command**: `cargo clippy -- -D warnings` (in `src-tauri`)
-  - **Result**: PASSED (Finished `dev` profile [unoptimized + debuginfo] in 1.36s, 0 warnings/errors).
+### Observation A: Layout Compliance Check (.agents directory rule)
+- **Rule**: `.agents/` must contain **only metadata** (plans, progress, handoffs, requests). Source code, tests, or data files inside `.agents/` constitute a layout violation.
+- **Finding**: Located executable test file inside `.agents/`:
+  - File path: `c:\Users\Widlily\Documents\projects\wiphoto\.agents\challenger_m1_ota\test_link_parsing.cjs`
+  - File size: 2,244 bytes (52 lines of Node.js test code executing `vm.runInNewContext`).
 
-### Observation 1.2: Frontend Test Suite
-- **Command**: `npm test`
-  - **Result**: PASSED (Exit code: 0).
-  - **Output**: 34 passing tests across 16 test suites (0 failed, 0 skipped, duration ~3.6s).
-  - Covered: Spatial Clustering benchmarks, CLIP Search helpers, XMP Sidecar escaping, Geo-Map Supercluster formatting, Zero-Copy protocol, Command Palette logic, OTA updater helpers, and Utils VM AAA unit tests.
+### Observation B: Authentic Logic & Anti-Cheat Analysis
+- **Custom Protocol Streaming (`asset://localhost/`) & HTTP Range Requests**:
+  - File: `src-tauri/src/lib.rs` (lines 70–229)
+  - Implements custom URI scheme handling for `asset://`, percent-decoding (`decode_percent`), mime type resolution, ETag validation (`"file_len-mtime"`), `304 Not Modified`, and HTTP Range parsing (`206 Partial Content` with `Content-Range` header and seek/read logic). Verified 0 hardcoded response strings.
+- **RAW ARW Preview Extraction**:
+  - File: `src-tauri/src/commands/raw_utils.rs` (lines 19–180)
+  - Implements binary JPEG stream scanning (`0xFF 0xD8` markers), SOF frame header parsing (`0xC0`..`0xC3`) for dimension calculation, SOS handling, and fallback scanning. Verified genuine binary parsing.
+- **XMP Sidecar Atomic Write with Retry**:
+  - File: `src-tauri/src/commands/xmp.rs` (lines 70–108, 133–202)
+  - Implements atomic write pattern using `.tmp_{pid}_{uuid}.xmp` temporary files, `file.sync_all()`, atomic file rename, retry backoff, and XML parsing via `roxmltree`. Verified non-facade logic.
+- **VirtualGrid Rendering**:
+  - File: `src/js/virtualgrid.js` (lines 4–304)
+  - Implements dynamic grid layout calculation, DOM recycling pool (`cardPool`), active card indexing (`activeCardMap`), rAF frame locking, IntersectionObserver lazy loading, and `translateY` content positioning.
+- **Process Relaunch IPC & Markdown Rendering**:
+  - File: `src/js/updater.js` (lines 25–102, 188–208)
+  - Implements semver version check (`isNewerVersion`), Markdown link/heading/list HTML parser, and multi-tier process relaunch fallback (`window.__TAURI__.process.relaunch` -> `core.invoke('plugin:process|relaunch')` -> `__TAURI_PLUGIN_PROCESS__.relaunch`).
+- **GitHub Actions CI/CD Workflows**:
+  - File: `.github/workflows/ci.yml` (lines 1–108)
+  - Configured multi-platform build matrix (`ubuntu-latest`, `macos-latest`, `windows-latest`), caching (`Swatinem/rust-cache`), test execution, and OTA artifact publishing (`tauri-apps/tauri-action@v0`).
 
-### Observation 1.3: Backend Rust Test Suite Failure
-- **Command**: `cargo test` (in `src-tauri`)
-  - **Result**: FAILED (Exit code: 1).
-  - **Passed Tests**: 31 unit tests in `src/lib.rs` passed; 5 E2E integration tests in `tests/e2e_v500_tests.rs` passed.
-  - **Failed Test**: `tests/xmp_roundtrip_stress.rs` -> `test_xmp_1000_sequential_roundtrip_updates` failed.
-  - **Verbatim Error Output**:
-    ```text
-    Running tests\xmp_roundtrip_stress.rs (target\debug\deps\xmp_roundtrip_stress-8ce7f4f6643adcb2.exe)
-
-    running 3 tests
-    test test_xmp_special_characters_and_unicode_escaping ... ok
-    test test_xmp_large_payload_and_malformed_xml_handling ... ok
-    test test_xmp_1000_sequential_roundtrip_updates ... FAILED
-
-    failures:
-
-    ---- test_xmp_1000_sequential_roundtrip_updates stdout ----
-
-    thread 'test_xmp_1000_sequential_roundtrip_updates' (24028) panicked at tests\xmp_roundtrip_stress.rs:59:9:
-    assertion `left == right` failed: Tags mismatch at iteration 141
-      left: ["Tag_1", "Batch_0"]
-     right: ["Tag_141", "Batch_1"]
-    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-    ```
-    *Subsequent run failure*:
-    ```text
-    thread 'test_xmp_1000_sequential_roundtrip_updates' (7448) panicked at tests\xmp_roundtrip_stress.rs:44:9:
-    assertion `left == right` failed: Rating mismatch at iteration 284
-      left: 4
-     right: 5
-    ```
-
-### Observation 1.4: Genuine Implementation & Prohibited Pattern Audit
-- **Hardcoded Test Results**: None found.
-- **Facade Implementations**: None found (`VirtualGrid` features DOM element recycling with `cardPool` and `activeCardMap`, `Rayon` multi-threading in `src-tauri/src/commands/scanner.rs` line 496, `ONNX` clip/yolo integration in `src-tauri/src/onnx.rs`, `tauri://` custom asset protocol handler in `src-tauri/src/lib.rs`).
-- **Pre-populated Result Artifacts**: `debug.log` and `release_run.log` predated current iteration and contain standard runtime logs.
+### Observation C: Empirical Test & Lint Execution Results
+1. **Rust Backend Tests (`cargo test --manifest-path src-tauri/Cargo.toml`)**:
+   - Command: `cargo test --manifest-path src-tauri/Cargo.toml`
+   - Result: **33 passed** in `wiphoto_lib`, **4 passed** in `backend_stress_suite`, **5 passed** in `e2e_v500_tests`, **3 passed** in `xmp_roundtrip_stress`. **0 failed**.
+2. **Rust Clippy (`cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`)**:
+   - Command: `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`
+   - Result: **Finished cleanly with 0 warnings/errors**.
+3. **Frontend JS Unit & Stress Tests (`npm test`)**:
+   - Command: `npm test` (`node --test src/js/*.test.cjs`)
+   - Result: **46 passed**, **0 failed**, duration 2.68s.
+4. **Frontend ESLint (`npx eslint src/`)**:
+   - Command: `npx eslint src/`
+   - Result: **0 lint errors**.
 
 ---
 
 ## 2. Logic Chain
 
-1. **Step 1**: Static analysis tools (`npx eslint src/`, `cargo check`, `cargo clippy -- -D warnings`) were executed in sequence. All returned exit code 0 with 0 errors and 0 warnings (Observation 1.1).
-2. **Step 2**: The JavaScript test suite (`npm test`) was executed. All 34 tests across unit, integration, and E2E suites passed cleanly (Observation 1.2).
-3. **Step 3**: The Rust backend test suite (`cargo test`) was executed. While 31 unit tests and 5 E2E integration tests passed, 1 integration test `test_xmp_1000_sequential_roundtrip_updates` in `tests/xmp_roundtrip_stress.rs` failed during rapid 1,000 sequential file write/read iterations on Windows (Observation 1.3).
-4. **Step 4**: The failure stems from OS file system caching / non-atomic write-read race conditions during 1,000 rapid file modifications to the same temp file without explicit file flushing/locking in `write_xmp_sidecar`.
-5. **Step 5**: Under the Forensic Integrity Auditor methodology, every check must pass empirically. Any test failure in the work product invalidates clean verification, resulting in a verdict of **INTEGRITY VIOLATION** (Phase 2 Forensic Verification Protocol).
+1. **Premise**: Per project rules and integrity audit standard, `.agents/` must strictly contain agent metadata (plans, progress, handoffs). Placing executable test scripts, source code, or data files inside `.agents/` is a direct layout compliance failure.
+2. **Observation**: `c:\Users\Widlily\Documents\projects\wiphoto\.agents\challenger_m1_ota\test_link_parsing.cjs` is an executable JavaScript test file located inside the `.agents/` directory tree.
+3. **Deduction**: The presence of `test_link_parsing.cjs` in `.agents/` violates the layout compliance rule ("`.agents/` must contain only metadata — source, tests, or data there is a violation").
+4. **Forensic Rule**: If ANY check fails (including layout compliance), the forensic audit verdict MUST be `INTEGRITY VIOLATION / CHEATING DETECTED`.
+5. **Conclusion**: While all functional backend/frontend features (XMP sync, custom protocol streaming, RAW parsing, VirtualGrid, updater relaunch IPC, CI/CD) and build/test/clippy/eslint commands pass empirically with zero defects, the project fails Layout Compliance due to test code stored in `.agents/`.
 
 ---
 
 ## 3. Caveats
 
-- **Scope**: Audit was restricted to `c:\Users\Widlily\Documents\projects\wiphoto` codebase (`src/` and `src-tauri/`).
-- **Environment**: Audit ran on Windows 11 host system (`windows` shell).
-- **Code Modification**: Per auditor constraints ("do NOT modify implementation code"), no code modifications were applied to resolve the test failure in `tests/xmp_roundtrip_stress.rs`.
+- **Remediation**: Removing `c:\Users\Widlily\Documents\projects\wiphoto\.agents\challenger_m1_ota\test_link_parsing.cjs` (or moving it to `src/js/test_link_parsing.test.cjs`) will immediately restore layout compliance.
+- **Scope**: No code modifications were performed by this auditor agent.
 
 ---
 
 ## 4. Conclusion
 
-- **Audit Verdict**: **INTEGRITY VIOLATION**
-- **Rationale**: The Rust test suite fails during execution of `cargo test` due to panic in `tests/xmp_roundtrip_stress.rs::test_xmp_1000_sequential_roundtrip_updates`. While frontend linter, Rust clippy, Rust check, and JS tests are clean and implementations are authentic, test failure blocks certification.
-- **Actionable Remediation**:
-  - Remediate `write_xmp_sidecar` in `src-tauri/src/commands/xmp.rs` to ensure file writes are explicitly flushed/synced (or add atomic write handling via temporary swap files) so rapid sequential updates on Windows disk caches perform atomic file replacements.
+**Verdict**: **INTEGRITY VIOLATION / CHEATING DETECTED**
+
+- **Reason**: Layout compliance failure — test script `test_link_parsing.cjs` was created/left inside `.agents/challenger_m1_ota/`.
+- **Status of Core Features**: All core features (thumbnail loading, custom protocol streaming, RAW preview extraction, Range requests, VirtualGrid, XMP atomic retry write, process relaunch IPC, and GitHub Actions CI/CD) are genuinely and authentically implemented without facade code or hardcoded test bypasses.
+- **Status of Tests**: `cargo test`, `cargo clippy -D warnings`, `npm test`, and `npx eslint src/` all passed cleanly with 0 errors.
 
 ---
 
@@ -93,21 +82,17 @@
 
 To independently verify this audit finding:
 
-1. **Static Analysis**:
+1. **Verify Layout Violation**:
+   Run:
    ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto
-   npx eslint src/
-   cd src-tauri
-   cargo check
-   cargo clippy -- -D warnings
+   find .agents/ -type f -not -name '*.md'
    ```
-2. **Frontend Unit Tests**:
-   ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto
-   npm test
-   ```
-3. **Backend Rust Tests (Triggers Failure)**:
-   ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto\src-tauri
-   cargo test --test xmp_roundtrip_stress
-   ```
+   Output will show:
+   `.agents/challenger_m1_ota/test_link_parsing.cjs`
+
+2. **Verify Test & Lint Execution**:
+   Run the following commands in workspace root:
+   - `cargo test --manifest-path src-tauri/Cargo.toml`
+   - `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`
+   - `npm test`
+   - `npx eslint src/`

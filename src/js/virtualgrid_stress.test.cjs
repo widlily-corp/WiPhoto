@@ -99,7 +99,12 @@ function createDOMMock() {
   const context = {
     window: {},
     document: {
-      createElement: (tag) => new MockNode(tag)
+      createElement: (tag) => new MockNode(tag),
+      createDocumentFragment: () => {
+        const frag = new MockNode('FRAGMENT');
+        frag.hasChildNodes = () => frag.children.length > 0;
+        return frag;
+      }
     },
     ResizeObserver: MockResizeObserver,
     IntersectionObserver: MockIntersectionObserver,

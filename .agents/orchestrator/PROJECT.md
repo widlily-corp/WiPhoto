@@ -1,4 +1,4 @@
-# Project: WiPhoto v5.0.0
+# Project: WiPhoto v5.0.0 — Audit, Thumbnail Fix, OTA CI/CD, & Release
 
 ## Architecture
 - **Desktop Framework**: Tauri v2 (Rust backend + Vanilla JS/CSS frontend)
@@ -11,30 +11,20 @@
   - `index.html`: Main desktop interface container
   - `js/`: Modular ES modules (`app.js`, `virtualgrid.js`, `gallery.js`, `viewer.js`, `editor.js`, `commandpalette.js`, `map.js`, `search.js`, `updater.js`, `utils.js`)
   - `styles/`: Modular CSS stylesheets (`variables.css`, `main.css`, `components.css`, `sidebar.css`, `gallery.css`, `editor.css`, `commandpalette.css`, `map.css`)
-  - `lib/`: Local offline vendor libraries (`leaflet.js`, `leaflet.css`, `supercluster.min.js`)
-
-## Code Layout
-- Frontend static files served via Tauri `frontendDist`: `"../src"`
-- Custom protocol: `tauri://localhost/` or `asset://localhost/` streaming local image files zero-copy
-- Metadata sidecars: `.xmp` files written adjacent to original image files
-- Offline ML model storage: `.wiphoto/models/` or app data directory
+- **CI/CD Layout (`.github/workflows/`)**:
+  - GitHub Actions workflow files for multi-platform build, test, and release (Windows, macOS, Linux).
 
 ## Interface Contracts
 ### Rust ↔ JS IPC Protocol
-- `get_image_url(path: String) -> String`: returns `tauri://localhost/<path>` for zero-copy rendering
-- `search_clip(query: String, threshold: f32) -> Vec<SearchResult>`: returns matching image paths with similarity scores
-- `sync_xmp_sidecar(image_path: String, metadata: XmpMetadata) -> Result<(), String>`: writes/syncs `.xmp` sidecar
-- `get_geotagged_photos() -> Vec<GeoPhoto>`: returns photo id, path, lat, lon for Supercluster map
+- `get_image_url(path: String) -> String`: returns custom protocol URL (`tauri://...` or `asset://...`) for zero-copy rendering
+- `generate_thumbnail(path: String) -> Result<String, String>`: generates or retrieves cached thumbnail for ARW/RAW/JPG
 - `check_for_updates() -> Result<UpdateInfo, String>`: interacts with `tauri-plugin-updater`
+- `sync_xmp_sidecar(image_path: String, metadata: XmpMetadata) -> Result<(), String>`: XMP sidecar sync
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M0 | E2E Testing Suite Track | Design Tier 1-4 test suite, runner, TEST_READY.md | None | IN_PROGRESS |
-| M1 | Zero-Copy Asset Protocol | Custom `tauri://` protocol for zero-copy image loading | None | PLANNED |
-| M2 | XMP Sidecar Bidirectional Sync | Auto-sync ratings, tags, exposure, color edits to `.xmp` | M1 | PLANNED |
-| M3 | Geo-Map View (Offline Leaflet + Supercluster) | Local Leaflet/Supercluster, EXIF GPS clustering | M1 | PLANNED |
-| M4 | Smart Albums (CLIP Semantic Search) | Local CLIP embeddings, natural language offline search | M1 | PLANNED |
-| M5 | Refined Minimal UI & Command Palette | Linear/Stripe aesthetics, hairlines, Ctrl+K palette | M1 | PLANNED |
-| M6 | OTA Updates Integration | `tauri-plugin-updater`, Markdown release notes modal | M1, M5 | PLANNED |
-| M7 | E2E Verification & Release Tagging | Version bump to 5.0.0, 100% tests pass, conventional commits, git tag v5.0.0 & push | M1-M6, M0 | PLANNED |
+| M1 | Fix Thumbnail Display (ARW/JPG) & Deep Audit | Investigate thumbnail rendering bug in ARW/JPG, protocol streaming, virtual grid, perform deep audit of JS & Rust backend for bugs/races | None | IN_PROGRESS |
+| M2 | GitHub Actions CI/CD Pipeline Optimization | Review & rewrite GitHub Actions workflows for fast multi-platform builds (Win/macOS/Linux), caching, and OTA artifact publishing | None | PLANNED |
+| M3 | Tauri OTA Update Mechanism Verification | Verify `tauri-plugin-updater` configuration, GitHub Releases endpoints, update dialog UI, Markdown renderer, update checks | M2 | PLANNED |
+| M4 | Final Build Verification, Forensic Audit & Release 5.0 | Verify clean build/test (0 lint errors, 0 warnings), run Forensic Auditor, commit changes, push `v5.0.0` tag & release | M1, M2, M3 | PLANNED |

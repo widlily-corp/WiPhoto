@@ -112,11 +112,13 @@ describe('Utils Functions tests (AAA Pattern via VM Context)', () => {
       const assetWin = Utils.assetUrl(winPath);
       const assetPosix = Utils.assetUrl(posixPath);
       const assetPassthrough = Utils.assetUrl(existingAsset);
+      const tauriConverted = Utils.assetUrl('tauri://localhost/C:/photos/test.jpg');
 
       // Assert
       assert.strictEqual(assetWin, 'asset://localhost/C%3A/Users/Widlily/Pictures/image.jpg');
       assert.strictEqual(assetPosix, 'asset://localhost/home/user/pictures/image.png');
       assert.strictEqual(assetPassthrough, existingAsset);
+      assert.strictEqual(tauriConverted, 'asset://localhost/C:/photos/test.jpg');
     });
 
     it('should handle base64Src correctly with file paths and base64 strings', () => {

@@ -283,7 +283,7 @@ pub struct TrashItem {
 
 /// List all files in the trash with metadata and thumbnails
 #[tauri::command]
-pub fn list_trash() -> Result<Vec<TrashItem>, String> {
+pub async fn list_trash() -> Result<Vec<TrashItem>, String> {
     let trash_dir = get_trash_dir();
     let metadata_path = trash_dir.join(".trash_metadata.json");
 
@@ -322,10 +322,10 @@ pub fn list_trash() -> Result<Vec<TrashItem>, String> {
                 let is_raw = crate::models::image_info::RAW_EXTENSIONS.contains(&ext.as_str());
 
                 // Generate/load cached thumbnail
-                let thumbnail = tauri::async_runtime::block_on(super::thumbnails::get_thumbnail(
-                    path.to_string_lossy().to_string(),
-                ))
-                .unwrap_or_default();
+                let thumbnail =
+                    super::thumbnails::get_thumbnail(path.to_string_lossy().to_string())
+                        .await
+                        .unwrap_or_default();
 
                 items.push(TrashItem {
                     filename,

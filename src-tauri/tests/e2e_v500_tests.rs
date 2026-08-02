@@ -122,7 +122,7 @@ fn test_tier3_cross_feature_combinations_rust() {
     assert!(save_res.is_ok());
 
     // Act: Query back by path
-    let fetched = db::get_images_by_paths(&[img_path.clone()]).expect("Fetch failed");
+    let fetched = db::get_images_by_paths(std::slice::from_ref(&img_path)).expect("Fetch failed");
 
     // Assert: Verify cross-feature attributes persisted (GPS + XMP + ML tags)
     assert_eq!(fetched.len(), 1);

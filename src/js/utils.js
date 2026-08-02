@@ -149,8 +149,11 @@ const Utils = {
   /** Convert file path to custom asset protocol URL (Zero-Copy) */
   assetUrl(path) {
     if (!path) return '';
-    if (path.startsWith('asset://') || path.startsWith('tauri://') || path.startsWith('http://asset.localhost') || path.startsWith('data:') || path.startsWith('blob:')) {
+    if (path.startsWith('asset://') || path.startsWith('http://asset.localhost') || path.startsWith('data:') || path.startsWith('blob:')) {
       return path;
+    }
+    if (path.startsWith('tauri://')) {
+      return path.replace(/^tauri:\/\//, 'asset://');
     }
     if (window.__TAURI__?.core?.convertFileSrc) {
       return window.__TAURI__.core.convertFileSrc(path);

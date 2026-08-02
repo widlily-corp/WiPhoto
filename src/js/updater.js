@@ -44,6 +44,9 @@ function renderMarkdown(markdown) {
   // Inline code `code`
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
+  // Links [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
   // Headers (# H1, ## H2, ### H3)
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
@@ -89,7 +92,7 @@ function renderMarkdown(markdown) {
   html = blocks.map(block => {
     block = block.trim();
     if (!block) return '';
-    if (block.startsWith('<h') || block.startsWith('<ul>') || block.startsWith('<pre>')) {
+    if (block.startsWith('<h') || block.startsWith('<ul>') || block.startsWith('<pre>') || block.startsWith('<p>')) {
       return block;
     }
     return `<p>${block.replace(/\n/g, '<br>')}</p>`;
@@ -105,8 +108,10 @@ function renderMarkdown(markdown) {
  */
 function parseReleaseNotes(payload) {
   if (!payload) return { available: false, version: '', date: '', body: '' };
+  const hasVersion = Boolean(payload.version || payload.tag_name);
+  const available = payload.available !== undefined ? Boolean(payload.available) : hasVersion;
   return {
-    available: Boolean(payload.available || payload.version),
+    available: available || hasVersion,
     version: payload.version || payload.tag_name || '',
     date: payload.date || payload.published_at || '',
     body: payload.body || payload.notes || 'Обновления и улучшения производительности.'
@@ -171,6 +176,32 @@ const UpdaterAPI = {
         Logger.error('Updater', 'Failed to download and install update', err);
       } else {
         console.error('Failed to download and install update:', err);
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Relaunches the application via tauri-plugin-process or fallback IPC.
+   * @returns {Promise<boolean>}
+   */
+  relaunchApp: async () => {
+    try {
+      if (window.__TAURI__?.process?.relaunch) {
+        await window.__TAURI__.process.relaunch();
+        return true;
+      } else if (window.__TAURI__?.core?.invoke) {
+        await window.__TAURI__.core.invoke('plugin:process|relaunch');
+        return true;
+      } else if (window.__TAURI_PLUGIN_PROCESS__?.relaunch) {
+        await window.__TAURI_PLUGIN_PROCESS__.relaunch();
+        return true;
+      }
+    } catch (err) {
+      if (typeof Logger !== 'undefined') {
+        Logger.error('Updater', 'Failed to relaunch application', err);
+      } else {
+        console.error('Failed to relaunch application:', err);
       }
     }
     return false;
@@ -241,10 +272,9 @@ function initUpdaterUI() {
         if (statusMsg) {
           statusMsg.textContent = 'Обновление успешно установлено! Перезапуск приложения...';
         }
-        setTimeout(() => {
-          if (window.__TAURI__?.process?.relaunch) {
-            window.__TAURI__.process.relaunch();
-          } else {
+        setTimeout(async () => {
+          const relaunched = await UpdaterAPI.relaunchApp();
+          if (!relaunched) {
             hideUpdateModal();
           }
         }, 1500);

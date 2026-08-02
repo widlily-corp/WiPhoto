@@ -1,31 +1,43 @@
-# Handoff Report — Project Orchestrator Handoff (Generation 1 -> Generation 2)
+# Handoff Report — Project Orchestrator (Gen 1 to Gen 2)
 
 ## Milestone State
-- **M0: E2E Testing Suite & TEST_READY.md**: Completed (`TEST_READY.md` created, multi-tier tests passing).
-- **M1: Zero-Copy Asset Protocol (`tauri://`)**: Completed (commit `607fd34`).
-- **M2: XMP Sidecar Bidirectional Sync**: Completed (commit `45dbc9a`).
-- **M3: Geo-Map View (Leaflet + Supercluster Offline)**: Completed (commit `576dc88`).
-- **M4: Smart Albums (Local CLIP Semantic Search)**: Completed (commit `9968077` / `26e33a6`).
-- **M5: Refined Minimal UI & Command Palette (Ctrl+K)**: Completed (commit `1dfb483`).
-- **M6: OTA Updates (`tauri-plugin-updater`)**: Completed (commit `a0d3a75`).
-- **M7: Release Verification, Version Alignment & Tag `v5.0.0`**: Remediation complete (commit `616425f`, tag `v5.0.0` created and pushed to origin).
-- **IPC Contract & Encoding Remediation**: Completed (IPC signatures `get_image_url`, `search_clip`, `sync_xmp_sidecar` aligned with `PROJECT.md`, multi-byte UTF-8 percent decoding fixed).
+- **M1: Fix Thumbnail Display (ARW/JPG) & Deep Audit**: **DONE & REMEDIATED**.
+  - URI scheme protocol converted to `asset://localhost/` across JS & Rust.
+  - High-res embedded JPEG preview extraction implemented for Sony ARW/RAW images (ranks by pixel count).
+  - HTTP Range requests (`206 Partial Content`), ETag/304 caching, and RAW MIME types implemented in custom protocol handler.
+  - VirtualGrid optimized with `DocumentFragment` DOM batching (10k items rendered in 46ms), `lazyObserver.observe(img)`, and `.thumb-placeholder` fallback UI.
+  - Memory leak in `welcome.js:100` fixed (`await API.onImageScanned`).
+  - `.catch()` handlers added to async `API.writeXmpSidecar` writes.
+  - XMP sidecar atomic write with `sync_all()`, temp files, and exponential backoff retry implemented in `src-tauri/src/commands/xmp.rs` (1000/1000 sequential stress iterations pass cleanly).
+  - Non-metadata test script `test_link_parsing.cjs` deleted from `.agents/`; `.agents/` verified strictly `.md` metadata files only.
+- **M2: GitHub Actions CI/CD Pipeline Optimization**: **DONE & VERIFIED**.
+  - `.github/workflows/ci.yml` updated with multi-platform matrix (`ubuntu-latest`/`ubuntu-22.04`, `macos-latest`, `windows-latest`), Node `cache: 'npm'`, strict ESLint checking, signing keys, and `releaseDraft: false`.
+- **M3: Tauri OTA Update Mechanism Verification**: **DONE & VERIFIED**.
+  - `"createUpdaterArtifacts": true` set in `src-tauri/tauri.conf.json`.
+  - `tauri-plugin-process` registered in `Cargo.toml` and `lib.rs`.
+  - `src/js/updater.js` `UpdaterAPI.relaunchApp` multi-fallback IPC implemented and verified with 9 unit tests.
+- **M4: Release 5.0.0 Execution**: **READY FOR FINAL AUDIT & TAGGING**.
+
+## Test & Lint Compliance
+- `cargo test --manifest-path src-tauri/Cargo.toml`: 45/45 passed (0 failed).
+- `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings`: 0 warnings, 0 errors.
+- `npm test`: 46/46 passed (0 failed).
+- `npx eslint src/`: 0 errors, 0 warnings.
 
 ## Active Subagents
-- None currently active. All 16 previous subagents have completed and delivered reports.
+- All 16 subagents completed. 0 pending subagents.
 
 ## Pending Decisions
-- None.
+- Final Forensic Audit check to confirm CLEAN verdict after layout remediation.
+- Atomic commit, tagging `v5.0.0`, and pushing to GitHub.
 
-## Remaining Work for Successor (Generation 2)
-1. Re-establish 10-minute heartbeat cron.
-2. Spawn a fresh **Forensic Auditor** (`teamwork_preview_auditor`) to perform final victory verification across all requirements R1 to R7.
-3. Confirm the Forensic Auditor returns a **CLEAN** verdict.
-4. Synthesize final results and present victory report to parent (`648ef75a-af40-4766-a9e3-4d219ab18a23`).
+## Remaining Work for Successor (Gen 2)
+1. Spawn `teamwork_preview_auditor` in `.agents/victory_auditor` to perform final Forensic Integrity Audit across R1-R4 requirements. Confirm CLEAN verdict.
+2. Spawn `teamwork_preview_worker` in `.agents/worker_release` to commit all atomic changes with Conventional Commits, update version strings to 5.0.0, tag `v5.0.0`, and push `origin main` and `origin v5.0.0`.
+3. Synthesize victory report and send completion message to parent conversation ID `cbc4d26b-e069-4e5b-83f4-0c3b4ef60093`.
 
 ## Key Artifacts
-- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\ORIGINAL_REQUEST.md` — User requirements
-- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\BRIEFING.md` — Working memory index
-- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\progress.md` — Progress checklist & liveness timestamp
-- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\PROJECT.md` — Global architecture & contracts index
-- `c:\Users\Widlily\Documents\projects\wiphoto\TEST_READY.md` — E2E test infra summary
+- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\PROJECT.md`
+- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\BRIEFING.md`
+- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\progress.md`
+- `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_fix_audit\handoff.md`

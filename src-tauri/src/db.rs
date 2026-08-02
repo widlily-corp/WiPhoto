@@ -47,19 +47,20 @@ fn open_conn_raw() -> Result<Connection> {
 }
 
 #[cfg(not(test))]
-static DB_POOL: Lazy<Pool<SqliteConnectionManager>> = Lazy::new(|| {
-    let path = get_db_path();
-    let manager = SqliteConnectionManager::file(path).with_init(|c| {
-        c.busy_timeout(std::time::Duration::from_millis(5000))?;
-        c.pragma_update(None, "journal_mode", "WAL")?;
-        c.pragma_update(None, "synchronous", "NORMAL")?;
-        Ok(())
+static DB_POOL: Lazy<std::result::Result<Pool<SqliteConnectionManager>, String>> =
+    Lazy::new(|| {
+        let path = get_db_path();
+        let manager = SqliteConnectionManager::file(path).with_init(|c| {
+            c.busy_timeout(std::time::Duration::from_millis(5000))?;
+            c.pragma_update(None, "journal_mode", "WAL")?;
+            c.pragma_update(None, "synchronous", "NORMAL")?;
+            Ok(())
+        });
+        Pool::builder()
+            .max_size(10)
+            .build(manager)
+            .map_err(|e| format!("Failed to create SQLite connection pool: {}", e))
     });
-    Pool::builder()
-        .max_size(10)
-        .build(manager)
-        .expect("Failed to create SQLite connection pool")
-});
 
 #[cfg(test)]
 static TEST_CONNS: Lazy<Mutex<HashMap<std::thread::ThreadId, Connection>>> =
@@ -73,9 +74,9 @@ where
     {
         let tid = std::thread::current().id();
         let mut map = TEST_CONNS.lock();
-        if !map.contains_key(&tid) {
+        if let std::collections::hash_map::Entry::Vacant(e) = map.entry(tid) {
             let conn = open_conn_raw()?;
-            map.insert(tid, conn);
+            e.insert(conn);
         }
         let conn = map
             .get_mut(&tid)
@@ -84,7 +85,13 @@ where
     }
     #[cfg(not(test))]
     {
-        let mut conn = DB_POOL.get().map_err(|e| {
+        let pool = DB_POOL.as_ref().map_err(|e| {
+            rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+                Some(e.clone()),
+            )
+        })?;
+        let mut conn = pool.get().map_err(|e| {
             rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
                 Some(e.to_string()),
@@ -275,77 +282,6 @@ pub fn search_clip_semantic_db(query_vec: &[f32], limit: usize) -> Result<Vec<(I
     }
 
     Ok(ranked)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_init_and_cache_db() {
-        // Arrange
-        let _ = init_db();
-        let folder = "C:/test_folder";
-        let info1 = ImageInfo {
-            path: "C:/test_folder/img1.jpg".into(),
-            filename: "img1.jpg".into(),
-            thumbnail: "dummy_thumb".into(),
-            phash: Some("abcdef".into()),
-            sharpness: 0.8,
-            is_best_in_group: true,
-            group_id: Some("g1".into()),
-            faces_count: 1,
-            animals_count: 0,
-            gps_location: Some((50.0, 10.0)),
-            aspect_ratio: 1.5,
-            camera_model: "Nikon".into(),
-            date_taken: "2024:01:01".into(),
-            rating: 4,
-            file_size: 1024,
-            width: 600,
-            height: 400,
-            animal_species: vec![],
-            color_label: "red".into(),
-            flag_status: "picked".into(),
-            tags: vec!["land".into()],
-            is_video: false,
-            is_raw: false,
-        };
-
-        // Act
-        let save_res = save_images_batch(&[(&info1, 123456u64)]);
-        if let Err(ref e) = save_res {
-            println!("DB Save Error: {:?}", e);
-        }
-        assert!(save_res.is_ok());
-
-        let cache = get_folder_mtimes(folder).expect("Failed to get cache");
-
-        // Assert
-        assert!(cache.contains_key("C:/test_folder/img1.jpg"));
-        let cached_mtime = cache.get("C:/test_folder/img1.jpg").unwrap();
-        assert_eq!(*cached_mtime, 123456u64);
-
-        // Test embedding save and search
-        let test_emb = vec![0.1f32; crate::onnx::EMBEDDING_DIM];
-        let save_emb_res = save_image_embedding("C:/test_folder/img1.jpg", &test_emb);
-        assert!(save_emb_res.is_ok());
-
-        let fetched_emb = get_image_embedding("C:/test_folder/img1.jpg").unwrap();
-        assert!(fetched_emb.is_some());
-        assert_eq!(fetched_emb.unwrap().len(), crate::onnx::EMBEDDING_DIM);
-
-        let search_res = search_clip_semantic_db(&test_emb, 10).unwrap();
-        assert!(!search_res.is_empty());
-        assert_eq!(search_res[0].0.path, "C:/test_folder/img1.jpg");
-
-        // Delete
-        let del_res = delete_images_batch(&["C:/test_folder/img1.jpg".to_string()]);
-        assert!(del_res.is_ok());
-
-        let cache_after = get_folder_mtimes(folder).unwrap();
-        assert!(!cache_after.contains_key("C:/test_folder/img1.jpg"));
-    }
 }
 
 /// Retrieve all cached images for a given folder path
@@ -624,4 +560,75 @@ pub fn delete_images_batch(paths: &[String]) -> Result<()> {
         tx.commit()?;
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init_and_cache_db() {
+        // Arrange
+        let _ = init_db();
+        let folder = "C:/test_folder";
+        let info1 = ImageInfo {
+            path: "C:/test_folder/img1.jpg".into(),
+            filename: "img1.jpg".into(),
+            thumbnail: "dummy_thumb".into(),
+            phash: Some("abcdef".into()),
+            sharpness: 0.8,
+            is_best_in_group: true,
+            group_id: Some("g1".into()),
+            faces_count: 1,
+            animals_count: 0,
+            gps_location: Some((50.0, 10.0)),
+            aspect_ratio: 1.5,
+            camera_model: "Nikon".into(),
+            date_taken: "2024:01:01".into(),
+            rating: 4,
+            file_size: 1024,
+            width: 600,
+            height: 400,
+            animal_species: vec![],
+            color_label: "red".into(),
+            flag_status: "picked".into(),
+            tags: vec!["land".into()],
+            is_video: false,
+            is_raw: false,
+        };
+
+        // Act
+        let save_res = save_images_batch(&[(&info1, 123456u64)]);
+        if let Err(ref e) = save_res {
+            println!("DB Save Error: {:?}", e);
+        }
+        assert!(save_res.is_ok());
+
+        let cache = get_folder_mtimes(folder).expect("Failed to get cache");
+
+        // Assert
+        assert!(cache.contains_key("C:/test_folder/img1.jpg"));
+        let cached_mtime = cache.get("C:/test_folder/img1.jpg").unwrap();
+        assert_eq!(*cached_mtime, 123456u64);
+
+        // Test embedding save and search
+        let test_emb = vec![0.1f32; crate::onnx::EMBEDDING_DIM];
+        let save_emb_res = save_image_embedding("C:/test_folder/img1.jpg", &test_emb);
+        assert!(save_emb_res.is_ok());
+
+        let fetched_emb = get_image_embedding("C:/test_folder/img1.jpg").unwrap();
+        assert!(fetched_emb.is_some());
+        assert_eq!(fetched_emb.unwrap().len(), crate::onnx::EMBEDDING_DIM);
+
+        let search_res = search_clip_semantic_db(&test_emb, 10).unwrap();
+        assert!(!search_res.is_empty());
+        assert_eq!(search_res[0].0.path, "C:/test_folder/img1.jpg");
+
+        // Delete
+        let del_res = delete_images_batch(&["C:/test_folder/img1.jpg".to_string()]);
+        assert!(del_res.is_ok());
+
+        let cache_after = get_folder_mtimes(folder).unwrap();
+        assert!(!cache_after.contains_key("C:/test_folder/img1.jpg"));
+    }
 }

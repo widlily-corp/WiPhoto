@@ -315,15 +315,58 @@ const Gallery = (() => {
     updateStatusBar();
   }
 
-  function updateRecycledCard(card, img) {
-    // 1. Image
+  function updateCardImage(card, img) {
     let imgEl = card.querySelector('.thumb-img');
     if (!imgEl) {
       imgEl = Utils.el('img', { className: 'thumb-img' });
       card.insertBefore(imgEl, card.firstChild);
     }
-    imgEl.alt = img.filename;
-    imgEl.src = img.thumbnail ? Utils.assetUrl(img.thumbnail) : '';
+
+    let placeholderEl = card.querySelector('.thumb-placeholder');
+
+    const showPlaceholder = (text) => {
+      imgEl.style.display = 'none';
+      if (!placeholderEl) {
+        placeholderEl = Utils.el('div', { className: 'thumb-placeholder' }, [
+          Utils.el('span', { className: 'thumb-placeholder-icon', textContent: '🖼️' }),
+          Utils.el('span', { className: 'thumb-placeholder-text', textContent: text })
+        ]);
+        card.insertBefore(placeholderEl, card.firstChild);
+      } else {
+        placeholderEl.style.display = 'flex';
+        const txtEl = placeholderEl.querySelector('.thumb-placeholder-text');
+        if (txtEl) txtEl.textContent = text;
+      }
+    };
+
+    const hidePlaceholder = () => {
+      imgEl.style.display = 'block';
+      if (placeholderEl) {
+        placeholderEl.style.display = 'none';
+      }
+    };
+
+    imgEl.alt = img.filename || 'Image';
+    const fallbackText = img.is_raw ? 'RAW' : (img.is_video ? 'VIDEO' : 'NO PREVIEW');
+
+    imgEl.onerror = () => {
+      showPlaceholder(fallbackText);
+    };
+    imgEl.onload = () => {
+      hidePlaceholder();
+    };
+
+    if (img.thumbnail && img.thumbnail.trim() !== '') {
+      imgEl.src = Utils.assetUrl(img.thumbnail);
+    } else {
+      imgEl.src = '';
+      showPlaceholder(fallbackText);
+    }
+  }
+
+  function updateRecycledCard(card, img) {
+    // 1. Image & Fallback Placeholder
+    updateCardImage(card, img);
 
     // 2. Video play indicator
     let videoPlayEl = card.querySelector('.thumb-badge-video-play');
@@ -428,15 +471,8 @@ const Gallery = (() => {
       return card;
     }
 
-    // Thumbnail image
-    const imgEl = Utils.el('img', {
-      className: 'thumb-img',
-      alt: img.filename,
-    });
-    if (img.thumbnail) {
-      imgEl.src = Utils.assetUrl(img.thumbnail);
-    }
-    card.appendChild(imgEl);
+    // Thumbnail image & Fallback Placeholder
+    updateCardImage(card, img);
 
     // Video play indicator overlay
     if (img.is_video) {
@@ -627,7 +663,8 @@ const Gallery = (() => {
   function setRating(rating) {
     getSelectedImages().forEach(img => {
       img.rating = rating;
-      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || []);
+      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || [])
+        .catch(err => Logger.error('Gallery', 'Failed to write XMP sidecar on setRating:', err));
     });
     applyFilters();
   }
@@ -635,7 +672,8 @@ const Gallery = (() => {
   function setColorLabel(color) {
     getSelectedImages().forEach(img => {
       img.color_label = img.color_label === color ? '' : color;
-      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || []);
+      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || [])
+        .catch(err => Logger.error('Gallery', 'Failed to write XMP sidecar on setColorLabel:', err));
     });
     applyFilters();
   }
@@ -643,7 +681,8 @@ const Gallery = (() => {
   function setFlagStatus(status) {
     getSelectedImages().forEach(img => {
       img.flag_status = status;
-      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || []);
+      API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags || [])
+        .catch(err => Logger.error('Gallery', 'Failed to write XMP sidecar on setFlagStatus:', err));
     });
     applyFilters();
   }
@@ -707,7 +746,8 @@ const Gallery = (() => {
       if (!img.tags) img.tags = [];
       if (!img.tags.includes(tag)) {
         img.tags.push(tag);
-        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags);
+        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags)
+          .catch(err => Logger.error('Gallery', 'Failed to write XMP sidecar on addTagToSelected:', err));
       }
     });
   }
@@ -717,7 +757,8 @@ const Gallery = (() => {
     getSelectedImages().forEach(img => {
       if (img.tags) {
         img.tags = img.tags.filter(t => t !== tag);
-        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags);
+        API.writeXmpSidecar(img.path, img.rating, img.color_label, img.flag_status, img.tags)
+          .catch(err => Logger.error('Gallery', 'Failed to write XMP sidecar on removeTagFromSelected:', err));
       }
     });
   }

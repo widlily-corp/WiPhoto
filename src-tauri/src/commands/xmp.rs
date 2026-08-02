@@ -13,42 +13,63 @@ fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn read_to_string_with_retry(path: &Path) -> std::io::Result<String> {
-    let mut retries = 10;
+fn read_and_parse_xmp_with_retry(path: &Path) -> Result<Option<XmpData>, String> {
+    let mut retries = 25;
     let mut delay = Duration::from_millis(2);
+    let mut not_found_count = 0;
+
     loop {
-        match fs::read_to_string(path) {
+        if !path.exists() {
+            not_found_count += 1;
+            if not_found_count >= 3 || retries == 0 {
+                return Ok(None);
+            }
+            retries -= 1;
+            thread::sleep(delay);
+            delay = (delay * 2).min(Duration::from_millis(50));
+            continue;
+        }
+
+        not_found_count = 0;
+
+        let err_msg = match fs::read_to_string(path) {
             Ok(content) => {
                 let file_size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                if content.is_empty() && file_size > 0 {
-                    if retries == 0 {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::UnexpectedEof,
-                            "File read returned empty content despite non-zero file size",
-                        ));
-                    }
-                    retries -= 1;
-                    thread::sleep(delay);
-                    delay *= 2;
-                    continue;
+                if content.is_empty() && file_size == 0 {
+                    return Ok(None);
                 }
-                return Ok(content);
+
+                if let Some(data) = parse_xmp_content(&content) {
+                    return Ok(Some(data));
+                }
+
+                "Failed to parse XMP content (possible incomplete read or malformed XML)".to_string()
             }
             Err(e) => {
-                if retries == 0 || (e.kind() == std::io::ErrorKind::NotFound && !path.exists()) {
-                    return Err(e);
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    not_found_count += 1;
+                    if not_found_count >= 3 || retries == 0 {
+                        return Ok(None);
+                    }
+                    format!("File not found: {}", e)
+                } else {
+                    format!("Failed to read existing sidecar file: {}", e)
                 }
-                retries -= 1;
-                thread::sleep(delay);
-                delay *= 2;
             }
+        };
+
+        if retries == 0 {
+            return Err(err_msg);
         }
+        retries -= 1;
+        thread::sleep(delay);
+        delay = (delay * 2).min(Duration::from_millis(50));
     }
 }
 
 fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()> {
     let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
-    let mut retries = 10;
+    let mut retries = 25;
     let mut delay = Duration::from_millis(2);
 
     loop {
@@ -80,7 +101,7 @@ fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()
                 }
                 retries -= 1;
                 thread::sleep(delay);
-                delay *= 2;
+                delay = (delay * 2).min(Duration::from_millis(50));
             }
         }
     }
@@ -90,14 +111,7 @@ fn write_file_with_sync(target_path: &Path, content: &str) -> std::io::Result<()
 #[tauri::command]
 pub fn read_xmp_sidecar(path: String) -> Result<Option<XmpData>, String> {
     let xmp_path = Path::new(&path).with_extension("xmp");
-    if !xmp_path.exists() {
-        return Ok(None);
-    }
-    match read_to_string_with_retry(&xmp_path) {
-        Ok(content) => Ok(parse_xmp_content(&content)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("Read error: {}", e)),
-    }
+    read_and_parse_xmp_with_retry(&xmp_path)
 }
 
 /// Sync XMP sidecar for an image (PROJECT.md contract)
@@ -128,12 +142,8 @@ pub fn write_xmp_sidecar(
 
     // Read existing history
     let mut history = Vec::new();
-    if xmp_path.exists() {
-        let content = read_to_string_with_retry(&xmp_path)
-            .map_err(|e| format!("Failed to read existing sidecar: {}", e))?;
-        if let Some(existing) = parse_xmp_content(&content) {
-            history = existing.history;
-        }
+    if let Some(existing) = read_and_parse_xmp_with_retry(&xmp_path)? {
+        history = existing.history;
     }
 
     // Append new history entry
@@ -456,6 +466,44 @@ mod tests {
         assert_eq!(read.rating, 5);
         assert_eq!(read.color_label, "blue");
         assert_eq!(read.flag_status, "picked");
+
+        let _ = fs::remove_file(&sidecar_path);
+    }
+
+    #[test]
+    fn test_write_xmp_sidecar_retries_and_preserves_history() {
+        let temp_dir = std::env::temp_dir();
+        let img_path = temp_dir
+            .join("test_xmp_retry_preserves_history.jpg")
+            .to_string_lossy()
+            .to_string();
+        let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
+
+        let _ = fs::remove_file(&sidecar_path);
+
+        for i in 1..=50 {
+            let res = write_xmp_sidecar(
+                img_path.clone(),
+                (i % 5) as u8,
+                "blue".to_string(),
+                "picked".to_string(),
+                vec![format!("tag_{}", i)],
+                Some(format!("step_{}", i)),
+            );
+            assert!(res.is_ok(), "write_xmp_sidecar failed at iteration {}", i);
+
+            let read = read_xmp_sidecar(img_path.clone())
+                .expect("read_xmp_sidecar error")
+                .expect("sidecar should exist");
+
+            assert_eq!(
+                read.history.len(),
+                i,
+                "History length truncated at iteration {}",
+                i
+            );
+            assert_eq!(read.history[i - 1], format!("step_{}", i));
+        }
 
         let _ = fs::remove_file(&sidecar_path);
     }

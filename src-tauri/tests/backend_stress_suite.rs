@@ -51,7 +51,7 @@ fn test_database_multi_threaded_concurrency_stress() {
                 let emb_res = db::save_image_embedding(&img_path, &dummy_emb);
                 assert!(emb_res.is_ok(), "Embedding save failed in thread {}", t_id);
 
-                let query_res = db::get_images_by_paths(&[img_path.clone()]);
+                let query_res = db::get_images_by_paths(std::slice::from_ref(&img_path));
                 assert!(query_res.is_ok(), "Query by path failed in thread {}", t_id);
                 let queried = query_res.unwrap();
                 assert_eq!(queried.len(), 1);

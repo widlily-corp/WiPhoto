@@ -27,75 +27,77 @@ pub fn get_cached_thumbnail_path(path: &str) -> Option<String> {
     None
 }
 
-/// Retrieve cached thumbnail file path (Zero-Copy)
-#[tauri::command]
-pub async fn get_thumbnail(path: String) -> Result<String, String> {
-    let file_path = Path::new(&path);
+/// Helper: Get cached thumbnail path or generate thumbnail synchronously on disk
+pub fn get_or_generate_thumbnail_sync(path: &str) -> Result<String, String> {
+    let file_path = Path::new(path);
     if !file_path.exists() {
         return Err("File not found".into());
     }
 
-    // Fast-path: Check in-memory path cache first
-    if let Some(cached_file) = get_cached_thumbnail_path(&path) {
+    if let Some(cached_file) = get_cached_thumbnail_path(path) {
         return Ok(cached_file);
     }
 
-    let path_clone = path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let cache_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".wiphoto")
-            .join("cache")
-            .join("thumbnails");
-        let _ = fs::create_dir_all(&cache_dir);
+    let cache_dir = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".wiphoto")
+        .join("cache")
+        .join("thumbnails");
+    let _ = fs::create_dir_all(&cache_dir);
 
-        let hash = {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(path_clone.as_bytes());
-            hex::encode(hasher.finalize())
-        };
-        let cache_file = cache_dir.join(format!("{}.jpg", hash));
-        let cache_file_str = cache_file.to_string_lossy().to_string();
+    let hash = {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(path.as_bytes());
+        hex::encode(hasher.finalize())
+    };
+    let cache_file = cache_dir.join(format!("{}.jpg", hash));
+    let cache_file_str = cache_file.to_string_lossy().to_string();
 
-        if cache_file.exists() {
-            THUMBNAIL_PATH_CACHE
-                .write()
-                .insert(path_clone, cache_file_str.clone());
-            return Ok(cache_file_str);
-        }
-
-        // Support RAW formats
-        let ext = Path::new(&path_clone)
-            .extension()
-            .map(|e| e.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
-            if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(Path::new(&path_clone)) {
-                image::load_from_memory(&bytes)
-                    .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
-            } else {
-                return Err("Failed to extract preview from RAW file".into());
-            }
-        } else {
-            image::open(Path::new(&path_clone))
-                .map_err(|e| format!("Failed to open image: {}", e))?
-        };
-
-        // Resize using fast Triangle filter
-        let thumb = img.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, FilterType::Triangle);
-
-        thumb
-            .save_with_format(&cache_file, image::ImageFormat::Jpeg)
-            .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
-
+    if cache_file.exists() {
         THUMBNAIL_PATH_CACHE
             .write()
-            .insert(path_clone, cache_file_str.clone());
-        Ok(cache_file_str)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+            .insert(path.to_string(), cache_file_str.clone());
+        return Ok(cache_file_str);
+    }
+
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+        if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
+            image::load_from_memory(&bytes)
+                .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
+        } else {
+            return Err("Failed to extract preview from RAW file".into());
+        }
+    } else {
+        image::open(file_path).map_err(|e| format!("Failed to open image: {}", e))?
+    };
+
+    let thumb = img.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, FilterType::Triangle);
+
+    thumb
+        .save_with_format(&cache_file, image::ImageFormat::Jpeg)
+        .map_err(|e| format!("Failed to save thumbnail: {}", e))?;
+
+    THUMBNAIL_PATH_CACHE
+        .write()
+        .insert(path.to_string(), cache_file_str.clone());
+    Ok(cache_file_str)
+}
+
+/// Retrieve cached thumbnail file path (Zero-Copy)
+#[tauri::command]
+pub async fn get_thumbnail(path: String) -> Result<String, String> {
+    if let Some(cached_file) = get_cached_thumbnail_path(&path) {
+        return Ok(cached_file);
+    }
+    let path_clone = path.clone();
+    tauri::async_runtime::spawn_blocking(move || get_or_generate_thumbnail_sync(&path_clone))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Load full-resolution image file path (Zero-Copy, with preview cache for RAW/resized)
@@ -241,7 +243,7 @@ pub fn auto_prune_thumbnail_cache() -> Result<u32, String> {
 /// Get asset protocol URL for zero-copy rendering (PROJECT.md contract)
 #[tauri::command]
 pub fn get_image_url(path: String) -> String {
-    format!("tauri://localhost/{}", path)
+    format!("asset://localhost/{}", path)
 }
 
 #[cfg(test)]
@@ -251,6 +253,6 @@ mod tests {
     #[test]
     fn test_get_image_url() {
         let url = get_image_url("C:/photos/test.jpg".into());
-        assert_eq!(url, "tauri://localhost/C:/photos/test.jpg");
+        assert_eq!(url, "asset://localhost/C:/photos/test.jpg");
     }
 }

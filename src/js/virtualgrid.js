@@ -186,10 +186,6 @@ const VirtualGrid = (() => {
     visibleStartRow = newStartRow;
     visibleEndRow = newEndRow;
 
-    if (lazyObserver) {
-      lazyObserver.disconnect();
-    }
-
     const startIdx = visibleStartRow * columns;
     const endIdx = Math.min((visibleEndRow + 1) * columns, items.length);
 
@@ -204,9 +200,16 @@ const VirtualGrid = (() => {
       }
     }
 
-    // 2. Render or recycle elements for new visible indices
+    // 2. Render or recycle elements for new visible indices using DocumentFragment batching
+    const useFragment = typeof document !== 'undefined' && typeof document.createDocumentFragment === 'function';
+    const fragment = useFragment ? document.createDocumentFragment() : null;
+    let firstExistingCard = null;
+
     for (let i = startIdx; i < endIdx; i++) {
       if (activeCardMap.has(i)) {
+        if (!firstExistingCard && useFragment) {
+          firstExistingCard = activeCardMap.get(i);
+        }
         continue;
       }
 
@@ -216,18 +219,29 @@ const VirtualGrid = (() => {
 
       activeCardMap.set(i, card);
 
-      // Find next mounted node to insert before to maintain DOM order, or append
-      let inserted = false;
-      for (let nextIdx = i + 1; nextIdx < endIdx; nextIdx++) {
-        const nextCard = activeCardMap.get(nextIdx);
-        if (nextCard && nextCard.parentNode === contentArea) {
-          contentArea.insertBefore(card, nextCard);
-          inserted = true;
-          break;
+      const img = card.tagName === 'IMG' ? card : (card.querySelector ? card.querySelector('img') : null);
+      if (img && lazyObserver) {
+        if (img.dataset && img.dataset.src) {
+          lazyObserver.observe(img);
         }
       }
-      if (!inserted) {
-        contentArea.appendChild(card);
+
+      if (fragment) {
+        fragment.appendChild(card);
+      } else {
+        if (firstExistingCard && firstExistingCard.parentNode === contentArea) {
+          contentArea.insertBefore(card, firstExistingCard);
+        } else {
+          contentArea.appendChild(card);
+        }
+      }
+    }
+
+    if (fragment && fragment.hasChildNodes && fragment.hasChildNodes()) {
+      if (firstExistingCard && firstExistingCard.parentNode === contentArea) {
+        contentArea.insertBefore(fragment, firstExistingCard);
+      } else {
+        contentArea.appendChild(fragment);
       }
     }
 

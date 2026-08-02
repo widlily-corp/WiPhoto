@@ -31,9 +31,7 @@ fn get_image_for_hashing(path: &str) -> Option<image::DynamicImage> {
     }
 
     // Fallback 1: Try generating thumbnail on-the-fly
-    if let Ok(thumb_path) =
-        tauri::async_runtime::block_on(super::thumbnails::get_thumbnail(path.to_string()))
-    {
+    if let Ok(thumb_path) = super::thumbnails::get_or_generate_thumbnail_sync(path) {
         if let Ok(img) = image::open(&thumb_path) {
             return Some(img);
         }

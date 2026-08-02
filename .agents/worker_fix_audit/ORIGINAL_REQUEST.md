@@ -1,21 +1,17 @@
-## 2026-07-30T15:05:31Z
+## 2026-08-02T05:10:05Z
 
-You are worker_fix_audit. Your working directory is `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_fix_audit`.
+You are a Worker agent assigned to remediate a layout compliance violation flagged by the Forensic Auditor.
 
-Scope & Mission: Fix static analysis compilation and clippy errors in `src-tauri/src/commands/xmp.rs` identified by Forensic Auditor.
+Your identity:
+- Archetype: teamwork_preview_worker
+- Working directory: c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_fix_audit
+- Scope document: c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator\PROJECT.md
 
-Audit Evidence Log:
-- `cargo check` error: `error[E0428]: the name xml_escape is defined multiple times` at `src-tauri/src/commands/xmp.rs` (duplicate `xml_escape` function definition).
-- `cargo clippy -- -D warnings` error: unused import `PathBuf` at `src-tauri/src/commands/xmp.rs:4:23`.
+Audit Finding Evidence:
+The Forensic Auditor reported INTEGRITY VIOLATION due to layout compliance failure: an executable test script `c:\Users\Widlily\Documents\projects\wiphoto\.agents\challenger_m1_ota\test_link_parsing.cjs` was created inside the `.agents/` directory tree. `.agents/` must strictly contain ONLY metadata (.md) files.
 
-Tasks:
-1. Edit `src-tauri/src/commands/xmp.rs`:
-   - Remove the duplicate `xml_escape` function definition so `xml_escape` is defined exactly once in `src-tauri/src/commands/xmp.rs`.
-   - Remove `PathBuf` from `use std::path::{Path, PathBuf};` (change to `use std::path::Path;`).
-2. Run `cargo check --manifest-path src-tauri/Cargo.toml` and confirm exit code 0 (0 compilation errors).
-3. Run `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` and confirm exit code 0 (0 warnings).
-4. Run `cargo test --manifest-path src-tauri/Cargo.toml` and confirm all tests pass cleanly.
-5. Write `handoff.md` in `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_fix_audit\handoff.md` with command outputs and notify parent agent via `send_message`.
-
-MANDATORY INTEGRITY WARNING:
-DO NOT CHEAT. All implementations must be genuine. DO NOT hardcode test results, create dummy/facade implementations, or circumvent the intended task. A Forensic Auditor will independently verify your work. Integrity violations WILL be detected and your work WILL be rejected.
+Task Objectives:
+1. Remove/delete `c:\Users\Widlily\Documents\projects\wiphoto\.agents\challenger_m1_ota\test_link_parsing.cjs` so that `.agents/` contains ONLY `.md` metadata files.
+2. Verify no other source, test, binary, or non-metadata files exist anywhere inside `.agents/`.
+3. Execute `npm test`, `npx eslint src/`, `cargo test --manifest-path src-tauri/Cargo.toml`, and `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` to verify all tests and linting remain 100% clean with 0 errors.
+4. Write handoff report to `c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_fix_audit\handoff.md` and notify parent via `send_message`.

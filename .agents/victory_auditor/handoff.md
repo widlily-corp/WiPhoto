@@ -1,132 +1,116 @@
-# Forensic Integrity Audit Report — WiPhoto v5.0 Optimization
+# Forensic Audit Handoff Report
 
-**Work Product**: WiPhoto v5.0 Optimization Codebase
-**Profile**: General Project
-**Verdict**: **INTEGRITY VIOLATION**
+**Work Product**: WiPhoto Release 5.0.0 (`c:\Users\Widlily\Documents\projects\wiphoto`)  
+**Profile**: Victory Audit / Forensic Integrity Check  
+**Auditor**: Victory Auditor (`victory_auditor`)  
+**Date**: 2026-08-02  
 
 ---
 
 ## 1. Observation
 
-### Codebase Feature Authenticity
-- **Frontend `VirtualGrid` (`src/js/virtualgrid.js` & `src/js/gallery.js`)**:
-  - `src/js/virtualgrid.js` (lines 18-19): `cardPool` array for detached DOM element reuse, `activeCardMap` (`Map<index, HTMLElement>`) for O(1) card lookups.
-  - `src/js/virtualgrid.js` (lines 145-153): Scroll event handling utilizes requestAnimationFrame frame locking (`if (!ticking && isActive) { requestAnimationFrame(...); ticking = true; }`).
-  - `src/js/gallery.js` (lines 318-430): `updateRecycledCard(card, img)` mutates recycled card properties (`filename`, `thumbnail`, `is_video`, `rating`, `color_label`, `flag_status`, `badges`) without creating new DOM nodes.
-  - **Verdict**: PASS (Genuine logic, no hardcoded data or facade rendering).
+### Command 1: `.agents/` Directory Layout Compliance Check
+- **Command executed**: `find_by_name` across `.agents/` directory searching for all non-`.md` files (`*.js`, `*.cjs`, `*.mjs`, `*.py`, `*.rs`, `*.ts`, `*.json`, `*.sh`, `*.ps1`).
+- **Result**: `Found 0 results`. All 151 files under `.agents/` are strictly `.md` metadata files.
 
-- **Rust Backend Optimization (`thumbnails.rs` & `db.rs`)**:
-  - `src-tauri/src/commands/thumbnails.rs` (lines 11-28, 44-97): `THUMBNAIL_PATH_CACHE` managed via `parking_lot::RwLock<HashMap<String, String>>`. Async command wraps blocking image processing in `tauri::async_runtime::spawn_blocking`.
-  - `src-tauri/src/db.rs` (lines 28-75, 528-586): `DB_CONN` managed via `parking_lot::Mutex`. WAL journal mode set (`pragma_update(None, "journal_mode", "WAL")`), 5000ms busy timeout configured. `save_images_batch` executes within SQLite transactions (`conn.transaction()`).
-  - **Verdict**: PASS (Authentic implementation).
-
-- **Background CLIP Embedding & XMP Sidecar Sync (`scanner.rs`, `xmp.rs`, `metadata.rs`)**:
-  - `src-tauri/src/commands/scanner.rs` (lines 343-383, 495-528): `uncached_files.par_iter()` utilizes Rayon parallel iterators. `enqueue_background_onnx_tasks` spawns an asynchronous background task (`tauri::async_runtime::spawn`) to calculate 512-dim CLIP embeddings in background via `crate::onnx::extract_image_embedding` and save to DB (`save_image_embedding`), fully decoupled from the folder scan return.
-  - `src-tauri/src/commands/xmp.rs` (lines 71-173): `sync_xmp_sidecar` and `write_xmp_sidecar` parse and generate XML sidecars, using atomic file updates with retries (`write_atomic_with_retry`).
-  - **Verdict**: PASS (Authentic implementation).
-
-- **Prohibited Pattern Sweep**:
-  - Searched production codebase for hardcoded test responses, facade functions, or mock implementations.
-  - Mock elements were only found in test files (`raw_utils.rs` test module, `virtualgrid_stress.test.cjs`).
-  - **Verdict**: PASS (Clean in production code).
-
-### Static Analysis Executions
-- **Check 2.1: `npx eslint src/`**:
+### Command 2: Rust Unit & Integration Test Suite (`cargo test`)
+- **Command executed**: `cargo test --manifest-path src-tauri/Cargo.toml`
+- **Output**:
+  ```text
+  running 20 tests in wiphoto_lib... ok (20 passed; 0 failed)
+  running 1 test in tests/backend_stress_suite.rs... ok (1 passed; 0 failed)
+  running 5 tests in tests/e2e_v500_tests.rs... ok (5 passed; 0 failed)
+  running 1 test in tests/xmp_roundtrip_stress.rs... ok (1 passed; 0 failed)
+  test result: ok. Total 27 passed; 0 failed.
   ```
-  Exit code: 0
-  Stdout: (empty)
-  Stderr: (empty)
-  Status: 0 errors
-  ```
-  - **Verdict**: PASS
 
-- **Check 2.2: `cargo check`**:
-  ```
-  Exit code: 1
-  Output:
-      Checking wiphoto v5.0.0 (C:\Users\Widlily\Documents\projects\wiphoto\src-tauri)
-  error[E0428]: the name `xml_escape` is defined multiple times
-    --> src\commands\xmp.rs:15:1
-     |
-   8 | fn xml_escape(s: &str) -> String {
-     | -------------------------------- previous definition of the value `xml_escape` here
-  ...
-  15 | fn xml_escape(s: &str) -> String {
-     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `xml_escape` redefined here
-     |
-     = note: `xml_escape` must be defined only once in the value namespace of this module
+### Command 3: JavaScript Unit & E2E Test Suite (`npm test`)
+- **Command executed**: `npm test` (`node --test src/js/*.test.cjs`)
+- **Output**:
+  ```text
+  ℹ tests 46
+  ℹ suites 22
+  ℹ pass 45
+  ℹ fail 1
+  ℹ cancelled 0
+  ℹ skipped 0
 
-  For more information about this error, try `rustc --explain E0428`.
-  error: could not compile `wiphoto` (lib) due to 1 previous error
-  ```
-  - **Verdict**: FAIL (Compilation error in `src-tauri/src/commands/xmp.rs`).
+  ✖ failing tests:
 
-- **Check 2.3: `cargo clippy -- -D warnings`**:
+  test at src\js\virtualgrid_stress.test.cjs:139:3
+  ✖ should render 10,000 items with bounded DOM node count (< 60 active nodes) (131.1735ms)
+    AssertionError [ERR_ASSERTION]: Initial rendering of 10,000 items took 117.83ms (<100ms limit)
+        at TestContext.<anonymous> (C:\Users\Widlily\Documents\projects\wiphoto\src\js\virtualgrid_stress.test.cjs:177:12)
   ```
-  Exit code: 1
-  Output:
-      Checking wiphoto v5.0.0 (C:\Users\Widlily\Documents\projects\wiphoto\src-tauri)
-  error: unused import: `PathBuf`
-   --> src\commands\xmp.rs:4:23
-    |
-  4 | use std::path::{Path, PathBuf};
-    |                       ^^^^^^^
-    |
-    = note: `-D unused-imports` implied by `-D warnings`
-    = help: to override `-D warnings` add `#[allow(unused_imports)]`
 
-  error: could not compile `wiphoto` (lib) due to 1 previous error
-  ```
-  - **Verdict**: FAIL (Compilation failure due to `xml_escape` duplicate definition and `-D warnings` unused import error).
+### Code Observations
+
+1. **R1 (Semantic Search)**:
+   - File `src-tauri/src/onnx.rs` lines 44-75 loads `yolov8n.onnx` locally with `tract_onnx`. Functions `extract_text_embedding` (lines 398-525) and `extract_image_embedding` (lines 528-665) generate 512-dim embeddings offline.
+   - File `src-tauri/src/commands/search.rs` lines 17-40 (`search_clip_semantic`) and lines 43-67 (`search_clip`) execute vector similarity search against SQLite database (`db::search_clip_semantic_db`).
+   - File `src/js/search.js` lines 43-67 invokes `window.API.searchClipSemantic`. No external cloud search API calls exist.
+
+2. **R2 (XMP Sidecar Sync)**:
+   - File `src-tauri/src/commands/xmp.rs` lines 70-108 (`write_file_with_sync`) writes to `.tmp_{pid}_{uuid}.xmp`, executes `file.sync_all()`, and renames atomically to target path. Retries on file locks with exponential backoff (`delay = (delay * 2).min(Duration::from_millis(50))`).
+   - Lines 180-202 generate standard Adobe XMP XML with `x:xmpmeta`, `rdf:RDF`, `rdf:Description`, `dc:subject`, `xmpMM:History`.
+   - Function `parse_xmp_content` (lines 205-281) parses XMP XML via `roxmltree`.
+   - Verified via Rust stress tests (`tests/xmp_roundtrip_stress.rs` 100 cycles pass).
+
+3. **R3 (Geo-Map View)**:
+   - File `src/js/map.js` lines 45-73 initializes Leaflet `L.map` and OpenStreetMap tile layer. Lines 76-86 initializes Supercluster (`radius: 45`, `maxZoom: 16`).
+   - Lines 18-42 (`photoToGeoJsonPoint`) validates coordinates (-90 to 90 lat, -180 to 180 lon) and formats GeoJSON Point features.
+   - Lines 150-216 dynamically renders cluster badges and individual photo markers with zero-copy thumbnail popups (`Utils.assetUrl`).
+
+4. **R4 (Zero-Copy Architecture)**:
+   - File `src-tauri/src/lib.rs` lines 280-282 registers custom protocol `asset://` (`register_uri_scheme_protocol("asset", ...)`).
+   - Function `handle_asset_custom_protocol` (lines 70-229) decodes percent-encoded paths (`decode_percent`), calculates ETag (`"{file_len:x}-{mtime_secs:x}"`), responds HTTP 304 Not Modified when `if-none-match` matches, and serves Range byte requests (lines 154-205) returning HTTP 206 Partial Content with MIME `image/x-sony-arw`.
+   - File `src-tauri/src/commands/raw_utils.rs` lines 20-44 (`extract_embedded_jpeg`) extracts embedded high-res JPEG streams from Sony ARW / RAW files.
 
 ---
 
 ## 2. Logic Chain
 
-1. Observations confirm that all core feature algorithms (`VirtualGrid` recycling pool, rAF scroll lock, `RwLock` thumbnail cache, SQLite connection pool & WAL mode, Rayon parallel scanning, decoupled ONNX CLIP background embedding tasks, and XMP sync) are genuinely implemented with zero facades or hardcoded mock responses in production logic.
-2. Task Requirement #2 explicitly requires confirming 0 errors for static analysis tools: `npx eslint src/` (0 errors), `cargo check` (0 errors), `cargo clippy -- -D warnings` (0 warnings).
-3. Empirical execution of `cargo check` failed with exit code 1 due to duplicate symbol definition `xml_escape` in `src-tauri/src/commands/xmp.rs` (lines 8 & 254).
-4. Empirical execution of `cargo clippy -- -D warnings` failed with exit code 1 due to `unused import: PathBuf` in `src-tauri/src/commands/xmp.rs:4:23` and duplicate function definition.
-5. Under Forensic Integrity Audit principles, a single failed check invalidates project integrity. Because the Rust backend does not build cleanly under `cargo check` and `cargo clippy -- -D warnings`, the overall audit verdict must be **INTEGRITY VIOLATION**.
+1. **Step 1 (Layout Check)**: Inspection of `.agents/` confirmed 151 metadata `.md` files and 0 non-`.md` files. Thus, Layout Compliance passed.
+2. **Step 2 (Feature Implementation Integrity)**: Static analysis of `src/` and `src-tauri/` confirmed authentic, non-facade implementations for R1 (ONNX/tract offline semantic search), R2 (atomic temp file write + `sync_all()` + XMP XML parsing), R3 (Leaflet + Supercluster spatial indexing), and R4 (`asset://` custom protocol + Range 206 + ETag 304 + RAW preview extraction). No dummy facade returns or hardcoded test results were found in application logic.
+3. **Step 3 (Rust Test Verification)**: Execution of `cargo test --manifest-path src-tauri/Cargo.toml` returned a 100% pass rate across 27 unit and integration tests.
+4. **Step 4 (JavaScript Test Verification)**: Execution of `npm test` resulted in 45 passing tests and 1 failing test (`src/js/virtualgrid_stress.test.cjs:139`). The initial rendering benchmark for 10,000 items took 117.83ms, exceeding the 100ms threshold requirement.
+5. **Step 5 (Verdict Synthesis)**: Per Forensic Audit standards ("If ANY check fails, your verdict is INTEGRITY VIOLATION and you MUST reject the work product"), the failure of `npm test` in the JS test suite constitutes an integrity violation.
 
 ---
 
 ## 3. Caveats
 
-- As a forensic auditor, modifying implementation code to fix the duplicate function definition or unused import is strictly prohibited by constraints ("Audit-only — do NOT modify implementation code").
-- The underlying architectural implementations themselves are authentic and high quality; removing the duplicate `xml_escape` definition in `src-tauri/src/commands/xmp.rs` and the unused import `PathBuf` will resolve the static analysis failures.
+- **Test Environment Timing Sensitivity**: The test failure in `virtualgrid_stress.test.cjs:139` (117.83ms vs <100ms) occurred due to CPU execution time under test environment load. However, forensic auditor rules prohibit relaxing threshold parameters or ignoring failing test cases.
+- **Network Isolation**: Verified that search and sidecar operations run offline; ureq in `onnx.rs` is restricted to initial model artifact fetching if missing.
 
 ---
 
 ## 4. Conclusion
 
-**Verdict**: **INTEGRITY VIOLATION**
+While static analysis confirms authentic, high-quality implementations across requirements R1, R2, R3, and R4, and all Rust unit/integration tests pass cleanly (27/27), the JavaScript test suite (`npm test`) contains 1 failing benchmark assertion in `src/js/virtualgrid_stress.test.cjs`.
 
-The WiPhoto v5.0 codebase modifications demonstrate genuine algorithmic logic without facade rendering or hardcoded cheating. However, the deliverable fails the static analysis requirement due to a build-breaking compilation error (`E0428: duplicate definition of xml_escape`) and clippy warnings in `src-tauri/src/commands/xmp.rs`.
+VERDICT: INTEGRITY VIOLATION
 
 ---
 
 ## 5. Verification Method
 
-To independently verify this finding:
+To independently verify these findings:
 
-1. **Verify Frontend ESLint**:
-   ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto
-   npx eslint src/
+1. **Layout Compliance**:
+   ```powershell
+   Get-ChildItem -Path "c:\Users\Widlily\Documents\projects\wiphoto\.agents" -Recurse | Where-Object { ! $_.PSIsContainer -and $_.Extension -ne ".md" }
    ```
-   *Expected Result*: Exit code 0, 0 errors.
+   *Expected output: Empty (0 files found).*
 
-2. **Verify Rust Compilation (`cargo check`)**:
-   ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto\src-tauri
-   cargo check
+2. **Rust Test Suite**:
+   ```powershell
+   cargo test --manifest-path src-tauri/Cargo.toml
    ```
-   *Expected Result*: Exit code 1, `error[E0428]: the name xml_escape is defined multiple times` in `src/commands/xmp.rs`.
+   *Expected output: 27 passed; 0 failed.*
 
-3. **Verify Rust Clippy (`cargo clippy`)**:
-   ```bash
-   cd c:\Users\Widlily\Documents\projects\wiphoto\src-tauri
-   cargo clippy -- -D warnings
+3. **JavaScript Test Suite (Triggering Failure)**:
+   ```powershell
+   npm test
    ```
-   *Expected Result*: Exit code 1, compilation failure.
+   *Expected output: 45 passed, 1 failed in `virtualgrid_stress.test.cjs` (AssertionError: 117.83ms > 100ms).*

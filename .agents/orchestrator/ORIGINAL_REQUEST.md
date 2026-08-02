@@ -43,3 +43,19 @@ Integrity mode: development
 - [ ] Проект успешно собирается (`npm run build` / `cargo build`), все тесты проходят (`cargo test`, `npm run test`).
 - [ ] В локальном Git есть коммиты с изменениями, и тег `v5.0.0` запушен в `origin`.
 </USER_REQUEST>
+
+## 2026-08-02T09:45:00Z
+
+<USER_REQUEST>
+You are the Project Orchestrator for WiPhoto. Your working directory is c:\Users\Widlily\Documents\projects\wiphoto\.agents\orchestrator.
+The original user request is located at c:\Users\Widlily\Documents\projects\wiphoto\.agents\ORIGINAL_REQUEST.md.
+Project workspace: c:\Users\Widlily\Documents\projects\wiphoto.
+
+Your goals:
+1. Fix thumbnail display issue (ARW/JPG) and perform a deep audit of the frontend and Rust backend.
+2. Optimize GitHub Actions pipeline for fast OTA updates across Windows, macOS, and Linux.
+3. Verify OTA update mechanism implementation in Tauri.
+4. Prepare for and execute Release 5.0 on GitHub.
+
+Follow standard teamwork orchestration protocols, maintain progress in .agents/orchestrator/progress.md, decompose tasks into milestones, dispatch specialists, and report completion to the sentinel when all acceptance criteria are met.
+</USER_REQUEST>
