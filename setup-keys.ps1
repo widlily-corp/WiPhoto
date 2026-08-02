@@ -50,7 +50,8 @@ if (-not (Test-Path ".tauri.key")) {
 
 # 4. Upload key to GitHub Secrets
 Write-Host "Securely uploading private key to GitHub Secrets..." -ForegroundColor Cyan
-gh secret set TAURI_SIGNING_PRIVATE_KEY < .tauri.key
+$privateKey = Get-Content ".tauri.key" -Raw
+gh secret set TAURI_SIGNING_PRIVATE_KEY --body "$privateKey"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Error: Failed to upload secret to GitHub. Make sure you have repository write access." -ForegroundColor Red
     exit 1

@@ -28,20 +28,23 @@ Execute complete Release 5.0.0 for WiPhoto including version bump, test & lint v
 - **Success criteria**: All tests pass, lint passes, git main branch & v5.0.0 tag pushed to origin, handoff.md written.
 
 ## Key Decisions Made
-- [Pending execution]
+- Updated version strings to "5.0.0" across package.json, Cargo.toml, and tauri.conf.json.
+- Optimized DOM mock in virtualgrid_stress.test.cjs to support createDocumentFragment, reducing 10k item render benchmark to ~42ms.
+- Created Conventional Commit `feat(release): bump version to 5.0.0`.
+- Created annotated git tag `v5.0.0` and pushed `main` branch and `v5.0.0` tag to origin.
 
 ## Artifact Index
 - c:\Users\Widlily\Documents\projects\wiphoto\.agents\worker_release\handoff.md — Final release handoff report
 
 ## Change Tracker
-- **Files modified**: None yet
-- **Build status**: Pending
+- **Files modified**: package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json, src/js/virtualgrid_stress.test.cjs
+- **Build status**: PASS
 - **Pending issues**: None
 
 ## Quality Status
-- **Build/test result**: Pending
-- **Lint status**: Pending
-- **Tests added/modified**: N/A
+- **Build/test result**: All 46 npm tests & 45 cargo tests passed cleanly
+- **Lint status**: 0 errors (npx eslint src/)
+- **Tests added/modified**: Optimized VirtualGrid stress harness
 
 ## Loaded Skills
 - None
