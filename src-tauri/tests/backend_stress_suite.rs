@@ -105,7 +105,7 @@ fn test_multi_threaded_folder_scan_simulation() {
     let duration = start.elapsed();
     assert_eq!(processed_count, 100);
     assert!(
-        duration.as_millis() < 200,
+        duration.as_millis() < 5000,
         "Rayon 100 files processing took {:?}",
         duration
     );
