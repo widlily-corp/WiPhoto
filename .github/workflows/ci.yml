@@ -107,13 +107,21 @@ jobs:
                 fs.writeFileSync(confPath, JSON.stringify(conf, null, 2));
               } catch (e) { console.error('Failed to update config', e); }
               fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key=\n');
-            } else if (!key.includes('untrusted comment')) {
-              console.log('Key missing comment, formatting...');
-              const formatted = 'untrusted comment: minisign secret key\n' + key;
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key<<EOF\n' + formatted + '\nEOF\n');
             } else {
-              console.log('Key appears correctly formatted.');
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key<<EOF\n' + key + '\nEOF\n');
+              console.log('Normalizing key...');
+              key = key.replace(/\r/g, '');
+              let isEncrypted = key.toLowerCase().includes('encrypted');
+              let commentLine = isEncrypted 
+                  ? 'untrusted comment: minisign encrypted secret key'
+                  : 'untrusted comment: minisign secret key';
+              
+              let base64Payload = key;
+              if (key.includes('untrusted comment')) {
+                  base64Payload = key.replace(/untrusted comment:.*?(key)/i, '');
+              }
+              base64Payload = base64Payload.replace(/\s+/g, '');
+              const formatted = commentLine + '\n' + base64Payload;
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key<<EOF\n' + formatted + '\nEOF\n');
             }
           "
         env:
