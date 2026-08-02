@@ -80,21 +80,11 @@ if ($base64PubKey -eq "") {
 }
 
 $confPath = "src-tauri/tauri.conf.json"
-$confContent = Get-Content $confPath -Raw
-$confJson = $confContent | ConvertFrom-Json -Depth 10
-
-if ($null -eq $confJson.plugins.updater) {
-    Write-Host "Error: plugins.updater block not found in tauri.conf.json." -ForegroundColor Red
+node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('$confPath','utf8')); c.plugins.updater.pubkey='$base64PubKey'; c.bundle.createUpdaterArtifacts=true; fs.writeFileSync('$confPath',JSON.stringify(c,null,2));"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Error: Failed to update tauri.conf.json." -ForegroundColor Red
     exit 1
 }
-$confJson.plugins.updater.pubkey = $base64PubKey
-
-if ($null -ne $confJson.bundle) {
-    $confJson.bundle.createUpdaterArtifacts = $true
-}
-
-$newConfContent = $confJson | ConvertTo-Json -Depth 10
-Set-Content -Path $confPath -Value $newConfContent
 
 Write-Host "tauri.conf.json updated successfully!" -ForegroundColor Green
 
