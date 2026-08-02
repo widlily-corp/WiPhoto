@@ -48,7 +48,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/Widlily/wiphoto/releases/latest/download/latest.json"
+        "https://github.com/widlily-corp/WiPhoto/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY5NjA4MjA0QkVGMTkwRTAKUldUZ2tQRytCSUpnK1hzTDREQ2k5WVRiSENuQjk5QURWendJWEtmWWwzRkVJYThNTXkySytrbGQK"
     }
