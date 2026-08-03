@@ -219,8 +219,8 @@ const GPURenderer = (() => {
     const commandEncoder = device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
     computePass.setPipeline(pipeline);
-    computeGroupCountX = Math.ceil(width / 16);
-    computeGroupCountY = Math.ceil(height / 16);
+    const computeGroupCountX = Math.ceil(width / 16);
+    const computeGroupCountY = Math.ceil(height / 16);
     computePass.setBindGroup(0, bindGroup);
     computePass.dispatchWorkgroups(computeGroupCountX, computeGroupCountY);
     computePass.end();

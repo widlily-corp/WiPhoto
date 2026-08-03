@@ -36,7 +36,7 @@ const VirtualGrid = (() => {
   if (typeof window !== 'undefined' && window.Worker) {
     worker = new Worker('js/grid-worker.js');
     worker.onmessage = (e) => {
-      const { id, data, type } = e.data;
+      const { id, data } = e.data;
       if (workerResolvers.has(id)) {
         workerResolvers.get(id)(data);
         workerResolvers.delete(id);

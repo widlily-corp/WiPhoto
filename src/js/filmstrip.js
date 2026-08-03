@@ -104,7 +104,7 @@ const Filmstrip = (() => {
     }, 50);
   }
 
-  return { init, update };
+  return { init, update, toggle };
 })();
 
 window.Filmstrip = Filmstrip;
