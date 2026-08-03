@@ -148,6 +148,7 @@ pub fn handle_asset_custom_protocol(
         "raf" => "image/x-fuji-raf",
         "heic" | "heif" => "image/heic",
         "avif" => "image/avif",
+        "jxl" => "image/jxl",
         _ => "application/octet-stream",
     };
 
@@ -314,6 +315,11 @@ pub fn run() {
             duplicates::find_duplicates,
             duplicates::get_duplicate_stats,
             duplicates::compute_phash,
+            duplicates::index_faces,
+            duplicates::find_similar_images,
+            duplicates::get_indexed_faces,
+            duplicates::group_faces_by_person,
+            duplicates::find_smart_duplicates,
             // Editor
             editor::apply_edit,
             editor::save_edited,
@@ -323,6 +329,7 @@ pub fn run() {
             editor::get_color_palette,
             // Export
             export::export_files,
+            export::batch_export_advanced,
             // Settings
             settings::load_settings,
             settings::save_settings,

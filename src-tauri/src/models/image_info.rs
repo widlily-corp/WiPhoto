@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Supported image extensions
 pub const IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "jfif", "png", "bmp", "gif", "tiff", "tif", "webp", "ico", "ppm", "pgm",
-    "pbm", "pnm", "heic", "heif", "avif", "jp2", "j2k", "jpx", "jpm",
+    "pbm", "pnm", "heic", "heif", "avif", "jp2", "j2k", "jpx", "jpm", "jxl",
 ];
 
 /// Supported RAW extensions
@@ -105,6 +105,23 @@ pub struct DuplicateGroup {
     pub group_id: String,
     pub images: Vec<String>, // paths
     pub best_path: String,
+}
+
+/// Face recognition embedding structure
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FaceEmbedding {
+    pub face_id: String,
+    pub path: String,
+    pub bbox: [f32; 4],
+    pub confidence: f32,
+    pub embedding: Vec<f32>,
+}
+
+/// Person group representing clustered face embeddings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonGroup {
+    pub person_id: String,
+    pub faces: Vec<FaceEmbedding>,
 }
 
 /// Editor edit operation

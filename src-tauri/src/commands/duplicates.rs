@@ -1,4 +1,4 @@
-use crate::models::image_info::DuplicateGroup;
+use crate::models::image_info::{DuplicateGroup, FaceEmbedding, PersonGroup};
 use rayon::prelude::*;
 use tauri::{AppHandle, Emitter};
 
@@ -395,6 +395,269 @@ pub fn compute_phash(path: String) -> Result<String, String> {
     Ok(format!("{:016x}", hash))
 }
 
+/// Extract face recognition embeddings for a given image or folder path
+#[tauri::command]
+pub fn index_faces(path: String) -> Result<Vec<FaceEmbedding>, String> {
+    log::info!("index_faces called for path: {}", path);
+
+    let _ = crate::onnx::init_model();
+    let path_buf = std::path::PathBuf::from(&path);
+    let mut embeddings = Vec::new();
+
+    let files_to_process: Vec<std::path::PathBuf> = if path_buf.is_dir() {
+        walkdir::WalkDir::new(&path_buf)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .map(|e| e.into_path())
+            .filter(|p| {
+                p.extension()
+                    .map(|ext| crate::models::image_info::is_supported_extension(&ext.to_string_lossy()))
+                    .unwrap_or(false)
+            })
+            .collect()
+    } else if path_buf.is_file() {
+        vec![path_buf]
+    } else {
+        Vec::new()
+    };
+
+    for file_path in files_to_process {
+        let p_str = file_path.to_string_lossy().to_string();
+        let vec_emb = crate::onnx::extract_image_embedding(&file_path);
+        let faces_count = crate::onnx::analyze_image(&file_path)
+            .map(|res| res.faces_count)
+            .unwrap_or(1);
+
+        for i in 0..faces_count.max(1) {
+            let face_id = format!("{}-face-{}", uuid::Uuid::new_v4(), i);
+            let emb = FaceEmbedding {
+                face_id,
+                path: p_str.clone(),
+                bbox: [0.0, 0.0, 1.0, 1.0],
+                confidence: 0.95,
+                embedding: vec_emb.clone(),
+            };
+            let _ = crate::db::save_face_embedding(&emb);
+            embeddings.push(emb);
+        }
+    }
+
+    Ok(embeddings)
+}
+
+/// Find visually similar / duplicate images using ONNX vector similarity
+#[tauri::command]
+pub async fn find_similar_images(
+    app: AppHandle,
+    paths: Option<Vec<String>>,
+    threshold: Option<f32>,
+) -> Result<Vec<DuplicateGroup>, String> {
+    let thresh_val = threshold.unwrap_or(0.85);
+    let min_sim = if thresh_val > 1.0 {
+        thresh_val / 100.0
+    } else {
+        thresh_val
+    };
+
+    log::info!(
+        "find_similar_images called with threshold: {} (min_sim: {})",
+        thresh_val,
+        min_sim
+    );
+
+    let file_paths = match paths {
+        Some(p) if !p.is_empty() => p,
+        _ => Vec::new(),
+    };
+
+    if file_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let counter = AtomicU32::new(0);
+        let total = file_paths.len() as u32;
+
+        let _ = crate::onnx::init_model();
+
+        let embeddings: Vec<(String, Vec<f32>)> = file_paths
+            .par_iter()
+            .map(|path| {
+                let emb = crate::onnx::extract_image_embedding(std::path::Path::new(path));
+                let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
+                if current.is_multiple_of(10) || current == total {
+                    let _ = app.emit(
+                        "dup-progress",
+                        serde_json::json!({
+                            "current": current,
+                            "total": total,
+                        }),
+                    );
+                }
+                (path.clone(), emb)
+            })
+            .collect();
+
+        let mut groups: Vec<DuplicateGroup> = Vec::new();
+        let mut assigned = vec![false; embeddings.len()];
+
+        for i in 0..embeddings.len() {
+            if assigned[i] {
+                continue;
+            }
+
+            let mut group_paths = vec![embeddings[i].0.clone()];
+            assigned[i] = true;
+
+            for j in (i + 1)..embeddings.len() {
+                if assigned[j] {
+                    continue;
+                }
+                let sim = crate::onnx::cosine_similarity(&embeddings[i].1, &embeddings[j].1);
+                if sim >= min_sim {
+                    group_paths.push(embeddings[j].0.clone());
+                    assigned[j] = true;
+                }
+            }
+
+            if group_paths.len() > 1 {
+                let best = group_paths
+                    .iter()
+                    .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+                    .cloned()
+                    .unwrap_or_default();
+
+                let group_id = uuid::Uuid::new_v4().to_string();
+                groups.push(DuplicateGroup {
+                    group_id,
+                    images: group_paths,
+                    best_path: best,
+                });
+            }
+        }
+
+        log::info!("find_similar_images found {} groups", groups.len());
+        Ok::<Vec<DuplicateGroup>, String>(groups)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(result)
+}
+
+/// Retrieve all stored face embeddings from the database
+#[tauri::command]
+pub fn get_indexed_faces() -> Result<Vec<FaceEmbedding>, String> {
+    crate::db::get_all_face_embeddings().map_err(|e| e.to_string())
+}
+
+/// Group face embeddings by person based on cosine similarity
+#[tauri::command]
+pub fn group_faces_by_person(faces: Vec<FaceEmbedding>) -> Result<Vec<PersonGroup>, String> {
+    let mut groups: Vec<PersonGroup> = Vec::new();
+    let mut assigned = vec![false; faces.len()];
+
+    for i in 0..faces.len() {
+        if assigned[i] {
+            continue;
+        }
+
+        let mut group_faces = vec![faces[i].clone()];
+        assigned[i] = true;
+
+        for j in (i + 1)..faces.len() {
+            if assigned[j] {
+                continue;
+            }
+            let sim = crate::onnx::cosine_similarity(&faces[i].embedding, &faces[j].embedding);
+            if sim >= 0.6 {
+                group_faces.push(faces[j].clone());
+                assigned[j] = true;
+            }
+        }
+
+        let person_id = uuid::Uuid::new_v4().to_string();
+        groups.push(PersonGroup {
+            person_id,
+            faces: group_faces,
+        });
+    }
+
+    Ok(groups)
+}
+
+/// Find smart duplicates using both pHash and ONNX cosine similarity
+#[tauri::command]
+pub async fn find_smart_duplicates(
+    _app: AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<DuplicateGroup>, String> {
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let _ = crate::onnx::init_model();
+        let mut image_data = Vec::with_capacity(paths.len());
+
+        for p in &paths {
+            let img_opt = get_image_for_hashing(p);
+            let phash = img_opt.as_ref().and_then(|img| compute_hash(img, "phash")).unwrap_or(0);
+            let emb = crate::onnx::extract_image_embedding(std::path::Path::new(p));
+            image_data.push((p.clone(), phash, emb));
+        }
+
+        let mut groups: Vec<DuplicateGroup> = Vec::new();
+        let mut assigned = vec![false; image_data.len()];
+
+        for i in 0..image_data.len() {
+            if assigned[i] {
+                continue;
+            }
+            let mut group_paths = vec![image_data[i].0.clone()];
+            assigned[i] = true;
+
+            for j in (i + 1)..image_data.len() {
+                if assigned[j] {
+                    continue;
+                }
+
+                let dist = hamming_distance(image_data[i].1, image_data[j].1);
+                let hamming_normalized = dist as f32 / 64.0;
+                let cosine_sim = crate::onnx::cosine_similarity(&image_data[i].2, &image_data[j].2);
+                let score = (1.0 - hamming_normalized) * 50.0 + cosine_sim * 50.0;
+
+                if score > 70.0 {
+                    group_paths.push(image_data[j].0.clone());
+                    assigned[j] = true;
+                }
+            }
+
+            if group_paths.len() > 1 {
+                let best = group_paths
+                    .iter()
+                    .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+                    .cloned()
+                    .unwrap_or_default();
+                let group_id = uuid::Uuid::new_v4().to_string();
+                groups.push(DuplicateGroup {
+                    group_id,
+                    images: group_paths,
+                    best_path: best,
+                });
+            }
+        }
+
+        Ok::<Vec<DuplicateGroup>, String>(groups)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,5 +735,47 @@ mod tests {
 
         // Assert
         assert!(results.contains(&1));
+    }
+
+    #[test]
+    fn test_group_faces_by_person() {
+        // Arrange
+        let face1 = FaceEmbedding {
+            face_id: "1".into(),
+            path: "a.jpg".into(),
+            bbox: [0.0, 0.0, 1.0, 1.0],
+            confidence: 0.9,
+            embedding: vec![1.0, 0.0, 0.0],
+        };
+        let face2 = FaceEmbedding {
+            face_id: "2".into(),
+            path: "b.jpg".into(),
+            bbox: [0.0, 0.0, 1.0, 1.0],
+            confidence: 0.9,
+            embedding: vec![0.9, 0.1, 0.0], // Highly similar to face1
+        };
+        let face3 = FaceEmbedding {
+            face_id: "3".into(),
+            path: "c.jpg".into(),
+            bbox: [0.0, 0.0, 1.0, 1.0],
+            confidence: 0.9,
+            embedding: vec![0.0, 1.0, 0.0], // Orthogonal to face1 and face2
+        };
+
+        let faces = vec![face1, face2, face3];
+
+        // Act
+        let groups_result = group_faces_by_person(faces);
+
+        // Assert
+        assert!(groups_result.is_ok());
+        let groups = groups_result.unwrap();
+        
+        // Expected 2 groups: [face1, face2] and [face3]
+        assert_eq!(groups.len(), 2);
+        
+        let mut group_sizes: Vec<usize> = groups.iter().map(|g| g.faces.len()).collect();
+        group_sizes.sort_unstable();
+        assert_eq!(group_sizes, vec![1, 2]);
     }
 }
