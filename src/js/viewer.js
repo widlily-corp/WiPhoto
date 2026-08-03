@@ -44,6 +44,7 @@ const Viewer = (() => {
         case 'F':
           e.preventDefault();
           toggleInfoOverlay();
+          if (typeof Filmstrip !== 'undefined') Filmstrip.toggle();
           break;
       }
     });
@@ -166,6 +167,10 @@ const Viewer = (() => {
 
     // Trigger preloading for next/prev images
     triggerPreloads();
+    
+    if (typeof Filmstrip !== 'undefined') {
+      Filmstrip.update(images, currentIndex);
+    }
   }
 
   function close() {
@@ -418,15 +423,28 @@ const Viewer = (() => {
         const rHist = new Array(256).fill(0);
         const gHist = new Array(256).fill(0);
         const bHist = new Array(256).fill(0);
+        const lHist = new Array(256).fill(0);
+        let shadowCount = 0;
+        let highlightCount = 0;
+        const totalPixels = data.length / 4;
 
         for (let i = 0; i < data.length; i += 4) {
-          rHist[data[i]]++;
-          gHist[data[i + 1]]++;
-          bHist[data[i + 2]]++;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const l = Math.round(r * 0.299 + g * 0.587 + b * 0.114);
+          
+          rHist[r]++;
+          gHist[g]++;
+          bHist[b]++;
+          lHist[l]++;
+          
+          if (l === 0) shadowCount++;
+          if (l === 255) highlightCount++;
         }
 
         // Find max value to normalize height
-        const maxVal = Math.max(...rHist, ...gHist, ...bHist);
+        const maxVal = Math.max(...rHist, ...gHist, ...bHist, ...lHist);
         if (maxVal === 0) return;
 
         const w = canvas.width;
@@ -451,6 +469,36 @@ const Viewer = (() => {
         drawChannel(rHist, 'rgba(239, 68, 68, 0.7)');
         drawChannel(gHist, 'rgba(34, 197, 94, 0.7)');
         drawChannel(bHist, 'rgba(59, 130, 246, 0.7)');
+        
+        ctx.globalCompositeOperation = 'source-over';
+        drawChannel(lHist, 'rgba(255, 255, 255, 0.9)');
+
+        const shadowPerc = (shadowCount / totalPixels) * 100;
+        const highlightPerc = (highlightCount / totalPixels) * 100;
+        
+        const overlay = document.getElementById('viewer-info-overlay');
+        if (overlay) {
+          let clippingCont = document.getElementById('histogram-clipping');
+          if (!clippingCont) {
+            clippingCont = document.createElement('div');
+            clippingCont.id = 'histogram-clipping';
+            clippingCont.className = 'histogram-clipping';
+            overlay.appendChild(clippingCont);
+          }
+          clippingCont.innerHTML = '';
+          if (shadowPerc > 2) {
+            const sh = document.createElement('div');
+            sh.className = 'clipping-badge shadow-clipping';
+            sh.title = `Shadow Clipping: ${shadowPerc.toFixed(1)}%`;
+            clippingCont.appendChild(sh);
+          }
+          if (highlightPerc > 2) {
+            const hl = document.createElement('div');
+            hl.className = 'clipping-badge highlight-clipping';
+            hl.title = `Highlight Clipping: ${highlightPerc.toFixed(1)}%`;
+            clippingCont.appendChild(hl);
+          }
+        }
       } catch (err) {
         Logger.debug('Viewer', `Failed to draw histogram: ${err}`);
       }

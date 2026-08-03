@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/commandpalette.css" />
   <link rel="stylesheet" href="lib/leaflet.css" />
   <link rel="stylesheet" href="styles/map.css" />
+  <link rel="stylesheet" href="styles/viewer-pro.css" />
 </head>
 <body>
   <!-- ═══════ WELCOME SCREEN ═══════ -->
@@ -401,6 +402,27 @@
           <div id="viewer-info-overlay" class="viewer-info-overlay">
             <div id="viewer-exif" class="viewer-exif"></div>
             <canvas id="viewer-histogram" class="viewer-histogram" width="180" height="70"></canvas>
+          </div>
+          
+          <!-- Filmstrip -->
+          <div id="filmstrip-container" class="filmstrip-container hidden"></div>
+        </div>
+
+        <!-- Compare Viewer -->
+        <div id="compare-viewer" class="compare-viewer hidden">
+          <div class="viewer-toolbar" style="position:absolute; top:0; z-index:1010; width:100%; background: transparent;">
+            <button id="compare-close" class="viewer-btn">✕</button>
+          </div>
+          <div class="compare-pane" id="compare-left-pane">
+            <img id="compare-left-img" class="compare-image" src="" alt="Left" />
+            <div class="compare-info" id="compare-left-info"></div>
+            <div class="compare-active-indicator"></div>
+          </div>
+          <div class="compare-divider"></div>
+          <div class="compare-pane" id="compare-right-pane">
+            <img id="compare-right-img" class="compare-image" src="" alt="Right" />
+            <div class="compare-info" id="compare-right-info"></div>
+            <div class="compare-active-indicator"></div>
           </div>
         </div>
       </div>
@@ -798,8 +820,11 @@
   <script src="js/gallery.js"></script>
   <script src="js/commandpalette.js"></script>
   <script src="js/tags.js"></script>
+  <script src="js/filmstrip.js"></script>
+  <script src="js/compare.js"></script>
   <script src="js/batch.js"></script>
   <script src="js/trash.js"></script>
+  <script src="js/gpu-renderer.js"></script>
   <script src="js/editor.js"></script>
   <script src="js/sidebar.js"></script>
   <script src="js/welcome.js"></script>

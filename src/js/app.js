@@ -15,6 +15,9 @@ const App = (() => {
     // 1. Initialize Sub-Modules
     Welcome.init();
     Gallery.init();
+    if (typeof Shortcuts !== 'undefined') Shortcuts.init();
+    if (typeof Filmstrip !== 'undefined') Filmstrip.init();
+    if (typeof CompareMode !== 'undefined') CompareMode.init();
     if (typeof Search !== 'undefined') {
       Search.init();
     }
@@ -143,7 +146,14 @@ const App = (() => {
     });
 
     document.getElementById('btn-compare')?.addEventListener('click', () => {
-      showDuplicateFinder();
+      const selected = Gallery.getSelectedImages();
+      if (selected.length === 2) {
+        if (typeof CompareMode !== 'undefined') {
+          CompareMode.open(Gallery.getFilteredImages(), selected[0].path, selected[1].path);
+        }
+      } else {
+        Utils.toast('Для сравнения выберите ровно 2 файла', 'warning');
+      }
     });
 
     document.getElementById('btn-slideshow')?.addEventListener('click', () => {
