@@ -702,6 +702,29 @@
           <div class="updater-notes-label">Список изменений:</div>
           <div id="updater-release-notes" class="updater-release-notes"></div>
         </div>
+        <div id="updater-progress-container" class="updater-progress-container hidden">
+          <div class="updater-progress-header">
+            <span id="updater-progress-percentage" class="updater-progress-percentage">0%</span>
+            <span id="updater-progress-bytes" class="updater-progress-bytes">0 B / 0 B</span>
+          </div>
+          <div class="updater-progress-bar">
+            <div id="updater-progress-bar-fill" class="updater-progress-bar-fill"></div>
+          </div>
+        </div>
+        <!-- OTA Update Error Container -->
+        <div id="updater-error-container" class="updater-status-error hidden" role="alert">
+          <div class="updater-error-header">
+            <span id="updater-error-badge" class="updater-error-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span id="updater-error-title">Ошибка обновления</span>
+            </span>
+          </div>
+          <div id="updater-error-message" class="updater-error-message"></div>
+        </div>
         <div id="updater-status-message" class="progress-text hidden"></div>
         <div class="setting-actions">
           <button class="btn btn-secondary" id="btn-updater-postpone">Отложить</button>

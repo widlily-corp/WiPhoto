@@ -817,3 +817,175 @@
 .btn-trash-close {
   margin-left: auto;
 }
+
+/* ── OTA Updater Modal & Visual Progress Indicator (Refined Minimal) ── */
+.modal-updater {
+  max-width: 480px;
+}
+
+.updater-info {
+  margin-bottom: 16px;
+}
+
+.updater-version-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  background: var(--accent-soft);
+  color: var(--text-accent);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.updater-notes-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.updater-release-notes {
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.updater-progress-container {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.updater-progress-container.hidden {
+  display: none !important;
+}
+
+.updater-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.updater-progress-percentage {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.updater-progress-bytes {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.updater-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.updater-progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-gradient);
+  border-radius: var(--radius-full);
+  transition: width 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── OTA Updater Error States (Refined Minimal) ── */
+.updater-status-error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--color-danger);
+  transition: opacity var(--transition-fast);
+}
+
+.updater-status-error.hidden {
+  display: none !important;
+}
+
+.updater-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.updater-error-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.updater-error-badge svg {
+  width: 13px;
+  height: 13px;
+  stroke: var(--color-danger);
+  flex-shrink: 0;
+}
+
+.updater-error-message {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  .updater-error-message {
+    word-break: break-word;
+    hyphens: auto;
+  }
+}
+
+.btn-retry {
+  background: var(--accent-primary);
+  color: #ffffff;
+}
+
+.btn-retry:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updater-status-error {
+    transition: none;
+  }
+}
+
+
