@@ -1,6 +1,6 @@
 [package]
 name = "wiphoto"
-version = "5.1.0"
+version = "5.1.1"
 description = "WiPhoto - Professional Photo Manager & Editor"
 authors = ["Widlily Corporation <widlily.corp@gmail.com>"]
 edition = "2021"
