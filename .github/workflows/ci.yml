@@ -109,18 +109,21 @@ jobs:
               fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key=\n');
             } else {
               console.log('Normalizing key...');
-              key = key.replace(/\r/g, '');
-              let isEncrypted = key.toLowerCase().includes('encrypted');
-              let commentLine = isEncrypted 
+              const lines = key.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+              const commentIdx = lines.findIndex(l => l.startsWith('untrusted comment:'));
+              let commentLine, base64Payload;
+              if (commentIdx >= 0) {
+                commentLine = lines[commentIdx];
+                base64Payload = lines.slice(commentIdx + 1).join('').replace(/\s+/g, '');
+              } else {
+                commentLine = key.toLowerCase().includes('encrypted')
                   ? 'untrusted comment: minisign encrypted secret key'
                   : 'untrusted comment: minisign secret key';
-              
-              let base64Payload = key;
-              if (key.includes('untrusted comment')) {
-                  base64Payload = key.replace(/untrusted comment:.*?(key)/i, '');
+                base64Payload = lines.join('').replace(/\s+/g, '');
               }
-              base64Payload = base64Payload.replace(/\s+/g, '');
               const formatted = commentLine + '\n' + base64Payload;
+              console.log('Comment:', commentLine);
+              console.log('Payload length:', base64Payload.length);
               fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key<<EOF\n' + formatted + '\nEOF\n');
             }
           "
