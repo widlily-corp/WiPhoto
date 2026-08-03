@@ -1,6 +1,6 @@
 [package]
 name = "wiphoto"
-version = "5.0.10"
+version = "5.1.0"
 description = "WiPhoto - Professional Photo Manager & Editor"
 authors = ["Widlily Corporation <widlily.corp@gmail.com>"]
 edition = "2021"
@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Image processing
-image = { version = "0.25", features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "ico"] }
+image = { version = "0.25", features = ["jpeg", "png", "gif", "bmp", "tiff", "webp", "ico", "avif"] }
 imageproc = "0.25"
 ab_glyph = "0.2"
 base64 = "0.22"
@@ -62,9 +62,14 @@ memchr = "2"
 tract-onnx = "0.21.3"
 ureq = "2.9"
 roxmltree = "0.20.0"
+jxl-oxide = "0.9"
 
 [profile.release]
 strip = true
 lto = true
 codegen-units = 1
 opt-level = "s"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["full"] }

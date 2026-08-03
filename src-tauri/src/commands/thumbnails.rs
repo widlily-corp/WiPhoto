@@ -65,7 +65,10 @@ pub fn get_or_generate_thumbnail_sync(path: &str) -> Result<String, String> {
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+    let img = if ext == "jxl" {
+        crate::commands::export::load_jxl(file_path)
+            .ok_or_else(|| "Failed to decode JXL image".to_string())?
+    } else if RAW_EXTENSIONS.contains(&ext.as_str()) {
         if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(file_path) {
             image::load_from_memory(&bytes)
                 .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?
@@ -116,7 +119,7 @@ pub async fn load_full_image(path: String, max_size: Option<u32>) -> Result<Stri
     let is_raw = RAW_EXTENSIONS.contains(&ext.as_str());
 
     // If standard image and no max_size resize requested, return original file path directly
-    if !is_raw && max_size.is_none() {
+    if !is_raw && max_size.is_none() && ext != "jxl" {
         return Ok(path);
     }
 
@@ -145,7 +148,10 @@ pub async fn load_full_image(path: String, max_size: Option<u32>) -> Result<Stri
         }
 
         // Support RAW formats and resizing
-        let img = if is_raw {
+        let img = if ext == "jxl" {
+            crate::commands::export::load_jxl(Path::new(&path_clone))
+                .ok_or_else(|| "Failed to decode JXL image".to_string())?
+        } else if is_raw {
             if let Some(bytes) = super::raw_utils::extract_embedded_jpeg(Path::new(&path_clone)) {
                 image::load_from_memory(&bytes)
                     .map_err(|e| format!("Failed to decode embedded RAW JPEG: {}", e))?

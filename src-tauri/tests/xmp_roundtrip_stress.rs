@@ -6,7 +6,7 @@ fn test_xmp_1000_sequential_roundtrip_updates() {
     // Arrange: Create temp image path
     let temp_dir = std::env::temp_dir();
     let img_path = temp_dir
-        .join("wiphoto_stress_1000_roundtrip.jpg")
+        .join(format!("wiphoto_stress_1000_{}.jpg", uuid::Uuid::new_v4()))
         .to_string_lossy()
         .to_string();
     let sidecar_path = std::path::Path::new(&img_path).with_extension("xmp");
