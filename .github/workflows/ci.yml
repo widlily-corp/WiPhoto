@@ -3,8 +3,6 @@ name: WiPhoto CI
 on:
   push:
     branches: [main]
-    tags:
-      - 'v*'
   pull_request:
     branches: [main]
 
@@ -15,7 +13,6 @@ concurrency:
 jobs:
   test:
     name: Test
-    if: startsWith(github.ref, 'refs/tags/') == false
     runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -89,12 +86,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Validate and Format Tauri Key
-        id: format-key
+      - name: Prepare Signing Key
+        shell: bash
         run: |
+          KEY_FILE="$RUNNER_TEMP/tauri-signing-key.txt"
           node -e "
             const fs = require('fs');
-            let key = process.env.RAW_KEY || '';
+            const key = process.env.RAW_KEY || '';
             if (!key.trim()) {
               console.log('Key is empty, disabling updater artifacts...');
               try {
@@ -103,7 +101,6 @@ jobs:
                 if (conf.bundle) { conf.bundle.createUpdaterArtifacts = false; }
                 fs.writeFileSync(confPath, JSON.stringify(conf, null, 2));
               } catch (e) { console.error('Failed to update config', e); }
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key=\n');
             } else {
               console.log('Normalizing key...');
               const lines = key.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -111,27 +108,37 @@ jobs:
               let commentLine, base64Payload;
               if (commentIdx >= 0) {
                 commentLine = lines[commentIdx];
-                base64Payload = lines.slice(commentIdx + 1).join('').replace(/\s+/g, '');
+                base64Payload = lines.slice(commentIdx + 1).join('').replace(/[^A-Za-z0-9+/=]/g, '');
               } else {
                 commentLine = key.toLowerCase().includes('encrypted')
                   ? 'untrusted comment: minisign encrypted secret key'
                   : 'untrusted comment: minisign secret key';
-                base64Payload = lines.join('').replace(/\s+/g, '');
+                base64Payload = lines.join('').replace(/[^A-Za-z0-9+/=]/g, '');
               }
-              const formatted = commentLine + '\n' + base64Payload;
+              const keyContent = commentLine + String.fromCharCode(10) + base64Payload;
+              fs.writeFileSync(process.env.KEY_FILE, keyContent, 'utf8');
               console.log('Comment:', commentLine);
               console.log('Payload length:', base64Payload.length);
-              fs.appendFileSync(process.env.GITHUB_OUTPUT, 'formatted_key<<EOF\n' + formatted + '\nEOF\n');
+              console.log('Key written to file');
             }
           "
+          if [ -f "$KEY_FILE" ]; then
+            {
+              echo "TAURI_SIGNING_PRIVATE_KEY<<__SIGNING_KEY_BOUNDARY__"
+              cat "$KEY_FILE"
+              echo ""
+              echo "__SIGNING_KEY_BOUNDARY__"
+            } >> "$GITHUB_ENV"
+            echo "Key loaded into GITHUB_ENV"
+          fi
         env:
           RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          KEY_FILE: ${{ runner.temp }}/tauri-signing-key.txt
 
       - name: Build & Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.format-key.outputs.formatted_key }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
