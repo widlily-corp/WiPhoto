@@ -54,7 +54,7 @@
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: opacity, transform;
 }
 .editor-tool-btn:hover {
   background: var(--bg-hover);
@@ -204,7 +204,7 @@
   color: var(--text-secondary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: opacity, transform;
 }
 .history-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 .history-item.active { background: var(--accent-soft); color: var(--accent-hover); }
@@ -217,3 +217,5 @@
   flex-shrink: 0;
 }
 .history-item.active .history-dot { background: var(--accent-primary); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

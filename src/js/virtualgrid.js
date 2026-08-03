@@ -28,6 +28,31 @@ const VirtualGrid = (() => {
   let contentArea = null;
   let isActive = false;
   let resizeObserver = null;
+
+  let worker = null;
+  let workerResolvers = new Map();
+  let workerMsgId = 0;
+  
+  if (typeof window !== 'undefined' && window.Worker) {
+    worker = new Worker('js/grid-worker.js');
+    worker.onmessage = (e) => {
+      const { id, data, type } = e.data;
+      if (workerResolvers.has(id)) {
+        workerResolvers.get(id)(data);
+        workerResolvers.delete(id);
+      }
+    };
+  }
+  
+  function postToWorker(type, data) {
+    return new Promise(resolve => {
+      if (!worker) { resolve(null); return; }
+      const id = ++workerMsgId;
+      workerResolvers.set(id, resolve);
+      worker.postMessage({ type, data, id });
+    });
+  }
+
   let lazyObserver = null;
 
   // Callbacks
@@ -253,6 +278,18 @@ const VirtualGrid = (() => {
     contentArea.style.transform = `translateY(${topHeight}px)`;
   }
 
+  
+  async function sort(sortBy, sortDir) {
+    if (worker) {
+      const res = await postToWorker('sort', { items, sortBy, sortDir });
+      items = res.items;
+    } else {
+      items = GridLogic.sortItems({ items, sortBy, sortDir });
+    }
+    recalculate();
+    renderVisible();
+  }
+
   function getItemAtIndex(index) {
     return items[index] || null;
   }
@@ -299,6 +336,7 @@ const VirtualGrid = (() => {
     getVisibleRange,
     getRenderedCard,
     getActiveCards: () => activeCardMap,
+    sort,
     destroy,
   };
 })();
