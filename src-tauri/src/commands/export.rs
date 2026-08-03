@@ -114,7 +114,7 @@ pub fn strip_exif_from_jpeg_bytes(data: &[u8]) -> Vec<u8> {
             i += 2;
             continue;
         }
-        if marker == 0x00 || (marker >= 0xD0 && marker <= 0xD7) {
+        if marker == 0x00 || (0xD0..=0xD7).contains(&marker) {
             out.push(data[i]);
             out.push(marker);
             i += 2;
@@ -146,6 +146,7 @@ pub fn strip_exif_from_jpeg_bytes(data: &[u8]) -> Vec<u8> {
 }
 
 /// Batch export files to destination folder with format conversion, resizing, watermarking, and EXIF stripping
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_files(
     paths: Vec<String>,

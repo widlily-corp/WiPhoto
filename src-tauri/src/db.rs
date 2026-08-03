@@ -199,10 +199,8 @@ pub fn get_all_face_embeddings() -> Result<Vec<FaceEmbedding>> {
         })?;
 
         let mut faces = Vec::new();
-        for face_result in rows {
-            if let Ok(face) = face_result {
-                faces.push(face);
-            }
+        for face in rows.flatten() {
+            faces.push(face);
         }
         Ok(faces)
     })
