@@ -56,8 +56,14 @@ fn test_r1_dummy_onnx_model_execution_and_embedding() {
 
     let norm1: f32 = emb1.iter().map(|x| x * x).sum::<f32>().sqrt();
     let norm2: f32 = emb2.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((norm1 - 1.0).abs() < 1e-3, "Vector 1 should be L2 normalized");
-    assert!((norm2 - 1.0).abs() < 1e-3, "Vector 2 should be L2 normalized");
+    assert!(
+        (norm1 - 1.0).abs() < 1e-3,
+        "Vector 1 should be L2 normalized"
+    );
+    assert!(
+        (norm2 - 1.0).abs() < 1e-3,
+        "Vector 2 should be L2 normalized"
+    );
 
     // Act 4: Text embedding & Cosine similarity
     let text_emb = onnx::extract_text_embedding("dog and puppy");
@@ -83,7 +89,11 @@ fn test_r1_dummy_onnx_model_execution_and_embedding() {
     let phash_res = duplicates::compute_phash(img1_path.to_string_lossy().to_string());
     assert!(phash_res.is_ok(), "compute_phash should return Ok");
     let phash = phash_res.unwrap();
-    assert_eq!(phash.len(), 16, "pHash string length should be 16 hex chars");
+    assert_eq!(
+        phash.len(),
+        16,
+        "pHash string length should be 16 hex chars"
+    );
 
     // Clean up
     let _ = fs::remove_dir_all(&temp_dir);

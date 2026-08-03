@@ -89,19 +89,33 @@ async fn test_r4_batch_export_pipeline_resizing_format_conversion_and_exif_strip
     // Verify resizing constraint (max 300x300 preserving aspect ratio)
     let loaded1 = image::open(&out_jpg1).expect("Must open exported JPG 1");
     let (w1, h1) = loaded1.dimensions();
-    assert!(w1 <= 300 && h1 <= 300, "Image 1 must be resized <= 300x300, got {}x{}", w1, h1);
+    assert!(
+        w1 <= 300 && h1 <= 300,
+        "Image 1 must be resized <= 300x300, got {}x{}",
+        w1,
+        h1
+    );
     assert_eq!(w1, 300);
     assert_eq!(h1, 225); // 800x600 -> 300x225
 
     let loaded2 = image::open(&out_jpg2).expect("Must open exported JPG 2");
     let (w2, h2) = loaded2.dimensions();
-    assert!(w2 <= 300 && h2 <= 300, "Image 2 must be resized <= 300x300, got {}x{}", w2, h2);
+    assert!(
+        w2 <= 300 && h2 <= 300,
+        "Image 2 must be resized <= 300x300, got {}x{}",
+        w2,
+        h2
+    );
 
     // Verify EXIF stripping on exported file out_jpg1
     let exported_bytes = fs::read(&out_jpg1).unwrap();
     // Check that APP1 segment (0xFFE1) is absent or stripped
     let cleaned = strip_exif_from_jpeg_bytes(&exported_bytes);
-    assert_eq!(cleaned.len(), exported_bytes.len(), "Exported JPEG should not contain unstripped APP1 markers");
+    assert_eq!(
+        cleaned.len(),
+        exported_bytes.len(),
+        "Exported JPEG should not contain unstripped APP1 markers"
+    );
 }
 
 #[tokio::test]

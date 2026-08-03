@@ -412,7 +412,9 @@ pub fn index_faces(path: String) -> Result<Vec<FaceEmbedding>, String> {
             .map(|e| e.into_path())
             .filter(|p| {
                 p.extension()
-                    .map(|ext| crate::models::image_info::is_supported_extension(&ext.to_string_lossy()))
+                    .map(|ext| {
+                        crate::models::image_info::is_supported_extension(&ext.to_string_lossy())
+                    })
                     .unwrap_or(false)
             })
             .collect()
@@ -604,7 +606,10 @@ pub async fn find_smart_duplicates(
 
         for p in &paths {
             let img_opt = get_image_for_hashing(p);
-            let phash = img_opt.as_ref().and_then(|img| compute_hash(img, "phash")).unwrap_or(0);
+            let phash = img_opt
+                .as_ref()
+                .and_then(|img| compute_hash(img, "phash"))
+                .unwrap_or(0);
             let emb = crate::onnx::extract_image_embedding(std::path::Path::new(p));
             image_data.push((p.clone(), phash, emb));
         }
@@ -770,10 +775,10 @@ mod tests {
         // Assert
         assert!(groups_result.is_ok());
         let groups = groups_result.unwrap();
-        
+
         // Expected 2 groups: [face1, face2] and [face3]
         assert_eq!(groups.len(), 2);
-        
+
         let mut group_sizes: Vec<usize> = groups.iter().map(|g| g.faces.len()).collect();
         group_sizes.sort_unstable();
         assert_eq!(group_sizes, vec![1, 2]);

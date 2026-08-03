@@ -92,7 +92,7 @@ async fn test_batch_export_resizing_non_square_aspect_ratios() {
     let tall_portrait = src_dir.join("portrait.jpg");
     let widescreen = src_dir.join("widescreen.jpg");
 
-    create_test_jpeg(&ultrawide, 1600, 400);   // 4:1
+    create_test_jpeg(&ultrawide, 1600, 400); // 4:1
     create_test_jpeg(&tall_portrait, 400, 1600); // 1:4
     create_test_jpeg(&widescreen, 1920, 1080); // 16:9
 

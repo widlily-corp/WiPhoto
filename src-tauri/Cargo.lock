@@ -7043,7 +7043,7 @@ dependencies = [
 
 [[package]]
 name = "wiphoto"
-version = "5.0.10"
+version = "5.1.0"
 dependencies = [
  "ab_glyph",
  "base64 0.22.1",

@@ -105,7 +105,8 @@ fn test_stress_exif_stripping_multiple_app1_markers() {
 #[test]
 fn test_stress_exif_stripping_no_exif_tags() {
     // Arrange: Standard JPEG generated directly by encoder (no APP1 markers inserted)
-    let img: RgbImage = ImageBuffer::from_fn(100, 100, |x, y| Rgb([(x % 255) as u8, (y % 255) as u8, 50]));
+    let img: RgbImage =
+        ImageBuffer::from_fn(100, 100, |x, y| Rgb([(x % 255) as u8, (y % 255) as u8, 50]));
     let dynamic_img = DynamicImage::ImageRgb8(img);
     let mut raw_jpeg = Vec::new();
     let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut raw_jpeg, 90);
@@ -127,14 +128,19 @@ fn test_stress_exif_stripping_no_exif_tags() {
 #[test]
 fn test_stress_exif_stripping_non_jpeg_files() {
     // 1. PNG Header & Bytes
-    let png_bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D];
+    let png_bytes = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+    ];
     let stripped_png = strip_exif_from_jpeg_bytes(&png_bytes);
     assert_eq!(stripped_png, png_bytes, "PNG bytes must remain untouched");
 
     // 2. WebP Header Bytes
     let webp_bytes = b"RIFF\x20\x00\x00\x00WEBPVP8 \x14\x00\x00\x00".to_vec();
     let stripped_webp = strip_exif_from_jpeg_bytes(&webp_bytes);
-    assert_eq!(stripped_webp, webp_bytes, "WebP bytes must remain untouched");
+    assert_eq!(
+        stripped_webp, webp_bytes,
+        "WebP bytes must remain untouched"
+    );
 
     // 3. GIF Header Bytes
     let gif_bytes = b"GIF89a\x0A\x00\x0A\x00\x80\x00\x00".to_vec();
@@ -144,12 +150,18 @@ fn test_stress_exif_stripping_non_jpeg_files() {
     // 4. Plain Text File
     let text_bytes = b"This is a text file, not a JPEG image.".to_vec();
     let stripped_text = strip_exif_from_jpeg_bytes(&text_bytes);
-    assert_eq!(stripped_text, text_bytes, "Text bytes must remain untouched");
+    assert_eq!(
+        stripped_text, text_bytes,
+        "Text bytes must remain untouched"
+    );
 
     // 5. Random Binary Data starting with 0xFF (not SOI)
     let random_bytes = vec![0xFF, 0x00, 0x12, 0x34, 0x56, 0x78, 0x90, 0xAB, 0xCD, 0xEF];
     let stripped_random = strip_exif_from_jpeg_bytes(&random_bytes);
-    assert_eq!(stripped_random, random_bytes, "Arbitrary binary data starting with 0xFF must remain untouched");
+    assert_eq!(
+        stripped_random, random_bytes,
+        "Arbitrary binary data starting with 0xFF must remain untouched"
+    );
 }
 
 #[test]
@@ -157,7 +169,10 @@ fn test_stress_exif_stripping_zero_byte_and_truncated_files() {
     // 0-byte file
     let empty_bytes: Vec<u8> = vec![];
     let stripped_empty = strip_exif_from_jpeg_bytes(&empty_bytes);
-    assert_eq!(stripped_empty, empty_bytes, "0-byte slice must return empty slice without panic");
+    assert_eq!(
+        stripped_empty, empty_bytes,
+        "0-byte slice must return empty slice without panic"
+    );
 
     // 1-byte file
     let byte_1 = vec![0xFF];
@@ -178,14 +193,20 @@ fn test_stress_exif_stripping_zero_byte_and_truncated_files() {
     let zero_path = dir.path().join("empty.jpg");
     fs::write(&zero_path, b"").unwrap();
     let result_zero = strip_exif_from_jpeg_file(&zero_path);
-    assert!(result_zero.is_ok(), "strip_exif_from_jpeg_file on 0-byte file must succeed");
+    assert!(
+        result_zero.is_ok(),
+        "strip_exif_from_jpeg_file on 0-byte file must succeed"
+    );
     assert_eq!(fs::metadata(&zero_path).unwrap().len(), 0);
 
     // Non-JPEG file on disk
     let txt_path = dir.path().join("document.txt");
     fs::write(&txt_path, b"Hello World").unwrap();
     let result_txt = strip_exif_from_jpeg_file(&txt_path);
-    assert!(result_txt.is_ok(), "strip_exif_from_jpeg_file on non-JPEG file must succeed");
+    assert!(
+        result_txt.is_ok(),
+        "strip_exif_from_jpeg_file on non-JPEG file must succeed"
+    );
     assert_eq!(fs::read(&txt_path).unwrap(), b"Hello World");
 }
 
@@ -237,9 +258,15 @@ async fn test_stress_batch_export_mixed_files_with_exif_stripping() {
     .await;
 
     // Assert
-    assert!(export_res.is_ok(), "Batch export must execute without error");
+    assert!(
+        export_res.is_ok(),
+        "Batch export must execute without error"
+    );
     let count = export_res.unwrap();
-    assert_eq!(count, 2, "Only valid images (multi_app1.jpg and clean.jpg) should be processed");
+    assert_eq!(
+        count, 2,
+        "Only valid images (multi_app1.jpg and clean.jpg) should be processed"
+    );
 
     let out_multi = dest_dir.join("multi_app1.jpg");
     assert!(out_multi.exists(), "Exported multi_app1.jpg must exist");

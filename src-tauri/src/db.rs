@@ -158,8 +158,13 @@ pub fn init_db() -> Result<()> {
 /// Store a face embedding in the database
 pub fn save_face_embedding(face: &FaceEmbedding) -> Result<()> {
     with_db(|conn| {
-        let bbox_json = serde_json::to_string(&face.bbox).unwrap_or_else(|_| "[0,0,0,0]".to_string());
-        let embedding_bytes: Vec<u8> = face.embedding.iter().flat_map(|&f| f.to_le_bytes()).collect();
+        let bbox_json =
+            serde_json::to_string(&face.bbox).unwrap_or_else(|_| "[0,0,0,0]".to_string());
+        let embedding_bytes: Vec<u8> = face
+            .embedding
+            .iter()
+            .flat_map(|&f| f.to_le_bytes())
+            .collect();
         conn.execute(
             "INSERT OR REPLACE INTO face_embeddings (face_id, path, embedding, bbox, confidence)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -178,7 +183,8 @@ pub fn save_face_embedding(face: &FaceEmbedding) -> Result<()> {
 /// Retrieve all indexed face embeddings
 pub fn get_all_face_embeddings() -> Result<Vec<FaceEmbedding>> {
     with_db(|conn| {
-        let mut stmt = conn.prepare("SELECT face_id, path, embedding, bbox, confidence FROM face_embeddings")?;
+        let mut stmt =
+            conn.prepare("SELECT face_id, path, embedding, bbox, confidence FROM face_embeddings")?;
         let rows = stmt.query_map([], |row| {
             let face_id: String = row.get(0)?;
             let path: String = row.get(1)?;
@@ -187,7 +193,10 @@ pub fn get_all_face_embeddings() -> Result<Vec<FaceEmbedding>> {
             let confidence: f32 = row.get(4)?;
 
             let bbox: [f32; 4] = serde_json::from_str(&bbox_str).unwrap_or([0.0, 0.0, 0.0, 0.0]);
-            let embedding: Vec<f32> = embedding_bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+            let embedding: Vec<f32> = embedding_bytes
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+                .collect();
 
             Ok(FaceEmbedding {
                 face_id,

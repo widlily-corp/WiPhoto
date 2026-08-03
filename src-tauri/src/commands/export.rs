@@ -237,8 +237,9 @@ pub async fn export_files(
                     "avif" => {
                         let q = quality.unwrap_or(80);
                         if let Ok(file) = fs::File::create(&out_path) {
-                            let encoder =
-                                image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, q);
+                            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(
+                                file, 4, q,
+                            );
                             image.write_with_encoder(encoder).is_ok()
                         } else {
                             false
@@ -322,7 +323,14 @@ pub async fn batch_export_advanced(
             if !src_path.exists() {
                 failed_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 let current = processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                let _ = app.emit("export-progress", ExportProgress { current, total, current_file: path_str.clone() });
+                let _ = app.emit(
+                    "export-progress",
+                    ExportProgress {
+                        current,
+                        total,
+                        current_file: path_str.clone(),
+                    },
+                );
                 return;
             }
 
@@ -359,7 +367,8 @@ pub async fn batch_export_advanced(
                 let save_success = match format {
                     "jpg" | "jpeg" => {
                         if let Ok(file) = fs::File::create(&out_path) {
-                            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(file, quality);
+                            let encoder =
+                                image::codecs::jpeg::JpegEncoder::new_with_quality(file, quality);
                             image.write_with_encoder(encoder).is_ok()
                         } else {
                             false
@@ -367,7 +376,9 @@ pub async fn batch_export_advanced(
                     }
                     "avif" => {
                         if let Ok(file) = fs::File::create(&out_path) {
-                            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(file, 4, quality);
+                            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(
+                                file, 4, quality,
+                            );
                             image.write_with_encoder(encoder).is_ok()
                         } else {
                             false
@@ -393,7 +404,14 @@ pub async fn batch_export_advanced(
             }
 
             let current = processed.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-            let _ = app.emit("export-progress", ExportProgress { current, total, current_file: path_str.clone() });
+            let _ = app.emit(
+                "export-progress",
+                ExportProgress {
+                    current,
+                    total,
+                    current_file: path_str.clone(),
+                },
+            );
         });
 
         let elapsed = start_time.elapsed().as_millis() as u64;
@@ -463,7 +481,7 @@ mod tests {
     fn test_strip_exif_from_jpeg_bytes() {
         // Arrange: Fake JPEG bytes with APP1 marker (0xFF, 0xE1)
         let mut fake_jpeg = vec![0xFF, 0xD8]; // SOI
-        // Add fake APP1 EXIF segment (len = 8 -> 2 bytes length + 6 payload bytes)
+                                              // Add fake APP1 EXIF segment (len = 8 -> 2 bytes length + 6 payload bytes)
         fake_jpeg.extend_from_slice(&[0xFF, 0xE1, 0x00, 0x08, b'E', b'x', b'i', b'f', 0x00, 0x00]);
         // Add fake DQT segment (0xFF, 0xDB)
         fake_jpeg.extend_from_slice(&[0xFF, 0xDB, 0x00, 0x04, 0x01, 0x02]);
@@ -482,12 +500,15 @@ mod tests {
 
     #[test]
     fn test_avif_round_trip() {
-        use image::{RgbaImage, DynamicImage};
+        use image::{DynamicImage, RgbaImage};
         let img = DynamicImage::ImageRgba8(RgbaImage::new(10, 10));
         let mut bytes = Vec::new();
         {
-            let encoder = image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut bytes, 8, 50);
-            if img.write_with_encoder(encoder).is_err() { return; }
+            let encoder =
+                image::codecs::avif::AvifEncoder::new_with_speed_quality(&mut bytes, 8, 50);
+            if img.write_with_encoder(encoder).is_err() {
+                return;
+            }
         }
         if let Ok(decoded) = image::load_from_memory_with_format(&bytes, image::ImageFormat::Avif) {
             assert_eq!(decoded.width(), 10);
@@ -527,4 +548,3 @@ mod tests {
         assert!(strip_exif);
     }
 }
-

@@ -10,11 +10,20 @@ fn test_edge_case_zero_inputs() {
     let normal_vec = vec![1.0f32; 512];
 
     let sim_zeros = onnx::cosine_similarity(&zero1, &zero2);
-    assert_eq!(sim_zeros, 0.0, "Cosine similarity of two zero vectors must be 0.0 (no NaN)");
-    assert!(!sim_zeros.is_nan(), "Cosine similarity must not return NaN for zero vectors");
+    assert_eq!(
+        sim_zeros, 0.0,
+        "Cosine similarity of two zero vectors must be 0.0 (no NaN)"
+    );
+    assert!(
+        !sim_zeros.is_nan(),
+        "Cosine similarity must not return NaN for zero vectors"
+    );
 
     let sim_zero_normal = onnx::cosine_similarity(&zero1, &normal_vec);
-    assert_eq!(sim_zero_normal, 0.0, "Cosine similarity of zero vector and non-zero vector must be 0.0");
+    assert_eq!(
+        sim_zero_normal, 0.0,
+        "Cosine similarity of zero vector and non-zero vector must be 0.0"
+    );
     assert!(!sim_zero_normal.is_nan());
 
     // 2. Empty slices
@@ -30,7 +39,11 @@ fn test_edge_case_zero_inputs() {
     // 4. normalize_vector on zero vector
     let mut zero_to_norm = vec![0.0f32; 512];
     onnx::normalize_vector(&mut zero_to_norm);
-    assert_eq!(zero_to_norm, vec![0.0f32; 512], "Normalizing zero vector should leave it as zeros without NaN");
+    assert_eq!(
+        zero_to_norm,
+        vec![0.0f32; 512],
+        "Normalizing zero vector should leave it as zeros without NaN"
+    );
     assert!(zero_to_norm.iter().all(|x| !x.is_nan()));
 
     // 5. extract_text_embedding on empty / whitespace strings
@@ -48,7 +61,11 @@ fn test_edge_case_identical_vectors() {
     let mut v = vec![0.5f32; 512];
     onnx::normalize_vector(&mut v);
     let sim_self = onnx::cosine_similarity(&v, &v);
-    assert!((sim_self - 1.0).abs() < 1e-5, "Cosine similarity of identical non-zero vector with itself must be 1.0, got {}", sim_self);
+    assert!(
+        (sim_self - 1.0).abs() < 1e-5,
+        "Cosine similarity of identical non-zero vector with itself must be 1.0, got {}",
+        sim_self
+    );
 
     // 2. Identical text query embeddings
     let text1 = onnx::extract_text_embedding("cute dog sitting on a sandy beach");
@@ -74,7 +91,10 @@ fn test_edge_case_orthogonal_and_opposite_vectors() {
     v1[0] = 1.0;
     v2[1] = 1.0;
     let sim_ortho = onnx::cosine_similarity(&v1, &v2);
-    assert_eq!(sim_ortho, 0.0, "Cosine similarity of orthogonal vectors must be 0.0");
+    assert_eq!(
+        sim_ortho, 0.0,
+        "Cosine similarity of orthogonal vectors must be 0.0"
+    );
 
     // 2. Multi-component orthogonal vectors
     let mut v3 = vec![0.0f32; 512];
@@ -84,14 +104,21 @@ fn test_edge_case_orthogonal_and_opposite_vectors() {
     v4[0] = 1.0;
     v4[1] = -1.0;
     let sim_ortho2 = onnx::cosine_similarity(&v3, &v4);
-    assert!((sim_ortho2 - 0.0).abs() < 1e-5, "Orthogonal dot product should give similarity 0.0");
+    assert!(
+        (sim_ortho2 - 0.0).abs() < 1e-5,
+        "Orthogonal dot product should give similarity 0.0"
+    );
 
     // 3. Anti-parallel / Opposite vectors
     let mut v_orig = vec![1.0f32; 512];
     onnx::normalize_vector(&mut v_orig);
     let v_opp: Vec<f32> = v_orig.iter().map(|x| -x).collect();
     let sim_opp = onnx::cosine_similarity(&v_orig, &v_opp);
-    assert!((sim_opp - (-1.0)).abs() < 1e-5, "Anti-parallel vectors must have similarity -1.0, got {}", sim_opp);
+    assert!(
+        (sim_opp - (-1.0)).abs() < 1e-5,
+        "Anti-parallel vectors must have similarity -1.0, got {}",
+        sim_opp
+    );
 }
 
 #[test]
@@ -99,20 +126,39 @@ fn test_edge_case_empty_paths() {
     // 1. extract_image_embedding with empty path
     let empty_path = Path::new("");
     let emb = onnx::extract_image_embedding(empty_path);
-    assert_eq!(emb.len(), 512, "Embedding for empty path must be 512-dimensional");
+    assert_eq!(
+        emb.len(),
+        512,
+        "Embedding for empty path must be 512-dimensional"
+    );
     let norm: f32 = emb.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((norm - 1.0).abs() < 1e-3, "Empty path fallback vector must be normalized");
-    assert!(emb.iter().all(|x| !x.is_nan()), "Empty path embedding must not contain NaN");
+    assert!(
+        (norm - 1.0).abs() < 1e-3,
+        "Empty path fallback vector must be normalized"
+    );
+    assert!(
+        emb.iter().all(|x| !x.is_nan()),
+        "Empty path embedding must not contain NaN"
+    );
 
     // 2. index_faces with empty path string
     let faces_res = duplicates::index_faces("".to_string());
-    assert!(faces_res.is_ok(), "index_faces with empty path must return Ok without panic");
+    assert!(
+        faces_res.is_ok(),
+        "index_faces with empty path must return Ok without panic"
+    );
     let faces = faces_res.unwrap();
-    assert!(faces.is_empty(), "index_faces with empty path should return empty vector");
+    assert!(
+        faces.is_empty(),
+        "index_faces with empty path should return empty vector"
+    );
 
     // 3. compute_phash with empty path string
     let phash_res = duplicates::compute_phash("".to_string());
-    assert!(phash_res.is_err(), "compute_phash with empty path should return Err");
+    assert!(
+        phash_res.is_err(),
+        "compute_phash with empty path should return Err"
+    );
     assert_eq!(phash_res.unwrap_err(), "Failed to open image");
 }
 
@@ -121,19 +167,42 @@ fn test_edge_case_non_existent_files() {
     // 1. extract_image_embedding with non-existent file
     let missing_path = Path::new("C:/invalid_non_existent_dir_98765/missing_photo_12345.jpg");
     let emb = onnx::extract_image_embedding(missing_path);
-    assert_eq!(emb.len(), 512, "Missing file embedding must be 512-dimensional");
+    assert_eq!(
+        emb.len(),
+        512,
+        "Missing file embedding must be 512-dimensional"
+    );
     let norm: f32 = emb.iter().map(|x| x * x).sum::<f32>().sqrt();
-    assert!((norm - 1.0).abs() < 1e-3, "Missing file fallback vector must be normalized");
-    assert!(emb.iter().all(|x| !x.is_nan()), "Missing file embedding must not contain NaN");
+    assert!(
+        (norm - 1.0).abs() < 1e-3,
+        "Missing file fallback vector must be normalized"
+    );
+    assert!(
+        emb.iter().all(|x| !x.is_nan()),
+        "Missing file embedding must not contain NaN"
+    );
 
     // 2. index_faces with non-existent file path
-    let faces_res = duplicates::index_faces("C:/invalid_non_existent_dir_98765/missing_photo_12345.jpg".to_string());
-    assert!(faces_res.is_ok(), "index_faces with non-existent file must return Ok without panic");
+    let faces_res = duplicates::index_faces(
+        "C:/invalid_non_existent_dir_98765/missing_photo_12345.jpg".to_string(),
+    );
+    assert!(
+        faces_res.is_ok(),
+        "index_faces with non-existent file must return Ok without panic"
+    );
     let faces = faces_res.unwrap();
-    assert!(faces.is_empty(), "index_faces with non-existent file should return empty vector");
+    assert!(
+        faces.is_empty(),
+        "index_faces with non-existent file should return empty vector"
+    );
 
     // 3. compute_phash with non-existent file path
-    let phash_res = duplicates::compute_phash("C:/invalid_non_existent_dir_98765/missing_photo_12345.jpg".to_string());
-    assert!(phash_res.is_err(), "compute_phash with non-existent file should return Err");
+    let phash_res = duplicates::compute_phash(
+        "C:/invalid_non_existent_dir_98765/missing_photo_12345.jpg".to_string(),
+    );
+    assert!(
+        phash_res.is_err(),
+        "compute_phash with non-existent file should return Err"
+    );
     assert_eq!(phash_res.unwrap_err(), "Failed to open image");
 }
