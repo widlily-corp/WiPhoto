@@ -37,3 +37,38 @@ After all fixes and OTA optimizations are applied and verified, commit the chang
 - [ ] The GitHub Actions workflow file (`.github/workflows/ci.yml` or similar) builds for Windows, macOS, and Linux concurrently and is optimized for speed.
 - [ ] The Tauri configuration is properly set up for OTA updates using GitHub Releases as the endpoints.
 - [ ] An independent agent acting as a judge confirms the GitHub Actions pipeline is valid, fast, and that the OTA update logic in the application is correctly implemented.
+
+## Follow-up — 2026-08-03T06:21:27Z
+
+# Teamwork Project Prompt — Draft
+
+> Status: Launched
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+
+Добавление комплексного пакета профессиональных функций в WiPhoto (Tauri v2 + Rust + Vanilla JS), включая локальный AI (распознавание лиц и дубликатов), режим сравнения (Split View), WebGPU-рендеринг, Web Workers и поддержку новых форматов (AVIF, JPEG XL).
+
+Working directory: C:\Users\Widlily\Documents\projects\WiPhoto
+Integrity mode: development
+
+## Requirements
+
+### R1. Local AI & Deduplication
+Implement local face recognition and smart deduplication using `tract-onnx` in the Rust backend. Provide Tauri commands to index faces and find similar/duplicate images.
+
+### R2. Pro Workflow UI
+Implement a Split View / Compare Mode for side-by-side photo comparison, a Filmstrip view for the Loupe mode, and live RGB/Luminance histograms.
+
+### R3. WebGPU & Web Workers
+Implement a WebGPU-based renderer for non-destructive adjustments (exposure, contrast, HSL) and offload the Virtual Grid and array sorting logic to Web Workers to ensure the main thread remains unblocked.
+
+### R4. Advanced Formats & Batch Export
+Add support for decoding AVIF and JPEG XL formats in the Rust backend. Implement a Batch Export module with options for resizing, format conversion, and EXIF stripping.
+
+## Acceptance Criteria
+
+### Verification & Testing
+- [ ] **R1 (AI)**: A Rust integration test must successfully load a dummy ONNX model (or mock) and generate an embedding/hash without panicking.
+- [ ] **R2 & R3 (UI & Architecture)**: Node.js tests (`npm run test`) must verify the logic of the Web Worker message passing and the Split View state manager.
+- [ ] **R4 (Formats)**: A Rust test (`cargo test`) must verify that an image can be processed through the batch export pipeline successfully.
+- [ ] **Execution**: Both `npm run test` and `cargo test --manifest-path src-tauri/Cargo.toml` must pass cleanly with 0 errors.
+

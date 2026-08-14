@@ -1,62 +1,66 @@
-# WiPhoto v5.0.0 — E2E Test Suite Status & Verification Matrix
+# TEST_READY: OTA Updates E2E & Integration Test Suite Verification
 
-## Summary
+## Status: PASSED & READY
 
-The E2E test infrastructure and test suites for **WiPhoto v5.0.0** have been designed, implemented, and fully verified. All test suites in JavaScript (`npm test`) and Rust (`cargo test`) pass cleanly with 100% pass rate.
+The E2E & Integration Test Suite for WiPhoto OTA update improvements (Requirements R1 and R2) has been fully implemented, verified, and integrated into the project's continuous testing workflow (`npm test`).
 
----
+## 1. Summary of Execution Results
+- **Total Test Cases Executed**: 81
+- **Passed**: 81
+- **Failed**: 0
+- **Skipped**: 0
+- **Duration**: ~2.3 seconds
+- **Verification Command**: `npm test`
 
-## 1. Test Runner Commands
+## 2. Test Suite Breakdown (Requirement R1 & R2 Coverage)
 
-### JavaScript Unit & E2E Test Suite
-```powershell
+### Tier 1: Feature Coverage (10 Test Cases)
+- `T1-R2-01`: Progress bar container and fill elements initial state and width update.
+- `T1-R2-02`: Percentage text display calculation and formatting (`0%`, `45%`, `100%`).
+- `T1-R2-03`: Downloaded vs total byte counter formatting (e.g. `5.0 MB / 10.0 MB`).
+- `T1-R2-04`: Process Tauri updater progress events (`Started`, `Progress`, `Finished`).
+- `T1-R2-05`: State transitions across updater lifecycle (`IDLE` -> `DOWNLOADING` -> `VERIFYING` -> `RESTARTING`).
+- `T1-R1-01`: Network failure during download renders user-visible error message without crash.
+- `T1-R1-02`: User dismissal via "Отложить" button hides modal cleanly.
+- `T1-R1-03`: User dismissal via Close button (`data-close="modal-updater"`) hides modal.
+- `T1-R1-04`: User dismissal via ESC key press event hides modal.
+- `T1-R1-05`: Toast notification fallback triggered on manual update check failure.
+
+### Tier 2: Boundary & Edge Cases (10 Test Cases)
+- `T2-R2-01`: Zero or missing content length payload handles division safely without NaN.
+- `T2-R2-02`: Downloaded chunk bytes exceeding total length caps percentage at 100%.
+- `T2-R2-03`: Non-monotonic progress byte counts maintain non-decreasing progress display.
+- `T2-R2-04`: High-frequency progress burst (100 events) processed smoothly without UI lock.
+- `T2-R2-05`: Direct jump from `DOWNLOADING` to `Finished` state updates state to `VERIFYING`.
+- `T2-R1-01`: Partial download network drop at 50% transitions to `ERROR` state with retry capability.
+- `T2-R1-02`: Clicking "Повторить" after error clears error message and restarts download.
+- `T2-R1-03`: Network offline error vs invalid checksum error classified with distinct user messages.
+- `T2-R1-04`: Relaunch application failure after update installation triggers fallback modal hide.
+- `T2-R1-05`: Rapid repeated clicks on "Обновить сейчас" during active download are ignored/debounced.
+
+### Tier 3: Cross-Feature Interactions (4 Test Cases)
+- `T3-01`: Download progress streaming at 40% -> Sudden network drop -> Smooth error state transition.
+- `T3-02`: Manual update check offline -> Error caught -> `Utils.toast` notification triggered.
+- `T3-03`: Download reaches 100% -> Checksum verification fails -> State transitions to `ERROR`.
+- `T3-04`: Active error modal -> ESC pressed -> Modal hides and state resets cleanly.
+
+### Tier 4: Real-World Scenarios (3 Test Cases)
+- `T4-01`: End-to-End OTA Update Success Workflow (Check -> Modal -> Install -> Download -> Verify -> Restart).
+- `T4-02`: End-to-End Network Interruption and Successful Retry Workflow.
+- `T4-03`: End-to-End Offline Manual Check Workflow with Toast Fallback.
+
+## 3. Verification Method
+All tests run automatically via standard command line:
+```bash
 npm test
 ```
-*Executes `node --test src/js/*.test.cjs` covering unit, boundary, cross-feature, and E2E workflow tests.*
-
-### Rust Unit & Integration Test Suite
-```powershell
-cargo test --manifest-path src-tauri/Cargo.toml
+Result log snippet:
+```text
+ℹ tests 81
+ℹ suites 32
+ℹ pass 81
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
 ```
-*Executes Rust unit tests (`wiphoto_lib`) and integration test suite (`tests/e2e_v500_tests.rs`).*
-
----
-
-## 2. Requirement & Four-Tier Coverage Matrix
-
-| Feature | Feature Name | Tier 1 (Unit) | Tier 2 (Boundary) | Tier 3 (Cross-Feature) | Tier 4 (E2E Scenario) | Test Files | Status |
-|---|---|---|---|---|---|---|---|
-| **R1** | CLIP Semantic Search | Vector Cosine Sim, Score Sorting | NaN/Null vectors, Empty query | R1 + R3 (Spatial Filter), R2 + R1 (Tag Search) | Workflow 3 (Smart CLIP Search & View) | `onnx.rs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`, `e2e_v500_tests.rs` | **PASS** |
-| **R2** | XMP Sidecar Sync | XML Parsing, Rating Bounds | Malformed XML, XML Escaping (`&<>'"`) | R2 + R5 (Palette Update), R2 + R1 (Tag Search) | Workflow 2 (Sidecar Edit Persistence Loop) | `xmp.rs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`, `e2e_v500_tests.rs` | **PASS** |
-| **R3** | Geo-Map View | EXIF Lat/Lon Bounds, GeoJSON Formatting | Invalid Lat/Lon (`>90`, `NaN`), Empty Points | R1 + R3 (Spatial Filter), R3 + R4 (Popup Zero-Copy) | Workflow 1 (Cataloging & Supercluster Map) | `scanner.rs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`, `e2e_v500_tests.rs` | **PASS** |
-| **R4** | Zero-Copy Protocol | `tauri://localhost/` URL Transformer | Windows/POSIX path formatting, Encoded spaces | R3 + R4 (Popup Zero-Copy Asset URL) | Workflow 3 (Smart CLIP Search & View) | `lib.rs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`, `e2e_v500_tests.rs` | **PASS** |
-| **R5** | Refined Minimal UI & Palette | Palette Query Filter, Item Struct | Clamped Index (`<0`, `>len`), ESC Focus Trap | R2 + R5 (Palette Rating Edit), R5 + R6 (Update Modal Trigger) | Workflow 3 (Smart CLIP Search & View) | `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs` | **PASS** |
-| **R6** | OTA Updates Integration | Semver Version Compare (`isNewerVersion`) | Version Downgrade, Invalid Version String | R5 + R6 (Update Modal Trigger) | Workflow 4 (Release & Update Integrity) | `settings.rs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`, `e2e_v500_tests.rs` | **PASS** |
-| **R7** | Release Build & Verification | App Version `5.0.0` Alignment | Cross-Config Version Consistency | Full App Build & Test Pipeline | Workflow 4 (Release & Update Integrity) | `package.json`, `Cargo.toml`, `tauri.conf.json`, `settings.rs`, `lib.rs`, `e2e_v500_tests.rs` | **PASS** |
-
----
-
-## 3. Test Execution & Pass Criteria Results
-
-- **JavaScript Test Suite (`npm test`)**:
-  - Total Test Files: 4 (`utils.test.cjs`, `tier1_tier2_features.test.cjs`, `tier3_cross_features.test.cjs`, `tier4_e2e_scenarios.test.cjs`)
-  - Total Test Suites: 15
-  - Total Tests Executed: 23
-  - **Passed: 23 | Failed: 0 | Skipped: 0**
-
-- **Rust Test Suite (`cargo test`)**:
-  - Total Crates Tested: `wiphoto_lib`, `wiphoto` binary, `e2e_v500_tests`
-  - Total Tests Executed: 24 (20 unit tests + 4 integration tests)
-  - **Passed: 24 | Failed: 0 | Ignored: 0**
-
----
-
-## 4. Definition of Done Checklist
-
-- [x] Test infrastructure document `TEST_INFRA.md` created in `.agents/orchestrator/`.
-- [x] Features R1 to R7 covered across Tiers 1-4 in JS and Rust.
-- [x] All version numbers bumped to `5.0.0` (`package.json`, `Cargo.toml`, `tauri.conf.json`, `settings.rs`, `lib.rs`).
-- [x] Custom asset protocol handler `tauri://localhost/` implemented and verified.
-- [x] `npm test` executes cleanly with zero failures.
-- [x] `cargo test` executes cleanly with zero failures.
-- [x] `TEST_READY.md` written to project root.

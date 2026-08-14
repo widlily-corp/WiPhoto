@@ -94,44 +94,54 @@ jobs:
           KEY_FILE="$RUNNER_TEMP/tauri-signing-key.txt"
           node -e "
             const fs = require('fs');
-            const key = process.env.RAW_KEY || '';
-            if (!key.trim()) {
-              console.log('Key is empty, disabling updater artifacts...');
+            const raw = (process.env.RAW_KEY || '').trim();
+            if (!raw) {
+              console.log('OTA Private Key is empty. Disabling updater artifacts in config...');
               try {
                 const confPath = 'src-tauri/tauri.conf.json';
                 const conf = JSON.parse(fs.readFileSync(confPath, 'utf8'));
                 if (conf.bundle) { conf.bundle.createUpdaterArtifacts = false; }
                 fs.writeFileSync(confPath, JSON.stringify(conf, null, 2));
-              } catch (e) { console.error('Failed to update config', e); }
-            } else {
-              console.log('Normalizing key...');
-              const lines = key.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
-              const commentIdx = lines.findIndex(l => l.startsWith('untrusted comment:'));
-              let commentLine, base64Payload;
-              if (commentIdx >= 0) {
-                commentLine = lines[commentIdx];
-                base64Payload = lines.slice(commentIdx + 1).join('').replace(/[^A-Za-z0-9+/=]/g, '');
-              } else {
-                commentLine = key.toLowerCase().includes('encrypted')
-                  ? 'untrusted comment: minisign encrypted secret key'
-                  : 'untrusted comment: minisign secret key';
-                base64Payload = lines.join('').replace(/[^A-Za-z0-9+/=]/g, '');
+                console.log('Successfully disabled createUpdaterArtifacts');
+              } catch (e) {
+                console.error('Failed to update config', e);
               }
-              const keyContent = commentLine + String.fromCharCode(10) + base64Payload;
-              fs.writeFileSync(process.env.KEY_FILE, keyContent, 'utf8');
-              console.log('Comment:', commentLine);
-              console.log('Payload length:', base64Payload.length);
-              console.log('Key written to file');
+            } else {
+              console.log('Normalizing OTA signing key...');
+              let normalizedBase64 = '';
+              if (raw.startsWith('untrusted comment:') || raw.includes('untrusted comment:')) {
+                const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                const commentIdx = lines.findIndex(l => l.startsWith('untrusted comment:'));
+                const commentLine = lines[commentIdx];
+                const keyPayload = lines.slice(commentIdx + 1).join('').replace(/[^A-Za-z0-9+/=]/g, '');
+                const cleanText = commentLine + '\n' + keyPayload + '\n';
+                normalizedBase64 = Buffer.from(cleanText, 'utf8').toString('base64');
+              } else {
+                const clean = raw.replace(/\s+/g, '');
+                try {
+                  const decoded = Buffer.from(clean, 'base64').toString('utf8');
+                  if (decoded.includes('untrusted comment:')) {
+                    normalizedBase64 = clean;
+                  } else {
+                    const wrapped = 'untrusted comment: minisign secret key\n' + clean + '\n';
+                    normalizedBase64 = Buffer.from(wrapped, 'utf8').toString('base64');
+                  }
+                } catch (e) {
+                  const wrapped = 'untrusted comment: minisign secret key\n' + clean + '\n';
+                  normalizedBase64 = Buffer.from(wrapped, 'utf8').toString('base64');
+                }
+              }
+              fs.writeFileSync(process.env.KEY_FILE, normalizedBase64, 'utf8');
+              console.log('Key successfully normalized. Base64 length:', normalizedBase64.length);
             }
           "
           if [ -f "$KEY_FILE" ]; then
-            {
-              echo "TAURI_SIGNING_PRIVATE_KEY<<__SIGNING_KEY_BOUNDARY__"
-              cat "$KEY_FILE"
-              echo ""
-              echo "__SIGNING_KEY_BOUNDARY__"
-            } >> "$GITHUB_ENV"
-            echo "Key loaded into GITHUB_ENV"
+            NORM_KEY=$(cat "$KEY_FILE" | tr -d '\r\n ')
+            echo "TAURI_SIGNING_PRIVATE_KEY=$NORM_KEY" >> "$GITHUB_ENV"
+            echo "TAURI_PRIVATE_KEY=$NORM_KEY" >> "$GITHUB_ENV"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
+            echo "TAURI_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
+            echo "Key exported to GITHUB_ENV"
           fi
         env:
           RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -141,7 +151,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_PRIVATE_KEY: ${{ env.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'WiPhoto v__VERSION__'

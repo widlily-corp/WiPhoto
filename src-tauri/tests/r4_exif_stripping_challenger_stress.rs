@@ -1,6 +1,5 @@
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgb, RgbImage};
 use std::fs;
-use std::path::PathBuf;
 use tempfile::tempdir;
 use wiphoto_lib::commands::export::{
     export_files, strip_exif_from_jpeg_bytes, strip_exif_from_jpeg_file,
@@ -226,7 +225,7 @@ async fn test_stress_batch_export_mixed_files_with_exif_stripping() {
 
     // 2. Clean JPEG without APP1 markers
     let clean_jpeg_path = src_dir.join("clean.jpg");
-    let img: RgbImage = ImageBuffer::from_fn(200, 200, |x, y| Rgb([(x % 255) as u8, 100, 50]));
+    let img: RgbImage = ImageBuffer::from_fn(200, 200, |x, _y| Rgb([(x % 255) as u8, 100, 50]));
     img.save(&clean_jpeg_path).unwrap();
 
     // 3. Non-JPEG text file
