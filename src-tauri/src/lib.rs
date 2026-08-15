@@ -263,7 +263,10 @@ pub fn decode_percent(s: &str) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_logger();
-    log::info!("Starting WiPhoto v5.0.0 application...");
+    log::info!(
+        "Starting WiPhoto v{} application...",
+        env!("CARGO_PKG_VERSION")
+    );
 
     if let Err(e) = db::init_db() {
         log::error!("Failed to initialize database: {}", e);
@@ -280,7 +283,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .register_uri_scheme_protocol("asset", |_ctx, req| handle_asset_custom_protocol(req))
-        .register_uri_scheme_protocol("tauri", |_ctx, req| handle_asset_custom_protocol(req))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
