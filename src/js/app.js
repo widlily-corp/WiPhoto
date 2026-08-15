@@ -37,6 +37,20 @@ const App = (() => {
     if (typeof BatchOps !== 'undefined') {
       BatchOps.init();
     }
+    if (typeof initUpdaterUI === 'function') {
+      initUpdaterUI();
+    }
+
+    // Auto-check for OTA updates silently in background on startup
+    setTimeout(() => {
+      if (typeof UpdaterAPI !== 'undefined' && typeof UpdaterAPI.checkForUpdates === 'function') {
+        UpdaterAPI.checkForUpdates({ isManual: false }).then(res => {
+          if (res && res.success && res.available && typeof showUpdateModal === 'function') {
+            showUpdateModal(res);
+          }
+        }).catch(() => {});
+      }
+    }, 2500);
 
     // 2. View Mode Switchers
     document.querySelectorAll('.view-modes button.toolbar-btn').forEach(btn => {

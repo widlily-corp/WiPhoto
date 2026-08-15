@@ -23,6 +23,30 @@ const Settings = (() => {
     // Clear cache button
     document.getElementById('btn-clear-cache')?.addEventListener('click', clearCache);
 
+    // OTA Update Check buttons
+    const triggerUpdateCheck = async () => {
+      if (typeof UpdaterAPI !== 'undefined') {
+        Utils.toast('Проверка наличия обновлений...', 'info');
+        try {
+          const res = await UpdaterAPI.checkForUpdates({ isManual: true });
+          if (res && res.success) {
+            if (res.available && typeof showUpdateModal === 'function') {
+              showUpdateModal(res);
+            } else {
+              Utils.toast('У вас установлена актуальная версия WiPhoto', 'success');
+            }
+          }
+        } catch (err) {
+          Utils.toast(`Ошибка при проверке обновлений: ${err}`, 'error');
+        }
+      } else {
+        Utils.toast('Модуль обновления недоступен', 'warning');
+      }
+    };
+
+    document.getElementById('btn-check-updates-settings')?.addEventListener('click', triggerUpdateCheck);
+    document.getElementById('btn-check-updates-about')?.addEventListener('click', triggerUpdateCheck);
+
     // Sync hamming value span
     const hammingSlider = document.getElementById('setting-hamming');
     if (hammingSlider) {

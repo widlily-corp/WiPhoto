@@ -11,6 +11,20 @@ const CommandPalette = (() => {
     { id: 'select-folder', name: 'Выбрать папку для сканирования', group: 'Файлы', shortcut: 'Ctrl+O', action: () => Welcome.selectFolder() },
     { id: 'settings', name: 'Открыть настройки', group: 'Файлы', shortcut: 'Ctrl+,', action: () => Settings.open() },
     { id: 'about', name: 'О программе WiPhoto', group: 'Файлы', shortcut: '', action: () => Settings.showAbout() },
+    { id: 'check-updates', name: 'Проверить обновления (OTA)', group: 'Файлы', shortcut: '', action: () => {
+        if (typeof UpdaterAPI !== 'undefined') {
+          Utils.toast('Проверка наличия обновлений...', 'info');
+          UpdaterAPI.checkForUpdates({ isManual: true }).then(res => {
+            if (res && res.success) {
+              if (res.available && typeof showUpdateModal === 'function') {
+                showUpdateModal(res);
+              } else {
+                Utils.toast('У вас установлена актуальная версия WiPhoto', 'success');
+              }
+            }
+          });
+        }
+    }},
     
     // View
     { id: 'view-gallery', name: 'Перейти в режим: Галерея', group: 'Вид', shortcut: 'G', action: () => App.switchView('gallery') },
