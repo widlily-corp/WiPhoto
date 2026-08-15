@@ -118,9 +118,15 @@ pub async fn save_edited(
             }
         }
 
-        // Atomic rename replacement
-        std::fs::rename(&temp_path, &save_path)
-            .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        // Atomic rename replacement with fallback for Windows existing files
+        if std::fs::rename(&temp_path, &save_path).is_err() {
+            let _ = std::fs::remove_file(&save_path);
+            if std::fs::rename(&temp_path, &save_path).is_err() {
+                std::fs::copy(&temp_path, &save_path)
+                    .map_err(|e| format!("Failed to copy temp file to target: {}", e))?;
+                let _ = std::fs::remove_file(&temp_path);
+            }
+        }
 
         // Sync XMP sidecar when exposure/color edits are saved
         if !operations.is_empty() {
@@ -635,9 +641,15 @@ pub async fn save_cropped_edited_image(
             }
         }
 
-        // Atomic rename replacement
-        std::fs::rename(&temp_path, &save_path)
-            .map_err(|e| format!("Failed to atomically rename temp file: {}", e))?;
+        // Atomic rename replacement with fallback for Windows existing files
+        if std::fs::rename(&temp_path, &save_path).is_err() {
+            let _ = std::fs::remove_file(&save_path);
+            if std::fs::rename(&temp_path, &save_path).is_err() {
+                std::fs::copy(&temp_path, &save_path)
+                    .map_err(|e| format!("Failed to copy temp file to target: {}", e))?;
+                let _ = std::fs::remove_file(&temp_path);
+            }
+        }
 
         // Sync XMP sidecar when crop/edits are saved
         let mut ops_desc = Vec::new();

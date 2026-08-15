@@ -76,7 +76,15 @@ fn generate_thumbnail(path: &Path, cache_dir: &Path) -> Option<String> {
     }
 
     // Try to load the image
-    let img = if RAW_EXTENSIONS.contains(&ext.as_str()) {
+    let img = if ext == "jxl" {
+        match crate::commands::export::load_jxl(path) {
+            Some(i) => i,
+            None => {
+                log::warn!("Failed to load JXL thumbnail preview for: {:?}", path);
+                return None;
+            }
+        }
+    } else if RAW_EXTENSIONS.contains(&ext.as_str()) {
         // For RAW files, try to extract embedded JPEG preview
         match load_raw_thumbnail(path) {
             Some(i) => i,

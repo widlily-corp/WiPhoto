@@ -10,8 +10,8 @@ fn test_tier1_feature_coverage_rust() {
     // Arrange: R7 Version Check
     let version = settings::get_app_version();
     let info = settings::get_app_info();
-    assert_eq!(version, "5.0.0");
-    assert_eq!(info.version, "5.0.0");
+    assert_eq!(version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
 
     // Arrange: R1 Cosine Similarity
     let v_query = vec![1.0, 0.0, 0.0, 0.0];
@@ -187,7 +187,7 @@ fn test_tier4_e2e_scenarios_rust() {
 fn test_ota_updater_configuration_and_plugin_registration() {
     // Arrange: Verify app info and version string
     let app_info = settings::get_app_info();
-    assert_eq!(app_info.version, "5.0.0");
+    assert_eq!(app_info.version, env!("CARGO_PKG_VERSION"));
 
     // Arrange: Read tauri.conf.json configuration
     let conf_path = std::path::Path::new("tauri.conf.json");

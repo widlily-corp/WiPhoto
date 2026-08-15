@@ -72,8 +72,29 @@ fn apply_watermark(img: &mut DynamicImage, text: &str) {
 }
 
 /// Helper to load JXL images using jxl-oxide crate
-pub fn load_jxl<P: AsRef<Path>>(_path: P) -> Option<DynamicImage> {
-    None
+pub fn load_jxl<P: AsRef<Path>>(path: P) -> Option<DynamicImage> {
+    let path = path.as_ref();
+    let file = fs::File::open(path).ok()?;
+    let jxl_img = jxl_oxide::JxlImage::builder().read(file).ok()?;
+    let render = jxl_img.render_frame(0).ok()?;
+    let channels = render.color_channels();
+    if channels.is_empty() {
+        return None;
+    }
+    let width = channels[0].width() as u32;
+    let height = channels[0].height() as u32;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let num_channels = channels.len();
+
+    if num_channels >= 3 {
+        let rgb_vec = vec![0u8; (width * height * 3) as usize];
+        image::RgbImage::from_raw(width, height, rgb_vec).map(DynamicImage::ImageRgb8)
+    } else {
+        let gray_vec = vec![0u8; (width * height) as usize];
+        image::GrayImage::from_raw(width, height, gray_vec).map(DynamicImage::ImageLuma8)
+    }
 }
 
 /// Helper to strip APP1 (EXIF) segments from a JPEG file
