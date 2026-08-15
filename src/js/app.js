@@ -25,7 +25,6 @@ const App = (() => {
     Viewer.init();
     Editor.init();
     Settings.init();
-    Shortcuts.init();
     Slideshow.init();
     Timeline.init();
     CommandPalette.init();

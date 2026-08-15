@@ -53,13 +53,21 @@ const CommandPalette = (() => {
 
     // Tools & Operations
     { id: 'find-duplicates', name: 'Поиск дубликатов', group: 'Инструменты', shortcut: '', action: () => {
-        if (typeof Batch !== 'undefined') Batch.openDuplicateFinder();
+        if (typeof Settings !== 'undefined' && typeof Settings.showDuplicateFinder === 'function') {
+          Settings.showDuplicateFinder();
+        } else if (typeof App !== 'undefined' && typeof App.showDuplicateFinder === 'function') {
+          App.showDuplicateFinder();
+        }
     }},
     { id: 'batch-rename', name: 'Пакетное переименование', group: 'Инструменты', shortcut: 'F2', action: () => {
-        if (typeof Batch !== 'undefined') Batch.openBatchRename();
+        if (typeof BatchOps !== 'undefined' && typeof BatchOps.showRenameModal === 'function') {
+          BatchOps.showRenameModal();
+        }
     }},
     { id: 'batch-export', name: 'Пакетный экспорт', group: 'Инструменты', shortcut: 'Ctrl+E', action: () => {
-        if (typeof Batch !== 'undefined') Batch.openBatchExport();
+        if (typeof BatchOps !== 'undefined' && typeof BatchOps.showExportModal === 'function') {
+          BatchOps.showExportModal();
+        }
     }},
     { id: 'nav-trash', name: 'Открыть корзину удалённых файлов', group: 'Инструменты', shortcut: 'Del', action: () => {
         if (typeof Trash !== 'undefined') Trash.open();

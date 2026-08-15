@@ -69,6 +69,24 @@ const Shortcuts = (() => {
       return;
     }
 
+    // F2: Batch Rename
+    if (e.key === 'F2') {
+      e.preventDefault();
+      if (typeof BatchOps !== 'undefined') {
+        BatchOps.showRenameModal();
+      }
+      return;
+    }
+
+    // Ctrl+E: Batch Export
+    if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+      e.preventDefault();
+      if (typeof BatchOps !== 'undefined') {
+        BatchOps.showExportModal();
+      }
+      return;
+    }
+
     // F1: About
     if (e.key === 'F1') {
       e.preventDefault();
