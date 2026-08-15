@@ -83,8 +83,12 @@ const Timeline = (() => {
             title: img.filename,
           });
 
+          const targetSrc = (img.thumbnail && img.thumbnail.trim() !== '')
+            ? img.thumbnail
+            : (!img.is_raw && !img.is_video ? img.path : '');
+
           const imgEl = Utils.el('img', {
-            src: img.thumbnail ? Utils.assetUrl(img.thumbnail) : '',
+            src: targetSrc ? Utils.assetUrl(targetSrc) : '',
             alt: img.filename,
             loading: 'lazy',
           });

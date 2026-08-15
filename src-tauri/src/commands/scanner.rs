@@ -472,6 +472,22 @@ pub async fn scan_folder(
         let mut current_count = 0;
 
         let mut cached_infos = crate::db::get_images_by_paths(&cached_paths).unwrap_or_default();
+        let mut updated_cached = Vec::new();
+        for info in &mut cached_infos {
+            if info.thumbnail.is_empty() || !Path::new(&info.thumbnail).exists() {
+                if let Some(thumb) = generate_thumbnail(Path::new(&info.path), &cache_dir) {
+                    info.thumbnail = thumb;
+                    let mtime = get_modified_time(Path::new(&info.path));
+                    updated_cached.push((info.clone(), mtime));
+                }
+            }
+        }
+        if !updated_cached.is_empty() {
+            let to_save: Vec<(&ImageInfo, u64)> =
+                updated_cached.iter().map(|(i, m)| (i, *m)).collect();
+            let _ = crate::db::save_images_batch(&to_save);
+        }
+
         for chunk in cached_infos.chunks(50) {
             let _ = app.emit("image-scanned-batch", chunk.to_vec());
             current_count += chunk.len() as u32;

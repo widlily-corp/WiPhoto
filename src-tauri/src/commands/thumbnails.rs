@@ -1,4 +1,4 @@
-use crate::models::image_info::RAW_EXTENSIONS;
+use crate::models::image_info::{RAW_EXTENSIONS, VIDEO_EXTENSIONS};
 use image::imageops::FilterType;
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
@@ -65,6 +65,35 @@ pub fn get_or_generate_thumbnail_sync(path: &str) -> Result<String, String> {
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
+
+    if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+        let mut img = image::RgbaImage::new(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgba([40, 44, 58, 255]);
+        }
+        let cx = THUMBNAIL_SIZE as f32 / 2.0;
+        let cy = THUMBNAIL_SIZE as f32 / 2.0;
+        let size = 40.0f32;
+        for y in 0..THUMBNAIL_SIZE {
+            for x in 0..THUMBNAIL_SIZE {
+                let fx = x as f32 - cx + size * 0.3;
+                let fy = y as f32 - cy;
+                if fx >= -size * 0.5 && fx <= size * 0.5 {
+                    let max_y = size * 0.5 * (1.0 - fx / (size * 0.5));
+                    if fy.abs() <= max_y {
+                        img.put_pixel(x, y, image::Rgba([200, 200, 200, 220]));
+                    }
+                }
+            }
+        }
+        let _ = image::DynamicImage::ImageRgba8(img)
+            .save_with_format(&cache_file, image::ImageFormat::Jpeg);
+        THUMBNAIL_PATH_CACHE
+            .write()
+            .insert(path.to_string(), cache_file_str.clone());
+        return Ok(cache_file_str);
+    }
+
     let img = if ext == "jxl" {
         crate::commands::export::load_jxl(file_path)
             .ok_or_else(|| "Failed to decode JXL image".to_string())?

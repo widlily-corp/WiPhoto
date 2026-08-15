@@ -57,10 +57,9 @@ const Trash = (() => {
         const itemRow = Utils.el('div', {
           className: 'trash-item-row'
         }, [
-          // Previews
           Utils.el('img', {
             className: 'trash-item-thumb',
-            src: item.thumbnail ? Utils.assetUrl(item.thumbnail) : ''
+            src: Utils.assetUrl(item.thumbnail || item.path || '')
           }),
           // Info
           Utils.el('div', { className: 'trash-item-info' }, [

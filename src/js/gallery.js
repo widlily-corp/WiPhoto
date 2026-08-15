@@ -350,14 +350,61 @@ const Gallery = (() => {
     const fallbackText = img.is_raw ? 'RAW' : (img.is_video ? 'VIDEO' : 'NO PREVIEW');
 
     imgEl.onerror = () => {
+      // 1. If thumbnail failed on standard image, fallback to original path
+      const directUrl = img.path ? Utils.assetUrl(img.path) : '';
+      if (directUrl && imgEl.src !== directUrl && !img.is_raw && !img.is_video) {
+        imgEl.src = directUrl;
+        return;
+      }
+
+      // 2. If thumbnail failed or is missing, asynchronously request on-demand generation from backend
+      if (img.path && !card.dataset.retryThumb) {
+        card.dataset.retryThumb = '1';
+        if (typeof API !== 'undefined' && typeof API.getThumbnail === 'function') {
+          API.getThumbnail(img.path)
+            .then(thumbPath => {
+              if (thumbPath) {
+                img.thumbnail = thumbPath;
+                imgEl.src = Utils.assetUrl(thumbPath);
+              } else {
+                showPlaceholder(fallbackText);
+              }
+            })
+            .catch(() => {
+              showPlaceholder(fallbackText);
+            });
+          return;
+        }
+      }
+
       showPlaceholder(fallbackText);
     };
+
     imgEl.onload = () => {
       hidePlaceholder();
     };
 
-    if (img.thumbnail && img.thumbnail.trim() !== '') {
-      imgEl.src = Utils.assetUrl(img.thumbnail);
+    const targetSrc = (img.thumbnail && img.thumbnail.trim() !== '')
+      ? img.thumbnail
+      : (!img.is_raw && !img.is_video ? img.path : '');
+
+    if (targetSrc) {
+      imgEl.src = Utils.assetUrl(targetSrc);
+    } else if (img.path) {
+      // For RAW/video without pre-generated thumbnail, show placeholder and fetch asynchronously
+      showPlaceholder(fallbackText);
+      if (typeof API !== 'undefined' && typeof API.getThumbnail === 'function') {
+        API.getThumbnail(img.path)
+          .then(thumbPath => {
+            if (thumbPath) {
+              img.thumbnail = thumbPath;
+              imgEl.src = Utils.assetUrl(thumbPath);
+            }
+          })
+          .catch(() => {
+            showPlaceholder(fallbackText);
+          });
+      }
     } else {
       imgEl.src = '';
       showPlaceholder(fallbackText);
