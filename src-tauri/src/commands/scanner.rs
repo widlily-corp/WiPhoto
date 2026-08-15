@@ -472,23 +472,31 @@ pub async fn scan_folder(
         let mut current_count = 0;
 
         let mut cached_infos = crate::db::get_images_by_paths(&cached_paths).unwrap_or_default();
-        let mut updated_cached = Vec::new();
-        for info in &mut cached_infos {
-            if info.thumbnail.is_empty() || !Path::new(&info.thumbnail).exists() {
-                if let Some(thumb) = generate_thumbnail(Path::new(&info.path), &cache_dir) {
-                    info.thumbnail = thumb;
-                    let mtime = get_modified_time(Path::new(&info.path));
-                    updated_cached.push((info.clone(), mtime));
+        let cache_dir_ref = &cache_dir;
+
+        // Parallel thumbnail repair for cached entries
+        let updated_cached: Vec<(ImageInfo, u64)> = cached_infos
+            .par_iter_mut()
+            .filter_map(|info| {
+                if info.thumbnail.is_empty() || !Path::new(&info.thumbnail).exists() {
+                    if let Some(thumb) = generate_thumbnail(Path::new(&info.path), cache_dir_ref) {
+                        info.thumbnail = thumb;
+                        let mtime = get_modified_time(Path::new(&info.path));
+                        return Some((info.clone(), mtime));
+                    }
                 }
-            }
-        }
+                None
+            })
+            .collect();
+
         if !updated_cached.is_empty() {
             let to_save: Vec<(&ImageInfo, u64)> =
                 updated_cached.iter().map(|(i, m)| (i, *m)).collect();
             let _ = crate::db::save_images_batch(&to_save);
         }
 
-        for chunk in cached_infos.chunks(50) {
+        let chunk_size = if total > 200 { 25 } else { 10 };
+        for chunk in cached_infos.chunks(chunk_size) {
             let _ = app.emit("image-scanned-batch", chunk.to_vec());
             current_count += chunk.len() as u32;
             let _ = app.emit(
@@ -511,7 +519,7 @@ pub async fn scan_folder(
             let mut batch = Vec::new();
             for info in rx {
                 batch.push(info);
-                if batch.len() >= 50 {
+                if batch.len() >= chunk_size {
                     let _ = app_clone.emit("image-scanned-batch", batch.clone());
                     batch.clear();
                 }
@@ -521,6 +529,13 @@ pub async fn scan_folder(
             }
         });
 
+        let progress_step = if total > 500 {
+            10
+        } else if total > 100 {
+            5
+        } else {
+            1
+        };
         let new_infos: Vec<(ImageInfo, u64)> = uncached_files
             .par_iter()
             .filter_map(|(file_path, mtime)| {
@@ -528,7 +543,7 @@ pub async fn scan_folder(
                 if let Some(info) = process_single_file(file_path, &cache_dir) {
                     let _ = tx.send(info.clone());
                     let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                    if current % 10 == 0 || current == total {
+                    if current % progress_step == 0 || current == total || current == 1 {
                         let _ = app.emit(
                             "scan-progress",
                             serde_json::json!({
@@ -541,7 +556,7 @@ pub async fn scan_folder(
                     Some((info, *mtime))
                 } else {
                     let current = counter.fetch_add(1, Ordering::SeqCst) + 1;
-                    if current % 10 == 0 || current == total {
+                    if current % progress_step == 0 || current == total || current == 1 {
                         let _ = app.emit(
                             "scan-progress",
                             serde_json::json!({

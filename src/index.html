@@ -38,7 +38,7 @@
         </div>
         <h1 class="welcome-title">WiPhoto</h1>
         <p class="welcome-subtitle">Профессиональный менеджер и редактор фотографий</p>
-        <div class="welcome-version">v5.1.4 · Widlily Corporation</div>
+        <div class="welcome-version">v5.1.5 · Widlily Corporation</div>
 
         <div class="welcome-actions">
           <button id="btn-select-folder" class="btn btn-primary btn-glow">
@@ -185,6 +185,22 @@
         <div id="view-gallery" class="view active">
           <div id="gallery-scan-progress" class="gallery-scan-progress hidden">
             <div class="gallery-scan-progress-bar" id="gallery-progress-bar"></div>
+          </div>
+          <div id="gallery-scanning-hud" class="gallery-scanning-hud hidden">
+            <div class="scanning-hud-content">
+              <div class="scanning-hud-spinner"></div>
+              <div class="scanning-hud-details">
+                <div class="scanning-hud-title">Сканирование медиатеки</div>
+                <div class="scanning-hud-file" id="scanning-hud-file">Инициализация...</div>
+                <div class="scanning-hud-progress-bg">
+                  <div class="scanning-hud-progress-fill" id="scanning-hud-fill"></div>
+                </div>
+                <div class="scanning-hud-meta">
+                  <span id="scanning-hud-count">0 / 0 файлов</span>
+                  <span id="scanning-hud-percent">0%</span>
+                </div>
+              </div>
+            </div>
           </div>
           <div id="gallery-grid" class="gallery-grid"></div>
           <div id="gallery-empty" class="gallery-empty hidden">
@@ -556,7 +572,7 @@
             <path d="M15 55 L30 40 L42 50 L55 32 L65 45 L65 62 Q65 65 62 65 L18 65 Q15 65 15 62 Z" fill="white" opacity="0.85"/>
           </svg>
         </div>
-        <h3>WiPhoto <span id="about-version">v5.1.4</span></h3>
+        <h3>WiPhoto <span id="about-version">v5.1.5</span></h3>
         <p id="about-description">Профессиональный менеджер и редактор фотографий</p>
         <p id="about-copyright">© 2026, Widlily Corporation. Все права защищены.</p>
         <p class="about-tech">Powered by Rust + Tauri</p>

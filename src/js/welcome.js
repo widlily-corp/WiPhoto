@@ -58,9 +58,22 @@ const Welcome = (() => {
 
       const galleryProgressEl = document.getElementById('gallery-scan-progress');
       const galleryProgressBar = document.getElementById('gallery-progress-bar');
+      const scanningHudEl = document.getElementById('gallery-scanning-hud');
+      const scanningHudFile = document.getElementById('scanning-hud-file');
+      const scanningHudFill = document.getElementById('scanning-hud-fill');
+      const scanningHudCount = document.getElementById('scanning-hud-count');
+      const scanningHudPercent = document.getElementById('scanning-hud-percent');
+
       if (galleryProgressEl) {
         galleryProgressEl.classList.remove('hidden');
         if (galleryProgressBar) galleryProgressBar.style.width = '0%';
+      }
+      if (scanningHudEl) {
+        scanningHudEl.classList.remove('hidden');
+        if (scanningHudFill) scanningHudFill.style.width = '0%';
+        if (scanningHudFile) scanningHudFile.textContent = 'Поиск и анализ файлов...';
+        if (scanningHudCount) scanningHudCount.textContent = '0 / 0 файлов';
+        if (scanningHudPercent) scanningHudPercent.textContent = '0%';
       }
 
       let scanBuffer = [];
@@ -83,6 +96,11 @@ const Welcome = (() => {
             galleryProgressBar.style.width = `${pct}%`;
           }
           const fn = data.current_file ? Utils.getFilename(data.current_file) : '';
+          if (scanningHudFill) scanningHudFill.style.width = `${pct}%`;
+          if (scanningHudCount) scanningHudCount.textContent = `${data.current} / ${data.total} файлов`;
+          if (scanningHudPercent) scanningHudPercent.textContent = `${pct}%`;
+          if (scanningHudFile && fn) scanningHudFile.textContent = fn;
+
           document.getElementById('status-text').textContent = `Сканирование: ${data.current} / ${data.total} │ ${fn}`;
         });
       }
@@ -111,9 +129,19 @@ const Welcome = (() => {
       if (galleryProgressBar) {
         galleryProgressBar.style.width = '100%';
       }
+      if (scanningHudFill) {
+        scanningHudFill.style.width = '100%';
+      }
+      if (scanningHudPercent) {
+        scanningHudPercent.textContent = '100%';
+      }
+
       setTimeout(() => {
         if (galleryProgressEl) {
           galleryProgressEl.classList.add('hidden');
+        }
+        if (scanningHudEl) {
+          scanningHudEl.classList.add('hidden');
         }
       }, 500);
 
@@ -171,6 +199,7 @@ const Welcome = (() => {
       document.getElementById('main-app').classList.remove('active');
       document.getElementById('scan-progress')?.classList.add('hidden');
       document.getElementById('gallery-scan-progress')?.classList.add('hidden');
+      document.getElementById('gallery-scanning-hud')?.classList.add('hidden');
     } finally {
       if (batchInterval) clearInterval(batchInterval);
       if (typeof unlistenProgress === 'function') unlistenProgress();
