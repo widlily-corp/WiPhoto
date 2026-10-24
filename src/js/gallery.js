@@ -6,6 +6,7 @@ const Gallery = (() => {
   let filteredImages = [];
   let selectedPaths = new Set();
   let lastSelectedIndex = -1;
+  let selectionAnchorIndex = -1;
   let currentFilter = 'all';
   let currentSort = 'name';
   let searchQuery = '';
@@ -652,7 +653,88 @@ const Gallery = (() => {
 
   function clearSelection() {
     selectedPaths.clear();
+    selectionAnchorIndex = -1;
     grid().querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
+  }
+
+  
+  function invertSelection() {
+    const newSet = new Set();
+    filteredImages.forEach(img => {
+      if (!selectedPaths.has(img.path)) {
+        newSet.add(img.path);
+      }
+    });
+    selectedPaths = newSet;
+    const rendered = VirtualGrid.getActiveCards();
+    for (const [idx, card] of rendered.entries()) {
+      const item = filteredImages[idx];
+      if (item) {
+        card.classList.toggle('selected', selectedPaths.has(item.path));
+      }
+    }
+    updateStatusBar();
+    showPreview();
+  }
+
+  function navigateSelection(direction, isRange) {
+    if (!filteredImages || filteredImages.length === 0) return;
+
+    const cols = (typeof VirtualGrid !== 'undefined' && typeof VirtualGrid.getColumns === 'function')
+      ? VirtualGrid.getColumns()
+      : Math.max(1, Math.floor((document.getElementById('view-gallery')?.clientWidth || 800) / (thumbSize + 6)));
+
+    let targetIndex = lastSelectedIndex;
+
+    if (targetIndex < 0 || targetIndex >= filteredImages.length) {
+      targetIndex = 0;
+    } else {
+      switch (direction) {
+        case 'right':
+          targetIndex = Math.min(filteredImages.length - 1, targetIndex + 1);
+          break;
+        case 'left':
+          targetIndex = Math.max(0, targetIndex - 1);
+          break;
+        case 'down':
+          targetIndex = Math.min(filteredImages.length - 1, targetIndex + cols);
+          break;
+        case 'up':
+          targetIndex = Math.max(0, targetIndex - cols);
+          break;
+        case 'home':
+          targetIndex = 0;
+          break;
+        case 'end':
+          targetIndex = filteredImages.length - 1;
+          break;
+        case 'pageup':
+          targetIndex = Math.max(0, targetIndex - cols * 4);
+          break;
+        case 'pagedown':
+          targetIndex = Math.min(filteredImages.length - 1, targetIndex + cols * 4);
+          break;
+      }
+    }
+
+    if (isRange && lastSelectedIndex >= 0) {
+      if (selectionAnchorIndex < 0) selectionAnchorIndex = lastSelectedIndex;
+      clearSelection();
+      rangeSelect(selectionAnchorIndex, targetIndex);
+      lastSelectedIndex = targetIndex;
+    } else {
+      selectionAnchorIndex = targetIndex;
+      clearSelection();
+      selectPath(filteredImages[targetIndex].path, targetIndex);
+      lastSelectedIndex = targetIndex;
+    }
+
+    updateStatusBar();
+    showPreview();
+
+    if (typeof VirtualGrid !== 'undefined' && typeof VirtualGrid.ensureIndexVisible === 'function') {
+      VirtualGrid.ensureIndexVisible(targetIndex);
+    }
   }
 
   function getSelectedImages() {
@@ -812,7 +894,7 @@ const Gallery = (() => {
 
   return {
     init, setImages, addImage, applyFilters, getSelectedImages,
-    clearSelection, selectAll, setRating, setColorLabel, setFlagStatus,
+    clearSelection, selectAll, invertSelection, navigateSelection, setRating, setColorLabel, setFlagStatus,
     removeImages, setDuplicateGroups, getFilteredImages: () => filteredImages,
     getAllImages: () => allImages, updateStatusBar,
     // v3 additions

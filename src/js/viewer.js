@@ -1,6 +1,7 @@
 // ═══ Fullscreen Viewer Module ═══
 
 const Viewer = (() => {
+  let isInitialized = false;
   let currentIndex = -1;
   let images = [];
   const preloadCache = new Map(); // path -> base64 URL
@@ -15,6 +16,8 @@ const Viewer = (() => {
   let histogramTimer = null;
 
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
     document.getElementById('viewer-close')?.addEventListener('click', close);
     document.getElementById('viewer-prev')?.addEventListener('click', prev);
     document.getElementById('viewer-next')?.addEventListener('click', next);
@@ -27,24 +30,145 @@ const Viewer = (() => {
     const viewer = document.getElementById('fullscreen-viewer');
     viewer?.addEventListener('keydown', (e) => {
       switch (e.key) {
-        case 'Escape': close(); break;
-        case 'ArrowLeft': prev(); break;
-        case 'ArrowRight': next(); break;
-        case 'Home': goTo(0); break;
-        case 'End': goTo(images.length - 1); break;
+        case 'Escape':
+          close();
+          break;
+        case 'ArrowLeft':
+          if (e.ctrlKey || e.altKey || e.shiftKey) {
+            goTo(Math.max(0, currentIndex - 5));
+          } else {
+            prev();
+          }
+          break;
+        case 'ArrowRight':
+          if (e.ctrlKey || e.altKey || e.shiftKey) {
+            goTo(Math.min(images.length - 1, currentIndex + 5));
+          } else {
+            next();
+          }
+          break;
+        case 'Home':
+          goTo(0);
+          break;
+        case 'End':
+          goTo(images.length - 1);
+          break;
         case ' ':
-        case 'Enter':
+        case 'Enter': {
           const currentImg = images[currentIndex];
           if (currentImg && currentImg.is_video) {
             e.preventDefault();
             API.openInSystemPlayer(currentImg.path);
           }
           break;
+        }
         case 'f':
         case 'F':
           e.preventDefault();
-          toggleInfoOverlay();
+          if (e.shiftKey) {
+            if (typeof Filmstrip !== 'undefined') Filmstrip.toggle();
+          } else {
+            toggleInfoOverlay();
+          }
+          break;
+        case 't':
+        case 'T':
+          e.preventDefault();
           if (typeof Filmstrip !== 'undefined') Filmstrip.toggle();
+          break;
+        case 'i':
+        case 'I':
+          e.preventDefault();
+          toggleInfoOverlay();
+          break;
+        case 'e':
+        case 'E': {
+          const currentImg = images[currentIndex];
+          if (currentImg && !currentImg.is_video) {
+            e.preventDefault();
+            close();
+            App.openEditor(currentImg);
+          }
+          break;
+        }
+        case 'Delete': {
+          const currentImg = images[currentIndex];
+          if (currentImg) {
+            e.preventDefault();
+            API.askConfirm(`Удалить "${currentImg.filename}" в корзину WiPhoto?`).then(async (ok) => {
+              if (ok) {
+                try {
+                  await API.deleteFiles([currentImg.path]);
+                  Gallery.removeImages([currentImg.path]);
+                  images.splice(currentIndex, 1);
+                  if (images.length === 0) {
+                    close();
+                  } else {
+                    if (currentIndex >= images.length) currentIndex = images.length - 1;
+                    show();
+                  }
+                  Utils.toast('Файл перемещен в корзину', 'success');
+                } catch (err) {
+                  Utils.toast(`Ошибка: ${err}`, 'error');
+                }
+              }
+            });
+          }
+          break;
+        }
+        case '+':
+        case '=':
+          e.preventDefault();
+          zoomIn();
+          break;
+        case '-':
+          e.preventDefault();
+          zoomOut();
+          break;
+        case '0':
+          e.preventDefault();
+          if (e.ctrlKey) {
+            zoomTo('fit');
+          } else {
+            setViewerRating(0);
+          }
+          break;
+        case '1':
+          e.preventDefault();
+          if (e.ctrlKey) zoomTo('100');
+          else setViewerRating(1);
+          break;
+        case '2':
+          e.preventDefault();
+          if (e.ctrlKey) zoomTo('200');
+          else setViewerRating(2);
+          break;
+        case '3':
+          e.preventDefault();
+          setViewerRating(3);
+          break;
+        case '4':
+          e.preventDefault();
+          setViewerRating(4);
+          break;
+        case '5':
+          e.preventDefault();
+          setViewerRating(5);
+          break;
+        case 'p':
+        case 'P':
+          e.preventDefault();
+          setViewerFlag('picked');
+          break;
+        case 'x':
+        case 'X':
+          e.preventDefault();
+          setViewerFlag('rejected');
+          break;
+        case 'u':
+        case 'U':
+          e.preventDefault();
+          setViewerFlag('');
           break;
       }
     });
@@ -332,6 +456,54 @@ const Viewer = (() => {
       } else {
         document.getElementById('viewer-zoom-fit')?.classList.remove('active');
       }
+    }
+  }
+
+  
+  function setViewerRating(rating) {
+    const currentImg = images[currentIndex];
+    if (!currentImg) return;
+    currentImg.rating = rating;
+    if (typeof Gallery !== 'undefined' && typeof Gallery.setRating === 'function') {
+      Gallery.setRating(rating);
+    } else if (typeof API !== 'undefined') {
+      API.saveRating(currentImg.path, rating).catch(() => {});
+    }
+    Utils.toast(`Рейтинг: ${rating > 0 ? rating + '★' : 'сброшен'}`, 'info');
+    loadExif(currentImg.path);
+    if (typeof Filmstrip !== 'undefined') Filmstrip.update(images, currentIndex);
+  }
+
+  function setViewerFlag(flag) {
+    const currentImg = images[currentIndex];
+    if (!currentImg) return;
+    currentImg.flag_status = flag;
+    if (typeof Gallery !== 'undefined' && typeof Gallery.setFlagStatus === 'function') {
+      Gallery.setFlagStatus(flag);
+    } else if (typeof API !== 'undefined') {
+      API.saveFlag(currentImg.path, flag).catch(() => {});
+    }
+    const label = flag === 'picked' ? 'Выбранные' : (flag === 'rejected' ? 'Отклонённые' : 'снят');
+    Utils.toast(`Флаг: ${label}`, 'info');
+  }
+
+  function zoomIn() {
+    const imgEl = document.getElementById('viewer-image');
+    if (!imgEl) return;
+    imgEl.style.transition = 'transform 180ms cubic-bezier(0.32, 0.72, 0, 1)';
+    zoomScale = Math.min(8, zoomScale * 1.3);
+    updateTransform();
+  }
+
+  function zoomOut() {
+    const imgEl = document.getElementById('viewer-image');
+    if (!imgEl) return;
+    imgEl.style.transition = 'transform 180ms cubic-bezier(0.32, 0.72, 0, 1)';
+    zoomScale = Math.max(1, zoomScale / 1.3);
+    if (zoomScale <= 1) {
+      resetZoom();
+    } else {
+      updateTransform();
     }
   }
 

@@ -299,6 +299,25 @@ const VirtualGrid = (() => {
     scrollContainer.scrollTop = row * rowHeight;
   }
 
+  function ensureIndexVisible(index) {
+    if (!scrollContainer || index < 0 || index >= items.length) return;
+    const row = Math.floor(index / columns);
+    const rowTop = row * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    const scrollTop = scrollContainer.scrollTop;
+    const viewportHeight = scrollContainer.clientHeight;
+
+    if (rowTop < scrollTop) {
+      scrollContainer.scrollTo({ top: rowTop, behavior: 'smooth' });
+    } else if (rowBottom > scrollTop + viewportHeight) {
+      scrollContainer.scrollTo({ top: rowBottom - viewportHeight, behavior: 'smooth' });
+    }
+  }
+
+  function getColumns() {
+    return columns;
+  }
+
   function getVisibleRange() {
     return {
       start: Math.max(0, visibleStartRow) * columns,
@@ -333,6 +352,8 @@ const VirtualGrid = (() => {
     renderVisible,
     getItemAtIndex,
     scrollToIndex,
+    ensureIndexVisible,
+    getColumns,
     getVisibleRange,
     getRenderedCard,
     getActiveCards: () => activeCardMap,

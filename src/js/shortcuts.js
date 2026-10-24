@@ -1,7 +1,11 @@
 // ═══ Global Keyboard Shortcuts Module ═══
 
 const Shortcuts = (() => {
+  let isInitialized = false;
+
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
     window.addEventListener('keydown', handleKeyDown);
   }
 
@@ -25,6 +29,7 @@ const Shortcuts = (() => {
     const isEditorActive = document.getElementById('view-editor').classList.contains('active');
     const isViewerActive = !document.getElementById('fullscreen-viewer').classList.contains('hidden');
     const isSlideshowActive = !document.getElementById('slideshow-overlay').classList.contains('hidden');
+    const isCompareActive = document.getElementById('compare-viewer') && !document.getElementById('compare-viewer').classList.contains('hidden');
 
     // ─── Universal Shortcuts ───
     if (e.key === 'Escape') {
@@ -54,11 +59,135 @@ const Shortcuts = (() => {
     }
 
     // ─── Viewer / Slideshow Navigation Shortcuts ───
-    if (isViewerActive || isSlideshowActive) {
+    if (isViewerActive || isSlideshowActive || isCompareActive) {
       return; // Handled by their respective modules
     }
 
     // ─── Gallery / Main View Shortcuts ───
+
+    // ─── Gallery Keyboard Navigation & Ergonomics ───
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      Gallery.navigateSelection('right', e.shiftKey);
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      Gallery.navigateSelection('left', e.shiftKey);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      Gallery.navigateSelection('down', e.shiftKey);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      Gallery.navigateSelection('up', e.shiftKey);
+      return;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      Gallery.navigateSelection('home', e.shiftKey);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      Gallery.navigateSelection('end', e.shiftKey);
+      return;
+    }
+    if (e.key === 'PageUp') {
+      e.preventDefault();
+      Gallery.navigateSelection('pageup', e.shiftKey);
+      return;
+    }
+    if (e.key === 'PageDown') {
+      e.preventDefault();
+      Gallery.navigateSelection('pagedown', e.shiftKey);
+      return;
+    }
+
+    // Quick Search: Ctrl+F, /, or F3
+    if ((e.ctrlKey && e.key.toLowerCase() === 'f') || e.key === '/' || e.key === 'F3') {
+      const searchInput = document.getElementById('search-input');
+      if (searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+      return;
+    }
+
+    // View Switching: G (Gallery), M (Map), T (Timeline)
+    if (!e.ctrlKey && !e.altKey) {
+      if (e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        App.switchView('gallery');
+        return;
+      }
+      if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        App.switchView('map');
+        return;
+      }
+      if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        App.switchView('timeline');
+        return;
+      }
+    }
+
+    // C: Compare Mode when 2+ items selected
+    if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.altKey) {
+      if (selected.length >= 2) {
+        e.preventDefault();
+        document.getElementById('btn-compare')?.click();
+      }
+      return;
+    }
+
+    // Ctrl+I: Toggle Right Sidebar Inspector
+    if (e.ctrlKey && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      const rightSidebar = document.getElementById('right-sidebar');
+      if (rightSidebar) rightSidebar.classList.toggle('collapsed');
+      return;
+    }
+
+    // Ctrl+[: Toggle Left Sidebar
+    if (e.ctrlKey && e.key === '[') {
+      e.preventDefault();
+      document.getElementById('toggle-left')?.click();
+      return;
+    }
+
+    // Ctrl+]: Toggle Right Sidebar
+    if (e.ctrlKey && e.key === ']') {
+      e.preventDefault();
+      document.getElementById('toggle-right')?.click();
+      return;
+    }
+
+    // Ctrl++ / Ctrl+-: Thumbnail Zoom Slider
+    if ((e.key === '+' || e.key === '=') && e.ctrlKey) {
+      e.preventDefault();
+      const slider = document.getElementById('zoom-slider');
+      if (slider) {
+        slider.value = Math.min(320, parseInt(slider.value, 10) + 20);
+        slider.dispatchEvent(new Event('input'));
+      }
+      return;
+    }
+    if (e.key === '-' && e.ctrlKey) {
+      e.preventDefault();
+      const slider = document.getElementById('zoom-slider');
+      if (slider) {
+        slider.value = Math.max(100, parseInt(slider.value, 10) - 20);
+        slider.dispatchEvent(new Event('input'));
+      }
+      return;
+    }
+
     
     // F8: Slideshow
     if (e.key === 'F8') {
@@ -254,6 +383,12 @@ const Shortcuts = (() => {
   }
 
   function closeActiveOverlays() {
+    // 0. If compare viewer is active, close it
+    const compareViewer = document.getElementById('compare-viewer');
+    if (compareViewer && !compareViewer.classList.contains('hidden')) {
+      if (typeof CompareMode !== 'undefined') CompareMode.close();
+      return;
+    }
     // 1. If slideshow is active, close it
     const slideshow = document.getElementById('slideshow-overlay');
     if (slideshow && !slideshow.classList.contains('hidden')) {

@@ -5,8 +5,84 @@ const CommandPalette = (() => {
   let selectedIndex = 0;
   let filteredCommands = [];
   let previousFocusedElement = null;
+  let isInitialized = false;
 
   const commands = [
+
+    // Pro Operations & Compare
+    { id: 'compare-photos', name: 'Сравнить выбранные фотографии (Compare Mode)', group: 'Инструменты', shortcut: 'C', action: () => {
+        const sel = Gallery.getSelectedImages();
+        if (sel.length >= 2) {
+          CompareMode.open(Gallery.getFilteredImages(), sel[0].path, sel[1].path);
+        } else {
+          Utils.toast('Выберите как минимум 2 фотографии для сравнения', 'warning');
+        }
+    }},
+
+    // Ratings & Flags
+    { id: 'rate-5', name: 'Установить рейтинг: 5 звёзд (★★★★★)', group: 'Оценки и метки', shortcut: '5', action: () => {
+        Gallery.setRating(5);
+        Utils.toast('Установлен рейтинг: 5 звёзд', 'info');
+    }},
+    { id: 'rate-4', name: 'Установить рейтинг: 4 звезды (★★★★☆)', group: 'Оценки и метки', shortcut: '4', action: () => {
+        Gallery.setRating(4);
+        Utils.toast('Установлен рейтинг: 4 звезды', 'info');
+    }},
+    { id: 'rate-3', name: 'Установить рейтинг: 3 звезды (★★★☆☆)', group: 'Оценки и метки', shortcut: '3', action: () => {
+        Gallery.setRating(3);
+        Utils.toast('Установлен рейтинг: 3 звезды', 'info');
+    }},
+    { id: 'rate-0', name: 'Снять рейтинг (0 звёзд)', group: 'Оценки и метки', shortcut: '0', action: () => {
+        Gallery.setRating(0);
+        Utils.toast('Рейтинг сброшен', 'info');
+    }},
+    { id: 'flag-pick', name: 'Отметить как отобранное (Pick)', group: 'Оценки и метки', shortcut: 'P', action: () => {
+        Gallery.setFlagStatus('picked');
+        Utils.toast('Флаг: Выбранные', 'info');
+    }},
+    { id: 'flag-reject', name: 'Отклонить / брак (Reject)', group: 'Оценки и метки', shortcut: 'X', action: () => {
+        Gallery.setFlagStatus('rejected');
+        Utils.toast('Флаг: Отклонённые', 'info');
+    }},
+    { id: 'flag-clear', name: 'Снять флаг отбора', group: 'Оценки и метки', shortcut: 'U', action: () => {
+        Gallery.setFlagStatus('');
+        Utils.toast('Флаг снят', 'info');
+    }},
+
+    // Selection
+    { id: 'select-all', name: 'Выделить все изображения', group: 'Выделение', shortcut: 'Ctrl+A', action: () => Gallery.selectAll() },
+    { id: 'clear-selection', name: 'Снять выделение со всех фото', group: 'Выделение', shortcut: 'Esc', action: () => Gallery.clearSelection() },
+    { id: 'invert-selection', name: 'Инвертировать выделение', group: 'Выделение', shortcut: '', action: () => Gallery.invertSelection() },
+
+    // Navigation & Zoom
+    { id: 'focus-search', name: 'Поиск по фото (CLIP / имя / тег)', group: 'Навигация', shortcut: 'Ctrl+F', action: () => {
+        const el = document.getElementById('search-input');
+        if (el) { el.focus(); el.select(); }
+    }},
+    { id: 'view-fullscreen', name: 'Полноэкранный просмотр', group: 'Вид', shortcut: 'F', action: () => {
+        const sel = Gallery.getSelectedImages();
+        if (sel.length > 0) Viewer.open(sel[0]);
+        else Utils.toast('Выберите фото для просмотра', 'warning');
+    }},
+    { id: 'toggle-inspector', name: 'Свернуть/развернуть панель инспектора', group: 'Вид', shortcut: 'Ctrl+I', action: () => {
+        const rightSidebar = document.getElementById('right-sidebar');
+        if (rightSidebar) rightSidebar.classList.toggle('collapsed');
+    }},
+    { id: 'zoom-in', name: 'Увеличить размер миниатюр', group: 'Вид', shortcut: 'Ctrl++', action: () => {
+        const slider = document.getElementById('zoom-slider');
+        if (slider) {
+          slider.value = Math.min(320, parseInt(slider.value, 10) + 20);
+          slider.dispatchEvent(new Event('input'));
+        }
+    }},
+    { id: 'zoom-out', name: 'Уменьшить размер миниатюр', group: 'Вид', shortcut: 'Ctrl+-', action: () => {
+        const slider = document.getElementById('zoom-slider');
+        if (slider) {
+          slider.value = Math.max(100, parseInt(slider.value, 10) - 20);
+          slider.dispatchEvent(new Event('input'));
+        }
+    }},
+
     // Files
     { id: 'select-folder', name: 'Выбрать папку для сканирования', group: 'Файлы', shortcut: 'Ctrl+O', action: () => Welcome.selectFolder() },
     { id: 'settings', name: 'Открыть настройки', group: 'Файлы', shortcut: 'Ctrl+,', action: () => Settings.open() },
@@ -100,6 +176,8 @@ const CommandPalette = (() => {
   const list = () => document.getElementById('command-palette-list');
 
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
     // Global keyboard listener for Cmd+K / Ctrl+K
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -264,6 +342,21 @@ const CommandPalette = (() => {
 
   function getShortcutLabel(id) {
     const shortcuts = {
+      'compare-photos': 'C',
+      'rate-5': '5',
+      'rate-4': '4',
+      'rate-3': '3',
+      'rate-0': '0',
+      'flag-pick': 'P',
+      'flag-reject': 'X',
+      'flag-clear': 'U',
+      'select-all': 'Ctrl+A',
+      'clear-selection': 'Esc',
+      'focus-search': 'Ctrl+F',
+      'view-fullscreen': 'F',
+      'toggle-inspector': 'Ctrl+I',
+      'zoom-in': 'Ctrl++',
+      'zoom-out': 'Ctrl+-',
       'select-folder': 'Ctrl+O',
       'settings': 'Ctrl+,',
       'view-gallery': 'G',

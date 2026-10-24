@@ -171,6 +171,28 @@ const Utils = {
     }
     return `data:image/jpeg;base64,${val}`;
   },
+
+  /** Initialize Refined Minimal custom tooltips from title attributes */
+  initTooltips() {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('[title]').forEach(el => {
+      const title = el.getAttribute('title');
+      if (title) {
+        el.setAttribute('data-tooltip', title);
+        if (!el.hasAttribute('data-tooltip-pos')) {
+          if (el.closest('.toolbar, .header, .viewer-controls, .editor-toolbar')) {
+            el.setAttribute('data-tooltip-pos', 'bottom');
+          } else if (el.closest('#sidebar-left, #left-sidebar')) {
+            el.setAttribute('data-tooltip-pos', 'right');
+          } else if (el.closest('#sidebar-right, #right-sidebar')) {
+            el.setAttribute('data-tooltip-pos', 'left');
+          }
+        }
+        el.removeAttribute('title');
+      }
+    });
+  },
+
 };
 
 window.Utils = Utils;

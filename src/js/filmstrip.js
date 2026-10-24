@@ -2,8 +2,11 @@ const Filmstrip = (() => {
   let images = [];
   let currentIndex = -1;
   let hideTimeout = null;
+  let isInitialized = false;
 
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
     const container = document.getElementById('filmstrip-container');
     if (!container) return;
 
@@ -33,6 +36,16 @@ const Filmstrip = (() => {
       e.preventDefault();
       container.scrollLeft += e.deltaY;
     }, { passive: false });
+
+    // Event delegation for thumbnail click
+    container.addEventListener('click', (e) => {
+      const thumb = e.target.closest('.filmstrip-thumb');
+      if (!thumb) return;
+      const idx = parseInt(thumb.dataset.index, 10);
+      if (!isNaN(idx) && images[idx] && typeof Viewer !== 'undefined') {
+        Viewer.open(images[idx]);
+      }
+    });
   }
 
   function update(imgList, currentIdx) {
@@ -85,12 +98,6 @@ const Filmstrip = (() => {
       thumb.className = `filmstrip-thumb ${i === currentIndex ? 'active' : ''}`;
       thumb.src = Utils.assetUrl(img.thumbnail || img.path);
       thumb.dataset.index = i;
-      thumb.addEventListener('click', (e) => {
-        const idx = parseInt(e.target.dataset.index, 10);
-        if (typeof Viewer !== 'undefined') {
-          Viewer.open(images[idx]);
-        }
-      });
       container.appendChild(thumb);
     }
     

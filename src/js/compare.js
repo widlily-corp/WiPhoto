@@ -2,6 +2,8 @@ const CompareMode = (() => {
   let images = [];
   let leftIndex = -1;
   let rightIndex = -1;
+  let activePane = 'right'; // 'left' or 'right'
+  let isInitialized = false;
   
   let zoomScale = 1;
   let panX = 0;
@@ -11,19 +13,105 @@ const CompareMode = (() => {
   let startPanY = 0;
 
   function init() {
+    if (isInitialized) return;
+    isInitialized = true;
+
     const viewer = document.getElementById('compare-viewer');
     if (!viewer) return;
     
     viewer.addEventListener('keydown', (e) => {
       switch (e.key) {
-        case 'Escape': close(); break;
-        case 'ArrowLeft': 
-          prev(e.shiftKey); 
+        case 'Escape':
+          close();
           break;
-        case 'ArrowRight': 
-          next(e.shiftKey); 
+        case 'Tab':
+          e.preventDefault();
+          activePane = activePane === 'left' ? 'right' : 'left';
+          updateUI();
           break;
+        case 's':
+        case 'S': {
+          e.preventDefault();
+          const tmp = leftIndex;
+          leftIndex = rightIndex;
+          rightIndex = tmp;
+          updateUI();
+          Utils.toast('Стороны сравнения поменялись местами', 'info');
+          break;
+        }
+        case 'ArrowLeft':
+          e.preventDefault();
+          prev(e.shiftKey || activePane === 'left');
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          next(e.shiftKey || activePane === 'left');
+          break;
+        case '0':
+          e.preventDefault();
+          resetZoom();
+          break;
+        case '+':
+        case '=':
+          e.preventDefault();
+          zoomScale = Math.min(8, zoomScale * 1.25);
+          const leftPane = document.getElementById('compare-left-img')?.parentElement;
+    const rightPane = document.getElementById('compare-right-img')?.parentElement;
+    if (leftPane) leftPane.classList.toggle('is-active', activePane === 'left');
+    if (rightPane) rightPane.classList.toggle('is-active', activePane === 'right');
+    updateTransform();
+          break;
+        case '-':
+          e.preventDefault();
+          zoomScale = Math.max(1, zoomScale / 1.25);
+          if (zoomScale <= 1) resetZoom();
+          else updateTransform();
+          break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5': {
+          const activeImg = activePane === 'left' ? images[leftIndex] : images[rightIndex];
+          if (activeImg) {
+            e.preventDefault();
+            const rating = parseInt(e.key, 10);
+            activeImg.rating = rating;
+            if (typeof API !== 'undefined') API.saveRating(activeImg.path, rating).catch(() => {});
+            Utils.toast(`Рейтинг: ${rating}★ (${activePane === 'left' ? 'Слева' : 'Справа'})`, 'info');
+            updateUI();
+          }
+          break;
+        }
+        case 'p':
+        case 'P':
+        case 'x':
+        case 'X':
+        case 'u':
+        case 'U': {
+          const activeImg = activePane === 'left' ? images[leftIndex] : images[rightIndex];
+          if (activeImg) {
+            e.preventDefault();
+            const flag = e.key.toLowerCase() === 'p' ? 'picked' : (e.key.toLowerCase() === 'x' ? 'rejected' : '');
+            activeImg.flag_status = flag;
+            if (typeof API !== 'undefined') API.saveFlag(activeImg.path, flag).catch(() => {});
+            const flagName = flag === 'picked' ? 'Выбранные' : (flag === 'rejected' ? 'Отклонённые' : 'снят');
+            Utils.toast(`Флаг: ${flagName} (${activePane === 'left' ? 'Слева' : 'Справа'})`, 'info');
+            updateUI();
+          }
+          break;
+        }
       }
+    });
+
+    // Pane selection clicks
+    document.getElementById('compare-left-img')?.parentElement?.addEventListener('click', () => {
+      activePane = 'left';
+      updateUI();
+    });
+    document.getElementById('compare-right-img')?.parentElement?.addEventListener('click', () => {
+      activePane = 'right';
+      updateUI();
     });
     
     // Zoom/Pan

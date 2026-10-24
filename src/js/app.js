@@ -40,6 +40,9 @@ const App = (() => {
     if (typeof initUpdaterUI === 'function') {
       initUpdaterUI();
     }
+    if (typeof Utils !== 'undefined' && typeof Utils.initTooltips === 'function') {
+      Utils.initTooltips();
+    }
 
     // Auto-check for OTA updates silently in background on startup
     setTimeout(() => {
