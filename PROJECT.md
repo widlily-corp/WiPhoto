@@ -1,4 +1,4 @@
-# Project: WiPhoto v5.1.4
+# Project: WiPhoto v5.1.6
 
 ## 1. System Architecture
 - **Core Runtime & IPC**: Tauri v2 + Rust Backend + Vanilla JS Frontend. IPC implemented via strongly-typed Tauri `invoke` commands and zero-copy custom `asset:` / `tauri:` streaming protocol with HTTP Range requests, ETag caching, and Cyrillic percent-decoding.
