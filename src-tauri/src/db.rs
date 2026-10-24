@@ -193,6 +193,7 @@ pub fn get_all_face_embeddings() -> Result<Vec<FaceEmbedding>> {
             let confidence: f32 = row.get(4)?;
 
             let bbox: [f32; 4] = serde_json::from_str(&bbox_str).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+            #[allow(clippy::chunks_exact_to_as_chunks)]
             let embedding: Vec<f32> = embedding_bytes
                 .chunks_exact(4)
                 .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
